@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="preconnect" href="https://fonts.bunny.net">
+  <link href="https://fonts.bunny.net/css?family=dm-sans:400,500,600,700|plus-jakarta-sans:500,600,700,800" rel="stylesheet" />
+  <title>Chat RAG Agent</title>
+  <meta name="description" content="AI-powered document chat with RAG — upload documents, ask questions, get sourced answers.">
+  <style>html { background-color: #ffffff } html.dark { background-color: #0f172a }</style>
+  <script>
+    (function () {
+      var mode = localStorage.getItem('vueuse-color-scheme') || 'auto'
+      var dark = mode === 'dark' || (mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      if (dark) {
+        document.documentElement.classList.add('dark')
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a')
+      }
+    })()
+  </script>
+</head>
+
+<body>
+  <div id="app" class="isolate"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>
