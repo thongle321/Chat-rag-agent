@@ -14,8 +14,8 @@ def get_embeddings() -> HuggingFaceEmbeddings:
     logger.info("Loading embedding model: %s", settings.embedding_model)
     embeddings = HuggingFaceEmbeddings(
         model_name=settings.embedding_model,
-        model_kwargs={},
-        encode_kwargs={},
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
     )
     logger.info("Embedding model loaded.")
     return embeddings
