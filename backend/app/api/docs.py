@@ -11,6 +11,8 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+
 
 @router.post("/upload")
 async def upload_files(
@@ -20,8 +22,16 @@ async def upload_files(
     """Upload one or more document files. Files are saved and indexed in background."""
     results = []
     for file in files:
+        safe_name = Path(file.filename).name if file.filename else "unnamed"
         content = await file.read()
-        saved, message = await save_and_queue_indexing(file.filename, content)
+        if len(content) > MAX_UPLOAD_SIZE:
+            results.append(DocumentIngestResponse(
+                status="error",
+                document_id="",
+                message=f"File {safe_name} exceeds 50 MB limit",
+            ))
+            continue
+        saved, message = await save_and_queue_indexing(safe_name, content)
         status = "ok" if saved else "error"
         if saved:
             background_tasks.add_task(index_all_files_background)

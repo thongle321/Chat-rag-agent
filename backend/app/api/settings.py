@@ -1,9 +1,8 @@
-from pydantic import BaseModel
+import httpx
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.core.config import settings
-
-import httpx
 
 
 class AISettingsResponse(BaseModel):
@@ -60,8 +59,6 @@ async def update_ai_settings(body: AISettingsUpdate):
     if body.openai_model is not None:
         settings.openai_model = body.openai_model
 
-    settings.persist()
-
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
@@ -90,10 +87,13 @@ async def test_connection():
         if not settings.openai_api_key:
             return TestConnectionResponse(ok=False, message="OpenAI API key is not set.")
         try:
-            from openai import OpenAI
-            client = OpenAI(api_key=settings.openai_api_key)
-            client.models.list()
-            return TestConnectionResponse(ok=True, message=f"Connected to OpenAI with model '{settings.openai_model}'.")
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                )
+                resp.raise_for_status()
+                return TestConnectionResponse(ok=True, message=f"Connected to OpenAI with model '{settings.openai_model}'.")
         except Exception as e:
             return TestConnectionResponse(ok=False, message=f"OpenAI error: {e}")
 

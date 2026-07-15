@@ -1,4 +1,5 @@
 import hashlib
+import json
 import uuid
 from pathlib import Path
 
@@ -12,7 +13,11 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-MARKDOWN_SEPERATORS = [
+MANIFEST_PATH = Path(settings.vector_store_dir) / "_manifest.json"
+
+BATCH_SIZE = 500
+
+MARKDOWN_SEPARATORS = [
     "\n#{1,6} ",
     "```\n",
     "\n\\*\\*\\*+\n",
@@ -23,7 +28,14 @@ MARKDOWN_SEPERATORS = [
     " ",
     "",
 ]
-SPLITTER = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200, add_start_index=True, strip_whitespace=True, separators=MARKDOWN_SEPERATORS, is_separator_regex=True)
+SPLITTER = RecursiveCharacterTextSplitter(
+    chunk_size=1200,
+    chunk_overlap=200,
+    add_start_index=True,
+    strip_whitespace=True,
+    separators=MARKDOWN_SEPARATORS,
+    is_separator_regex=True,
+)
 
 
 def _clean_text(text: str) -> str:
@@ -73,23 +85,48 @@ def _load_file(file_path: Path) -> list[Document]:
         return []
 
 
+def _load_manifest() -> dict[str, str]:
+    if MANIFEST_PATH.exists():
+        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    return {}
+
+
+def _save_manifest(manifest: dict[str, str]) -> None:
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _file_hash(file_path: Path) -> str:
+    return hashlib.md5(file_path.read_bytes()).hexdigest()
+
+
 def _index_all_sync() -> int:
-    """Load all supported files from the upload directory, split, embed, insert."""
+    """Incrementally index only new or changed files. Returns chunk count added."""
     upload_dir = Path(settings.upload_dir)
     if not upload_dir.exists():
         return 0
 
-    all_docs: list[Document] = []
-    for file_path in upload_dir.iterdir():
-        if file_path.is_file() and file_path.suffix.lower() in EXTENSIONS:
-            all_docs.extend(_load_file(file_path))
+    manifest = _load_manifest()
+    new_manifest: dict[str, str] = {}
 
-    if not all_docs:
+    new_docs: list[Document] = []
+    for file_path in upload_dir.iterdir():
+        if not (file_path.is_file() and file_path.suffix.lower() in EXTENSIONS):
+            continue
+        fhash = _file_hash(file_path)
+        new_manifest[file_path.name] = fhash
+        if manifest.get(file_path.name) == fhash:
+            continue  # unchanged — skip
+        logger.info("Indexing changed file: %s", file_path.name)
+        new_docs.extend(_load_file(file_path))
+
+    if not new_docs:
+        _save_manifest(new_manifest)
         return 0
 
     seen: set[str] = set()
     unique_docs: list[Document] = []
-    for doc in all_docs:
+    for doc in new_docs:
         h = _content_hash(doc.page_content)
         if h not in seen:
             seen.add(h)
@@ -99,12 +136,17 @@ def _index_all_sync() -> int:
     texts = [c.page_content for c in chunks]
     embeddings = embed_model.embed_documents(texts)
 
-    chroma_collection.add(
-        ids=[str(uuid.uuid4()) for _ in chunks],
-        embeddings=embeddings,
-        documents=[c.page_content for c in chunks],
-        metadatas=[c.metadata for c in chunks],
-    )
+    for i in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[i : i + BATCH_SIZE]
+        batch_embeddings = embeddings[i : i + BATCH_SIZE]
+        chroma_collection.add(
+            ids=[str(uuid.uuid4()) for _ in batch],
+            embeddings=batch_embeddings,
+            documents=[c.page_content for c in batch],
+            metadatas=[c.metadata for c in batch],
+        )
+
+    _save_manifest(new_manifest)
     return len(chunks)
 
 

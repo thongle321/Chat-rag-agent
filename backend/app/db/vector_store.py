@@ -57,18 +57,13 @@ def list_documents() -> list[dict]:
 
 def delete_document(title: str) -> int:
     """Delete all chunks for a document by title. Returns number of chunks deleted."""
-    result = chroma_collection.get(include=["metadatas"])
+    result = chroma_collection.get(
+        where={"title": title},
+        include=["metadatas"],
+    )
     if not result["ids"]:
         return 0
 
-    ids_to_delete = [
-        doc_id
-        for doc_id, meta in zip(result["ids"], result["metadatas"])
-        if meta.get("title") == title
-    ]
-
-    if ids_to_delete:
-        chroma_collection.delete(ids=ids_to_delete)
-        logger.info("Deleted %d chunks for document '%s'", len(ids_to_delete), title)
-
-    return len(ids_to_delete)
+    chroma_collection.delete(ids=result["ids"])
+    logger.info("Deleted %d chunks for document '%s'", len(result["ids"]), title)
+    return len(result["ids"])

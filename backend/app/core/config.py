@@ -2,6 +2,9 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
+# backend/ directory — computed once at import time
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings(BaseSettings):
     # App
@@ -21,22 +24,21 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:31b-cloud"
 
     # Embeddings (local, no API key needed)
-    embedding_model: str = "microsoft/harrier-oss-v1-270m"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
 
     # System prompt for the RAG agent
     context_prompt: str = (
         "You are a strict, citation-focused assistant for a private knowledge base.\n"
         "RULES:\n"
-        "1) Use ONLY the provided context to answer.\n "
-        "2) If the answer is not clearly contained in the context, say: \"I don't know based on the provided documents.\"\n "
+        "1) Use ONLY the provided context to answer.\n"
+        "2) If the answer is not clearly contained in the context, say: \"I don't know based on the provided documents.\"\n"
         "3) Do NOT use outside knowledge, guessing, or web information.\n"
-        "4) If applicable, cite sources as (source:page) using the metadata.\n\n"
-
+        "4) Cite sources as (source:filename.pdf, page X) using the metadata provided in each chunk.\n\n"
     )
 
     # Storage
-    upload_dir: str = "data/uploads"
-    vector_store_dir: str = ".chromadb"
+    upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
+    vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
 
     # CORS
     allowed_cors_origins: str = "*"
@@ -50,34 +52,6 @@ class Settings(BaseSettings):
         if self.allowed_cors_origins == "*":
             return ["*"]
         return [origin.strip() for origin in self.allowed_cors_origins.split(",")]
-
-    def persist(self) -> None:
-        env_path = Path(".env")
-        lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
-
-        updates = {
-            "AI_PROVIDER": self.ai_provider,
-            "OLLAMA_BASE_URL": self.ollama_base_url,
-            "OLLAMA_MODEL": self.ollama_model,
-            "OPENAI_API_KEY": self.openai_api_key,
-            "OPENAI_MODEL": self.openai_model,
-        }
-
-        keys_written = set()
-        new_lines = []
-        for line in lines:
-            key = line.split("=", 1)[0].strip() if "=" in line else None
-            if key in updates:
-                new_lines.append(f"{key}={updates[key]}")
-                keys_written.add(key)
-            else:
-                new_lines.append(line)
-
-        for key, val in updates.items():
-            if key not in keys_written:
-                new_lines.append(f"{key}={val}")
-
-        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
 settings = Settings()

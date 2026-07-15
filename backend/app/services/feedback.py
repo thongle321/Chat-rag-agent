@@ -9,7 +9,7 @@ _feedback_lock = threading.Lock()
 
 
 def _get_feedback_path() -> Path:
-    return Path(settings.upload_dir) / "feedback.json"
+    return Path(settings.upload_dir).parent / "feedback" / "feedback.json"
 
 
 async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:

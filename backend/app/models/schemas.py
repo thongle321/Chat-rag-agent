@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DocumentIngestResponse(BaseModel):
@@ -23,7 +23,7 @@ class ChatResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     session_id: str | None = None
     answer_id: str
-    rating: int
+    rating: int = Field(ge=1, le=5)
     comments: str | None = None
 
 
