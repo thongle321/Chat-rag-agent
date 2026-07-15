@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks
 from fastapi import UploadFile, File
 from pathlib import Path
 from app.models.schemas import DocumentIngestResponse, DocumentListResponse, DocumentInfo
@@ -45,28 +45,16 @@ async def upload_files(
 
 @router.get("", response_model=DocumentListResponse)
 async def list_all_documents():
-    """List all indexed documents from the vector store."""
-    try:
-        docs = list_documents()
-        return DocumentListResponse(
-            documents=[DocumentInfo(**d) for d in docs]
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    docs = list_documents()
+    return DocumentListResponse(documents=[DocumentInfo(**d) for d in docs])
 
 
 @router.delete("/{title}")
 async def delete_document_by_title(title: str):
-    """Delete a document and its chunks by title."""
-    try:
-        deleted = delete_document(title)
-
-        upload_dir = Path(settings.upload_dir)
-        for f in upload_dir.iterdir():
-            if f.is_file() and f.stem == title:
-                f.unlink()
-                break
-
-        return {"status": "deleted", "chunks_deleted": deleted}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    deleted = delete_document(title)
+    upload_dir = Path(settings.upload_dir)
+    for f in upload_dir.iterdir():
+        if f.is_file() and f.stem == title:
+            f.unlink()
+            break
+    return {"status": "deleted", "chunks_deleted": deleted}

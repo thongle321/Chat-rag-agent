@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '../api'
+import api, { getErrorMessage } from '../api'
 
 export interface DocumentInfo {
   document_id: string
@@ -27,7 +27,7 @@ export const useDocumentStore = defineStore('documents', () => {
       const { data } = await api.get('/documents')
       documents.value = data.documents
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Failed to load documents'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -61,7 +61,7 @@ export const useDocumentStore = defineStore('documents', () => {
 
       return results
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Upload failed'
+      error.value = getErrorMessage(err)
       throw err
     } finally {
       loading.value = false
@@ -88,7 +88,7 @@ export const useDocumentStore = defineStore('documents', () => {
       await api.delete(`/documents/${encodeURIComponent(title)}`)
       await fetchDocuments()
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Delete failed'
+      error.value = getErrorMessage(err)
     }
   }
 

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '../api'
+import api, { getErrorMessage } from '../api'
 
 export interface ChatMessage {
   id: string
@@ -48,7 +48,7 @@ export const useChatStore = defineStore('chat', () => {
       messages.value.push(assistantMsg)
       return data
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Failed to get response'
+      error.value = getErrorMessage(err)
       throw err
     } finally {
       loading.value = false

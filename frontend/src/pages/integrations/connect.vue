@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import api from '../../api'
+import api, { getErrorMessage } from '../../api'
 
 const router = useRouter()
 const pageName = ref('')
@@ -21,7 +21,7 @@ async function connect() {
     })
     router.push('/integrations')
   } catch (err: any) {
-    error.value = err.response?.data?.detail || 'Failed to connect'
+    error.value = getErrorMessage(err)
   } finally {
     saving.value = false
   }

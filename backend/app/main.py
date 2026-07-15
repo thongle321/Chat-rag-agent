@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
 from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
-from app.core.exceptions import register_exception_handlers
 from app.api.routes import router
 from app.channels.facebook import close_client
 
@@ -12,8 +11,6 @@ app = FastAPI(
     description="FastAPI backend for ingesting documents, answering user questions, collecting feedback, and connecting Facebook.",
     version=settings.version,
 )
-
-register_exception_handlers(app)
 
 # Add middleware (last added = first executed)
 app.add_middleware(SecurityHeadersMiddleware)

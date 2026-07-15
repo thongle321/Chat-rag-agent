@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
-from app.channels.facebook import get_page_name, mark_seen, send_message, typing_on
+from app.channels.facebook import  mark_seen, send_message, typing_on
 from app.services.facebook_config import (
     delete_facebook_config,
     get_facebook_config,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import api from '../../api'
+import api, { getErrorMessage } from '../../api'
 
 const router = useRouter()
 const pageId = ref('')
@@ -39,7 +39,7 @@ async function save() {
     await api.post('/facebook/config', payload)
     router.push('/integrations')
   } catch (err: any) {
-    error.value = err.response?.data?.detail || 'Failed to save'
+    error.value = getErrorMessage(err)
   } finally {
     saving.value = false
   }

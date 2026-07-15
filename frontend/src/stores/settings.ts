@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import api from '../api'
+import api, { getErrorMessage } from '../api'
 
 export interface AISettings {
   ai_provider: string
@@ -33,7 +33,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const { data } = await api.get('/settings/ai')
       settings.value = data
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Failed to load settings'
+      error.value = getErrorMessage(err)
     } finally {
       loading.value = false
     }
@@ -46,7 +46,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const { data } = await api.put('/settings/ai', payload)
       settings.value = data
     } catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Failed to save settings'
+      error.value = getErrorMessage(err)
       throw err
     } finally {
       loading.value = false
@@ -58,7 +58,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const { data } = await api.post('/settings/test')
       return data
     } catch (err: any) {
-      return { ok: false, message: err.response?.data?.detail || err.message || 'Test failed' }
+      return { ok: false, message: getErrorMessage(err) }
     }
   }
 
