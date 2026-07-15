@@ -11,6 +11,8 @@ from app.services.facebook_config import (
 )
 from app.services.rag import answer_question
 from app.utils.logger import get_logger
+from app.services.user_manager import current_active_user
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -40,7 +42,7 @@ class FacebookConfigResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/config", response_model=FacebookConfigResponse)
-async def get_config():
+async def get_config(user: User = current_active_user):
     """Get Facebook channel config."""
     config = get_facebook_config()
     if not config:
@@ -55,7 +57,7 @@ async def get_config():
 
 
 @router.post("/config", response_model=FacebookConfigResponse)
-async def save_config(req: FacebookConfigRequest):
+async def save_config(req: FacebookConfigRequest, user: User = current_active_user):
     """Save Facebook channel config."""
     config = save_facebook_config(req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name)
     return FacebookConfigResponse(
@@ -67,7 +69,7 @@ async def save_config(req: FacebookConfigRequest):
 
 
 @router.delete("/config")
-async def delete_config():
+async def delete_config(user: User = current_active_user):
     """Delete Facebook channel config."""
     deleted = delete_facebook_config()
     if not deleted:

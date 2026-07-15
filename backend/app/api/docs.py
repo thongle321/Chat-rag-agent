@@ -6,6 +6,8 @@ from app.services.document_ingest import save_and_queue_indexing, index_all_file
 from app.db.vector_store import list_documents, delete_document
 from app.core.config import settings
 from app.utils.logger import get_logger
+from app.services.user_manager import current_active_user
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -18,6 +20,7 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 async def upload_files(
     files: list[UploadFile] = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    user: User = current_active_user,
 ):
     """Upload one or more document files. Files are saved and indexed in background."""
     results = []
@@ -44,13 +47,13 @@ async def upload_files(
 
 
 @router.get("", response_model=DocumentListResponse)
-async def list_all_documents():
+async def list_all_documents(user: User = current_active_user):
     docs = list_documents()
     return DocumentListResponse(documents=[DocumentInfo(**d) for d in docs])
 
 
 @router.delete("/{title}")
-async def delete_document_by_title(title: str):
+async def delete_document_by_title(title: str, user: User = current_active_user):
     deleted = delete_document(title)
     upload_dir = Path(settings.upload_dir)
     for f in upload_dir.iterdir():

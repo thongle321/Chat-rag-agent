@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import api, { getErrorMessage } from '../api'
 
 export interface ChatMessage {
@@ -8,44 +8,117 @@ export interface ChatMessage {
   text: string
   model?: string
   sources?: string[]
-  answerId?: string
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  pinned: boolean
+  createdAt: number
+  sessionId: string
+}
+
+export function groupByDate(conversations: Conversation[]): [string, Conversation[]][] {
+  const now = Date.now()
+  const day = 86400000
+  const groups = new Map<string, Conversation[]>()
+  const label = (d: number) => {
+    const diff = now - d
+    if (diff < day) return 'Hôm nay'
+    if (diff < 2 * day) return 'Hôm qua'
+    if (diff < 7 * day) return '7 ngày trước'
+    if (diff < 30 * day) return '30 ngày trước'
+    return 'Cũ hơn'
+  }
+  for (const c of conversations) {
+    const l = label(c.createdAt)
+    const arr = groups.get(l) ?? []
+    arr.push(c)
+    groups.set(l, arr)
+  }
+  return [...groups.entries()]
 }
 
 export const useChatStore = defineStore('chat', () => {
-  const sessionId = ref('')
-  const messages = ref<ChatMessage[]>([])
+  const conversations = ref<Conversation[]>([])
+  const activeId = ref('')
   const loading = ref(false)
   const error = ref('')
+
+  const activeConversation = computed(() =>
+    conversations.value.find(c => c.id === activeId.value) ?? null
+  )
+
+  const messages = computed(() => activeConversation.value?.messages ?? [])
+  const sessionId = computed(() => activeConversation.value?.sessionId ?? '')
+
+  function newConversation() {
+    const id = String(Date.now())
+    conversations.value.push({
+      id,
+      title: 'Cuộc hội thoại mới',
+      messages: [],
+      pinned: false,
+      createdAt: Date.now(),
+      sessionId: '',
+    })
+    activeId.value = id
+  }
+
+  function setActive(id: string) {
+    activeId.value = id
+  }
+
+  function deleteConversation(id: string) {
+    conversations.value = conversations.value.filter(c => c.id !== id)
+    if (activeId.value === id) {
+      activeId.value = conversations.value[0]?.id ?? ''
+    }
+  }
+
+  function togglePin(id: string) {
+    const c = conversations.value.find(c => c.id === id)
+    if (c) c.pinned = !c.pinned
+  }
 
   async function sendMessage(question: string) {
     if (!question.trim()) return
 
-    const userMsg: ChatMessage = {
+    if (!activeId.value) newConversation()
+
+    const conv = conversations.value.find(c => c.id === activeId.value)
+    if (!conv) return
+
+    conv.messages.push({
       id: String(Date.now()),
       role: 'user',
       text: question,
+    })
+
+    if (conv.messages.length === 1) {
+      conv.title = question.slice(0, 60)
     }
-    messages.value.push(userMsg)
+
     error.value = ''
     loading.value = true
 
     try {
       const { data } = await api.post('/chat/query', {
         question,
-        session_id: sessionId.value || undefined,
+        session_id: conv.sessionId || undefined,
       })
 
-      sessionId.value = data.session_id
+      conv.sessionId = data.session_id
 
-      const assistantMsg: ChatMessage = {
+      conv.messages.push({
         id: data.answer_id,
         role: 'assistant',
         text: data.answer,
         model: data.model,
         sources: data.source_documents,
-        answerId: data.answer_id,
-      }
-      messages.value.push(assistantMsg)
+      })
+
       return data
     } catch (err: any) {
       error.value = getErrorMessage(err)
@@ -56,9 +129,17 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function clearMessages() {
-    messages.value = []
-    sessionId.value = ''
+    const conv = conversations.value.find(c => c.id === activeId.value)
+    if (conv) {
+      conv.messages = []
+      conv.sessionId = ''
+    }
   }
 
-  return { sessionId, messages, loading, error, sendMessage, clearMessages }
+  return {
+    conversations, activeId, loading, error,
+    activeConversation, sessionId, messages,
+    newConversation, setActive, deleteConversation, togglePin,
+    sendMessage, clearMessages,
+  }
 })

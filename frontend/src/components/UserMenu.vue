@@ -2,12 +2,20 @@
 import { computed } from 'vue'
 import { useColorMode } from '@vueuse/core'
 import type { DropdownMenuItem } from '@nuxt/ui'
+import { useAuthStore } from '../stores/auth'
 
 defineProps<{
   collapsed?: boolean
 }>()
 
 const colorMode = useColorMode()
+const authStore = useAuthStore()
+const router = useRouter()
+
+async function handleLogout() {
+  await authStore.logout()
+  router.push('/admin/login')
+}
 
 const items = computed<DropdownMenuItem[][]>(() => ([[{
   type: 'label',
@@ -44,6 +52,10 @@ const items = computed<DropdownMenuItem[][]>(() => ([[{
   icon: 'i-lucide-file-text',
   to: 'http://localhost:8000/docs',
   target: '_blank'
+}], [{
+  label: 'Logout',
+  icon: 'i-lucide-log-out',
+  onSelect: handleLogout
 }]]))
 </script>
 

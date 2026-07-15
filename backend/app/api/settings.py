@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.services.user_manager import current_active_user
+from app.models.user import User
 
 
 class AISettingsResponse(BaseModel):
@@ -30,7 +32,7 @@ router = APIRouter()
 
 
 @router.get("/ai", response_model=AISettingsResponse)
-async def get_ai_settings():
+async def get_ai_settings(user: User = current_active_user):
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
@@ -41,7 +43,7 @@ async def get_ai_settings():
 
 
 @router.put("/ai", response_model=AISettingsResponse)
-async def update_ai_settings(body: AISettingsUpdate):
+async def update_ai_settings(body: AISettingsUpdate, user: User = current_active_user):
     if body.ai_provider is not None:
         if body.ai_provider not in ("ollama", "openai"):
             raise HTTPException(status_code=400, detail="ai_provider must be 'ollama' or 'openai'")
@@ -69,7 +71,7 @@ async def update_ai_settings(body: AISettingsUpdate):
 
 
 @router.post("/test", response_model=TestConnectionResponse)
-async def test_connection():
+async def test_connection(user: User = current_active_user):
     provider = settings.ai_provider.lower()
 
     if provider == "ollama":

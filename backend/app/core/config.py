@@ -1,3 +1,4 @@
+import secrets
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
         "3) Do NOT use outside knowledge, guessing, or web information.\n"
         "4) Cite sources as (source:filename.pdf, page X) using the metadata provided in each chunk.\n\n"
     )
+
+    jwt_secret_key: str = ""
 
     # Storage
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")

@@ -7,26 +7,26 @@ const open = ref(false)
 const links = [[{
   label: 'Dashboard',
   icon: 'i-lucide-layout-dashboard',
-  to: '/',
+  to: '/admin/',
   onSelect: () => { open.value = false }
 }, {
   label: 'Documents',
   icon: 'i-lucide-file-text',
-  to: '/documents',
+  to: '/admin/documents',
   onSelect: () => { open.value = false }
 }, {
   label: 'Chat',
   icon: 'i-lucide-message-square',
-  to: '/chat',
+  to: '/',
   onSelect: () => { open.value = false }
 }, {
   label: 'Integrations',
   icon: 'i-lucide-plug',
-  to: '/integrations',
+  to: '/admin/integrations',
   onSelect: () => { open.value = false }
 }, {
   label: 'Settings',
-  to: '/settings',
+  to: '/admin/settings',
   icon: 'i-lucide-settings',
   onSelect: () => { open.value = false }
 }]] satisfies NavigationMenuItem[][]

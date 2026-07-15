@@ -1,93 +1,197 @@
 <script setup lang="ts">
-import { useDocumentStore } from '../stores/documents'
+import { ref, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 
-const router = useRouter()
-const documentStore = useDocumentStore()
 const chatStore = useChatStore()
 
-const stats = computed(() => [
-  { label: 'Documents', value: documentStore.documents.length, icon: 'i-lucide-file-text', color: 'primary' as const },
-  { label: 'Queries', value: chatStore.messages.filter(m => m.role === 'user').length, icon: 'i-lucide-message-square', color: 'success' as const },
-])
+const chatInput = ref('')
+const chatWindow = ref<HTMLElement>()
+const sidebarOpen = ref(false)
 
-const recentChats = computed(() =>
-  chatStore.messages
-    .filter(m => m.role === 'user')
-    .slice(-5)
-    .reverse()
-)
+onMounted(() => {
+  if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+    sidebarOpen.value = true
+  }
+})
 
-const apiStatus = ref(true)
+function closeSidebarOnMobile() {
+  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+    sidebarOpen.value = false
+  }
+}
+
+async function handleSend(question: string) {
+  await chatStore.sendMessage(question)
+  await nextTick()
+  if (chatWindow.value) {
+    chatWindow.value.scrollTop = chatWindow.value.scrollHeight
+  }
+}
+
+function pickSuggestion(q: string) {
+  chatInput.value = q
+  nextTick(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>('textarea')
+    ta?.focus()
+  })
+}
 </script>
 
 <template>
-  <UDashboardPanel id="home">
-    <template #header>
-      <UDashboardNavbar title="Dashboard">
-        <template #leading>
-          <UDashboardSidebarCollapse />
-        </template>
-      </UDashboardNavbar>
-    </template>
+  <div class="h-screen flex bg-bg text-default overflow-hidden">
+    <!-- Mobile backdrop -->
+    <div
+      v-if="sidebarOpen"
+      class="md:hidden fixed inset-0 bg-black/40 z-40"
+      @click="sidebarOpen = false"
+    />
 
-    <template #body>
-      <div class="flex flex-col gap-6">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <UCard v-for="stat in stats" :key="stat.label">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm text-muted">{{ stat.label }}</p>
-                <p class="text-2xl font-bold mt-1 font-[var(--font-display)]">{{ stat.value }}</p>
-              </div>
-              <UIcon :name="stat.icon" class="text-3xl text-muted opacity-50" />
-            </div>
-          </UCard>
+    <!-- Sidebar: drawer on mobile, in-flow on desktop -->
+    <div v-if="sidebarOpen" class="fixed md:relative inset-y-0 left-0 z-50 md:z-auto">
+      <ChatSidebar
+        :on-collapse="() => sidebarOpen = false"
+        :on-navigate="closeSidebarOnMobile"
+      />
+    </div>
+
+    <!-- Main area -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <header class="flex items-center justify-between px-3 md:px-7 py-3.5 border-b border-default bg-elevated">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <UButton
+            v-if="!sidebarOpen"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            :square="true"
+            :icon="'i-lucide-menu'"
+            @click="sidebarOpen = true"
+          />
+          <div class="flex items-center gap-2 text-muted text-xs min-w-0">
+            <span class="hidden md:inline">Tra cứu thông tin từ tài liệu</span>
+          </div>
         </div>
+      </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <UCard class="lg:col-span-2">
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-bell" class="text-primary" />
-                <span class="font-semibold">Recent Activity</span>
+      <div ref="chatWindow" class="flex-1 overflow-y-auto">
+        <template v-if="!chatStore.messages.length">
+          <div class="min-h-full flex items-center">
+            <div class="w-full">
+              <ChatEmpty @pick="pickSuggestion" />
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="max-w-[820px] mx-auto px-3 md:px-7 py-6 pb-32">
+            <div v-for="(msg, i) in chatStore.messages" :key="msg.id">
+              <div v-if="msg.role === 'user'" class="flex justify-end mb-7">
+                <div class="max-w-[85%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-br-sm text-inverted text-sm leading-relaxed break-words bg-primary">
+                  {{ msg.text }}
+                </div>
               </div>
-            </template>
 
-            <div v-if="recentChats.length">
-              <div
-                v-for="chat in recentChats"
-                :key="chat.id"
-                class="flex items-center gap-2 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                @click="router.push('/chat')"
-              >
-                <UIcon name="i-lucide-message-square" class="text-primary" />
-                <span class="flex-1 truncate text-sm">{{ chat.text }}</span>
+              <div v-else class="flex gap-3.5 mb-3.5">
+                <div class="flex items-center justify-center size-8 rounded-lg bg-primary/10 shrink-0">
+                  <UIcon name="i-lucide-bot" class="size-4.5 text-primary" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-2 text-xs text-muted">
+                    <span class="font-semibold text-default">Chat RAG</span>
+                    <span v-if="msg.sources?.length">• Dựa trên {{ msg.sources.length }} nguồn</span>
+                  </div>
+
+                  <div class="text-sm text-default leading-relaxed whitespace-pre-wrap">{{ msg.text }}</div>
+
+                  <div v-if="msg.sources?.length" class="mt-3 border border-default rounded-xl bg-elevated overflow-hidden">
+                    <UCollapsible>
+                      <template #trigger="{ open }">
+                        <UButton
+                          variant="ghost"
+                          color="neutral"
+                          block
+                          class="justify-between px-3.5 py-2.5 text-xs font-medium !text-default"
+                          :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                        >
+                          <div class="flex items-center gap-2">
+                            <UIcon name="i-lucide-book" class="size-3.5 text-primary" />
+                            Nguồn tài liệu
+                            <UBadge size="sm" variant="soft" color="neutral">{{ msg.sources.length }}</UBadge>
+                          </div>
+                        </UButton>
+                      </template>
+
+                      <div class="border-t border-default p-2.5 flex flex-col gap-2">
+                        <div
+                          v-for="(src, si) in msg.sources"
+                          :key="si"
+                          class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/50 transition"
+                        >
+                          <div class="size-7 rounded-md bg-muted grid place-items-center text-muted text-xs font-bold">
+                            {{ si + 1 }}
+                          </div>
+                          <span class="text-xs text-default truncate">{{ src }}</span>
+                        </div>
+                      </div>
+                    </UCollapsible>
+                  </div>
+
+                  <div class="flex items-center gap-1 mt-3">
+                    <UButton
+                      variant="ghost"
+                      color="neutral"
+                      size="xs"
+                      icon="i-lucide-copy"
+                      @click="navigator.clipboard.writeText(msg.text)"
+                    >
+                      Sao chép
+                    </UButton>
+                  </div>
+                </div>
               </div>
             </div>
-            <div v-else class="flex flex-col items-center justify-center py-8">
-              <UIcon name="i-lucide-check-circle" class="text-4xl text-success mb-2" />
-              <p class="text-muted">No data</p>
-            </div>
-          </UCard>
 
-          <UCard>
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-check-circle" class="text-success" />
-                <span class="font-semibold">System Status</span>
+            <div v-if="chatStore.loading" class="flex gap-3.5 mb-3.5">
+              <div class="flex items-center justify-center size-8 rounded-lg bg-primary/10 shrink-0">
+                <UIcon name="i-lucide-bot" class="size-4.5 text-primary" />
               </div>
-            </template>
-
-            <div class="flex items-center justify-between">
-              <span class="text-sm">API Server</span>
-              <UBadge :color="apiStatus ? 'success' : 'error'" variant="soft" size="sm">
-                {{ apiStatus ? 'Normal' : 'Error' }}
-              </UBadge>
+              <div class="flex-1 flex flex-col gap-2 py-1">
+                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 92%" />
+                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 78%" />
+                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 60%" />
+              </div>
             </div>
-          </UCard>
+
+            <UAlert
+              v-if="chatStore.error"
+              type="error"
+              color="error"
+              variant="soft"
+              :description="chatStore.error"
+              icon="i-lucide-circle-x"
+              class="mb-4"
+            />
+          </div>
+        </template>
+      </div>
+
+      <div
+        class="px-3 md:px-7 pb-5 pt-3"
+        :style="{
+          background: 'linear-gradient(180deg, transparent 0%, var(--color-bg) 30%)',
+          marginTop: '-40px',
+          position: 'relative'
+        }"
+      >
+        <div class="max-w-[820px] mx-auto">
+          <ChatComposer
+            v-model="chatInput"
+            :disabled="chatStore.loading"
+            :big="!chatStore.messages.length"
+            @send="handleSend"
+          />
         </div>
       </div>
-    </template>
-  </UDashboardPanel>
+    </div>
+  </div>
 </template>

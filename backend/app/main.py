@@ -1,3 +1,6 @@
+import secrets
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -5,6 +8,8 @@ from app.core.config import settings
 from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
 from app.channels.facebook import close_client
+from app.db.session import create_db_and_tables
+from app.services.seed import seed_admin_user
 
 app = FastAPI(
     title=settings.app_name,
@@ -26,6 +31,22 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+
+@app.on_event("startup")
+async def startup():
+    # Generate JWT secret if not set
+    if not settings.jwt_secret_key:
+        secret_path = Path(settings.upload_dir).resolve().parent / ".jwt_secret"
+        if secret_path.exists():
+            settings.jwt_secret_key = secret_path.read_text().strip()
+        else:
+            settings.jwt_secret_key = secrets.token_urlsafe(32)
+            secret_path.write_text(settings.jwt_secret_key)
+
+    # Create DB tables and seed admin user
+    await create_db_and_tables()
+    await seed_admin_user()
 
 
 @app.on_event("shutdown")

@@ -6,7 +6,6 @@ Features:
 - Ingest Documents metadata and text content
 - Upload plain documents for indexing
 - Query ingested documents with a chat endpoint
-- Save feedback for responses
 - Placeholder integration hooks for ZaloOA and Facebook Fanpage
 
 ## Structure

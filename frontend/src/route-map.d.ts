@@ -45,51 +45,58 @@ declare module 'vue-router/auto-routes' {
       { all: ParamValue<false> },
       | never
     >,
-    '/chat': RouteRecordInfo<
-      '/chat',
-      '/chat',
+    '/admin/': RouteRecordInfo<
+      '/admin/',
+      '/admin',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/documents': RouteRecordInfo<
-      '/documents',
-      '/documents',
+    '/admin/documents': RouteRecordInfo<
+      '/admin/documents',
+      '/admin/documents',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/integrations/': RouteRecordInfo<
-      '/integrations/',
-      '/integrations',
+    '/admin/integrations/': RouteRecordInfo<
+      '/admin/integrations/',
+      '/admin/integrations',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/integrations/connect': RouteRecordInfo<
-      '/integrations/connect',
-      '/integrations/connect',
+    '/admin/integrations/connect': RouteRecordInfo<
+      '/admin/integrations/connect',
+      '/admin/integrations/connect',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/integrations/edit': RouteRecordInfo<
-      '/integrations/edit',
-      '/integrations/edit',
+    '/admin/integrations/edit': RouteRecordInfo<
+      '/admin/integrations/edit',
+      '/admin/integrations/edit',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/settings': RouteRecordInfo<
-      '/settings',
-      '/settings',
+    '/admin/login': RouteRecordInfo<
+      '/admin/login',
+      '/admin/login',
       Record<never, never>,
       Record<never, never>,
-      | '/settings/'
+      | never
     >,
-    '/settings/': RouteRecordInfo<
-      '/settings/',
-      '/settings',
+    '/admin/settings': RouteRecordInfo<
+      '/admin/settings',
+      '/admin/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | '/admin/settings/'
+    >,
+    '/admin/settings/': RouteRecordInfo<
+      '/admin/settings/',
+      '/admin/settings',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -123,58 +130,66 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | 'all'
     }
-    'src/pages/chat.vue': {
+    'src/pages/admin/index.vue': {
       routes:
-        | '/chat'
+        | '/admin/'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/documents.vue': {
+    'src/pages/admin/documents.vue': {
       routes:
-        | '/documents'
+        | '/admin/documents'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/integrations/index.vue': {
+    'src/pages/admin/integrations/index.vue': {
       routes:
-        | '/integrations/'
+        | '/admin/integrations/'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/integrations/connect.vue': {
+    'src/pages/admin/integrations/connect.vue': {
       routes:
-        | '/integrations/connect'
+        | '/admin/integrations/connect'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/integrations/edit.vue': {
+    'src/pages/admin/integrations/edit.vue': {
       routes:
-        | '/integrations/edit'
+        | '/admin/integrations/edit'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/settings.vue': {
+    'src/pages/admin/login.vue': {
       routes:
-        | '/settings'
-        | '/settings/'
+        | '/admin/login'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/admin/settings.vue': {
+      routes:
+        | '/admin/settings'
+        | '/admin/settings/'
       views:
         | 'default'
       pathParamNames:
         | never
     }
-    'src/pages/settings/index.vue': {
+    'src/pages/admin/settings/index.vue': {
       routes:
-        | '/settings/'
+        | '/admin/settings/'
       views:
         | never
       pathParamNames:

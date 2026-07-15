@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class DocumentIngestResponse(BaseModel):
@@ -18,18 +18,6 @@ class ChatResponse(BaseModel):
     source_documents: list[str]
     model: str
     session_id: str
-
-
-class FeedbackRequest(BaseModel):
-    session_id: str | None = None
-    answer_id: str
-    rating: int = Field(ge=1, le=5)
-    comments: str | None = None
-
-
-class FeedbackResponse(BaseModel):
-    status: str
-    saved: bool
 
 
 class DocumentInfo(BaseModel):

@@ -4,6 +4,7 @@ import { useHead } from '@unhead/vue'
 import { useColorMode } from '@vueuse/core'
 
 const colorMode = useColorMode()
+
 const themeColor = computed(() => colorMode.value === 'dark' ? '#18181b' : '#ffffff')
 
 useHead({
@@ -16,6 +17,5 @@ useHead({
 <template>
   <UApp>
     <RouterView />
-    <UNotifications />
   </UApp>
 </template>

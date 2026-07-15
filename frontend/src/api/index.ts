@@ -5,13 +5,6 @@ const api = axios.create({
   timeout: 120000,
 })
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    return Promise.reject(error)
-  },
-)
-
 export function getErrorMessage(err: any): string {
   const detail = err.response?.data?.detail
   if (typeof detail === 'string') return detail

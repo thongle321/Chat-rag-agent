@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useDocumentStore } from '../stores/documents'
+import { useDocumentStore } from '../../stores/documents'
 
 const documentStore = useDocumentStore()
 
@@ -7,6 +7,8 @@ const selectedFiles = ref<File[]>([])
 const uploading = ref(false)
 const uploadResults = ref<{ name: string; status: string; message: string }[]>([])
 const deleting = ref(false)
+const deleteTarget = ref('')
+const showDeleteModal = ref(false)
 
 onMounted(() => {
   documentStore.fetchDocuments()
@@ -37,8 +39,14 @@ async function handleUpload() {
   }
 }
 
-async function deleteDocument(title: string) {
-  if (!confirm(`Delete "${title}" and all its chunks?`)) return
+function confirmDelete(title: string) {
+  deleteTarget.value = title
+  showDeleteModal.value = true
+}
+
+async function deleteDocument() {
+  const title = deleteTarget.value
+  showDeleteModal.value = false
   deleting.value = true
   try {
     await documentStore.deleteDocument(title)
@@ -150,7 +158,7 @@ async function deleteDocument(title: string) {
                 color="error"
                 size="sm"
                 :loading="deleting"
-                @click="deleteDocument(doc.title)"
+                @click="confirmDelete(doc.title)"
               />
             </div>
           </div>
@@ -162,4 +170,11 @@ async function deleteDocument(title: string) {
       </div>
     </template>
   </UDashboardPanel>
+
+  <UModal v-model:open="showDeleteModal" title="Delete Document" description="This action cannot be undone." :ui="{ footer: 'justify-end' }">
+    <template #footer="{ close }">
+      <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
+      <UButton label="Delete" color="error" :loading="deleting" @click="deleteDocument" />
+    </template>
+  </UModal>
 </template>

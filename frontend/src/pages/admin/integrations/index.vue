@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import api from '../../api'
+import api from '../../../api'
 
 const router = useRouter()
 const channels = ref<any[]>([])
@@ -42,7 +42,7 @@ onMounted(() => {
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UButton v-if="channels.length" icon="i-lucide-plus" @click="router.push('/integrations/connect')">
+          <UButton v-if="channels.length" icon="i-lucide-plus" @click="router.push('/admin/integrations/connect')">
             Connect Channel
           </UButton>
         </template>
@@ -60,7 +60,7 @@ onMounted(() => {
         <UIcon name="i-lucide-plug" class="text-muted size-16 mb-4" />
         <h3 class="text-lg font-semibold mb-2">No channels connected</h3>
         <p class="text-muted text-sm mb-6">Connect Facebook Messenger to start auto-replying to messages.</p>
-        <UButton icon="i-lucide-plus" @click="router.push('/integrations/connect')">
+        <UButton icon="i-lucide-plus" @click="router.push('/admin/integrations/connect')">
           Connect Channel
         </UButton>
       </div>
@@ -73,8 +73,8 @@ onMounted(() => {
         <div v-if="activeTab === 'facebook' && channels.length" class="mt-6">
           <UCard>
             <div class="flex items-center gap-3 mb-6">
-              <div class="flex items-center justify-center size-10 rounded-lg bg-blue-500/10">
-                <UIcon name="i-lucide-facebook" class="text-blue-500 size-5" />
+              <div class="flex items-center justify-center size-10 rounded-lg bg-primary/10">
+                <UIcon name="i-lucide-facebook" class="text-primary size-5" />
               </div>
               <div>
                 <h3 class="font-semibold">{{ channels[0].page_name }}</h3>
@@ -84,7 +84,7 @@ onMounted(() => {
             </div>
 
             <div class="flex gap-2">
-              <UButton variant="outline" icon="i-lucide-pencil" @click="router.push('/integrations/edit')">
+              <UButton variant="outline" icon="i-lucide-pencil" @click="router.push('/admin/integrations/edit')">
                 Edit
               </UButton>
               <UButton color="error" variant="outline" icon="i-lucide-trash-2" :loading="deleting" @click="disconnect">
