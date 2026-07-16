@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { nextTick, ref, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 
 const chatStore = useChatStore()
@@ -9,6 +9,7 @@ const chatWindow = ref<HTMLElement>()
 const sidebarOpen = ref(false)
 
 onMounted(() => {
+  chatStore.fetchSessions()
   if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
     sidebarOpen.value = true
   }

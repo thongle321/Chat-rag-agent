@@ -28,3 +28,26 @@ class DocumentInfo(BaseModel):
 
 class DocumentListResponse(BaseModel):
     documents: list[DocumentInfo]
+
+
+class SessionInfo(BaseModel):
+    id: str
+    title: str
+    message_count: int
+    pinned: bool
+    created_at: str
+    updated_at: str
+
+
+class SessionMessage(BaseModel):
+    role: str
+    content: str
+
+
+class SessionDetail(BaseModel):
+    session: SessionInfo
+    messages: list[SessionMessage]
+
+
+class TitleUpdate(BaseModel):
+    title: str

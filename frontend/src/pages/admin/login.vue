@@ -4,6 +4,12 @@ import { useAuthStore } from '../../stores/auth'
 const authStore = useAuthStore()
 const router = useRouter()
 
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    router.replace('/admin/')
+  }
+})
+
 const email = ref('admin@example.com')
 const password = ref('')
 const error = ref('')

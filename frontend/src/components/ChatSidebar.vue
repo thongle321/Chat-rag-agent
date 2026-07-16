@@ -27,6 +27,17 @@ function handleNew() {
   chatStore.newConversation()
 }
 
+function handleDelete(id: string) {
+  chatStore.deleteConversation(id)
+  menuId.value = null
+}
+
+function handleRename(id: string) {
+  const title = prompt('Đặt tên mới:')
+  if (title) chatStore.renameConversation(id, title)
+  menuId.value = null
+}
+
 const colorMode = useColorMode()
 
 function toggleColorMode() {
@@ -121,9 +132,20 @@ function toggleColorMode() {
                 color="neutral"
                 size="xs"
                 block
+                :icon="'i-lucide-pencil'"
+                class="justify-start !rounded-none"
+                @click="handleRename(c.id)"
+              >
+                Đổi tên
+              </UButton>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                block
                 :icon="'i-lucide-trash-2'"
                 class="justify-start !rounded-none !text-error"
-                @click="chatStore.deleteConversation(c.id); menuId = null"
+                @click="handleDelete(c.id)"
               >
                 Xoá
               </UButton>

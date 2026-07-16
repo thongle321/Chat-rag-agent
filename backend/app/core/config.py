@@ -33,8 +33,7 @@ class Settings(BaseSettings):
         "RULES:\n"
         "1) Use ONLY the provided context to answer.\n"
         "2) If the answer is not clearly contained in the context, say: \"I don't know based on the provided documents.\"\n"
-        "3) Do NOT use outside knowledge, guessing, or web information.\n"
-        "4) Cite sources as (source:filename.pdf, page X) using the metadata provided in each chunk.\n\n"
+        "3) Do NOT use outside knowledge, guessing, or web information.\n\n"
     )
 
     jwt_secret_key: str = ""

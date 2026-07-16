@@ -9,6 +9,7 @@ from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, Securi
 from app.api.routes import router
 from app.channels.facebook import close_client
 from app.db.session import create_db_and_tables
+from app.services.rag import close_checkpointer, get_checkpointer
 from app.services.seed import seed_admin_user
 
 app = FastAPI(
@@ -48,10 +49,14 @@ async def startup():
     await create_db_and_tables()
     await seed_admin_user()
 
+    # Initialize LangGraph checkpointer for chat sessions
+    await get_checkpointer()
+
 
 @app.on_event("shutdown")
 async def shutdown():
     await close_client()
+    await close_checkpointer()
 
 
 @app.get("/")

@@ -7,17 +7,13 @@ const open = ref(false)
 const links = [[{
   label: 'Dashboard',
   icon: 'i-lucide-layout-dashboard',
-  to: '/admin/',
+  to: '/admin',
+  exact: true,
   onSelect: () => { open.value = false }
 }, {
   label: 'Documents',
   icon: 'i-lucide-file-text',
   to: '/admin/documents',
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Chat',
-  icon: 'i-lucide-message-square',
-  to: '/',
   onSelect: () => { open.value = false }
 }, {
   label: 'Integrations',

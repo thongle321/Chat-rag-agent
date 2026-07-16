@@ -3,6 +3,7 @@ import './assets/css/main.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from './stores/auth'
 import { routes as autoRoutes, handleHotUpdate } from 'vue-router/auto-routes'
 import { createHead } from '@unhead/vue/client'
 import ui from '@nuxt/ui/vue-plugin'
@@ -42,6 +43,14 @@ app.use(createPinia())
 app.use(head)
 app.use(router)
 app.use(ui)
+
+router.beforeEach((to) => {
+  const auth = useAuthStore()
+  if (to.path.startsWith('/admin') && to.path !== '/admin/login') {
+    if (!auth.isAuthenticated) return '/admin/login'
+  }
+  if (to.path === '/admin/login' && auth.isAuthenticated) return '/admin/'
+})
 
 app.mount('#app')
 

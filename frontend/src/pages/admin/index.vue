@@ -1,24 +1,44 @@
 <script setup lang="ts">
-import { useDocumentStore } from '../../stores/documents'
-import { useChatStore } from '../../stores/chat'
+import api from '../../api'
 
 const router = useRouter()
-const documentStore = useDocumentStore()
-const chatStore = useChatStore()
+
+const dashStats = ref({ total_documents: 0, total_chunks: 0, total_sessions: 0, total_queries: 0 })
 
 const stats = computed(() => [
-  { label: 'Documents', value: documentStore.documents.length, icon: 'i-lucide-file-text', color: 'primary' as const },
-  { label: 'Queries', value: chatStore.messages.filter(m => m.role === 'user').length, icon: 'i-lucide-message-square', color: 'success' as const },
+  { label: 'Documents', value: dashStats.value.total_documents, icon: 'i-lucide-file-text', color: 'primary' as const },
+  { label: 'Chunks', value: dashStats.value.total_chunks, icon: 'i-lucide-layers', color: 'info' as const },
+  { label: 'Sessions', value: dashStats.value.total_sessions, icon: 'i-lucide-message-square', color: 'success' as const },
+  { label: 'Queries', value: dashStats.value.total_queries, icon: 'i-lucide-search', color: 'warning' as const },
 ])
 
-const recentChats = computed(() =>
-  chatStore.messages
-    .filter(m => m.role === 'user')
-    .slice(-5)
-    .reverse()
-)
+const recentSessions = ref<any[]>([])
 
-const apiStatus = ref(true)
+const health = ref({ api: false, vector_store: false })
+
+onMounted(async () => {
+  try {
+    const { data } = await api.get('/stats')
+    dashStats.value = data
+  } catch {
+    // keep defaults
+  }
+  try {
+    const { data } = await api.get('/chat/sessions')
+    recentSessions.value = data.slice(0, 5)
+  } catch {
+    // keep empty
+  }
+  try {
+    const { data } = await api.get('/health/detailed')
+    health.value = {
+      api: data.status === 'ok',
+      vector_store: data.components?.vector_store === 'ok',
+    }
+  } catch {
+    health.value = { api: false, vector_store: false }
+  }
+})
 </script>
 
 <template>
@@ -54,15 +74,16 @@ const apiStatus = ref(true)
               </div>
             </template>
 
-            <div v-if="recentChats.length">
+            <div v-if="recentSessions.length">
               <div
-                v-for="chat in recentChats"
-                :key="chat.id"
+                v-for="session in recentSessions"
+                :key="session.id"
                 class="flex items-center gap-2 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
                 @click="router.push('/')"
               >
                 <UIcon name="i-lucide-message-square" class="text-primary" />
-                <span class="flex-1 truncate text-sm">{{ chat.text }}</span>
+                <span class="flex-1 truncate text-sm">{{ session.title }}</span>
+                <span class="text-xs text-muted shrink-0">{{ session.message_count }} msgs</span>
               </div>
             </div>
             <div v-else class="flex flex-col items-center justify-center py-8">
@@ -79,11 +100,19 @@ const apiStatus = ref(true)
               </div>
             </template>
 
-            <div class="flex items-center justify-between">
-              <span class="text-sm">API Server</span>
-              <UBadge :color="apiStatus ? 'success' : 'error'" variant="soft" size="sm">
-                {{ apiStatus ? 'Normal' : 'Error' }}
-              </UBadge>
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center justify-between">
+                <span class="text-sm">API Server</span>
+                <UBadge :color="health.api ? 'success' : 'error'" variant="soft" size="sm">
+                  {{ health.api ? 'Normal' : 'Error' }}
+                </UBadge>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Vector Store</span>
+                <UBadge :color="health.vector_store ? 'success' : 'error'" variant="soft" size="sm">
+                  {{ health.vector_store ? 'Normal' : 'Error' }}
+                </UBadge>
+              </div>
             </div>
           </UCard>
         </div>

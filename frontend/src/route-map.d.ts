@@ -92,13 +92,6 @@ declare module 'vue-router/auto-routes' {
       '/admin/settings',
       Record<never, never>,
       Record<never, never>,
-      | '/admin/settings/'
-    >,
-    '/admin/settings/': RouteRecordInfo<
-      '/admin/settings/',
-      '/admin/settings',
-      Record<never, never>,
-      Record<never, never>,
       | never
     >,
   }
@@ -181,15 +174,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/admin/settings.vue': {
       routes:
         | '/admin/settings'
-        | '/admin/settings/'
-      views:
-        | 'default'
-      pathParamNames:
-        | never
-    }
-    'src/pages/admin/settings/index.vue': {
-      routes:
-        | '/admin/settings/'
       views:
         | never
       pathParamNames:

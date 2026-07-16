@@ -51,11 +51,44 @@ export const useChatStore = defineStore('chat', () => {
   )
 
   const messages = computed(() => activeConversation.value?.messages ?? [])
-  const sessionId = computed(() => activeConversation.value?.sessionId ?? '')
+
+  async function fetchSessions() {
+    try {
+      const { data } = await api.get('/chat/sessions')
+      conversations.value = data.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        messages: [],
+        pinned: s.pinned,
+        createdAt: new Date(s.created_at).getTime(),
+        sessionId: s.id,
+      }))
+      if (!activeId.value && conversations.value.length) {
+        activeId.value = conversations.value[0].id
+      }
+    } catch {
+      // offline fallback — keep current state
+    }
+  }
+
+  async function fetchSessionMessages(id: string) {
+    try {
+      const { data } = await api.get(`/chat/sessions/${id}`)
+      const conv = conversations.value.find(c => c.id === id)
+      if (!conv) return
+      conv.messages = (data.messages || []).map((m: any, i: number) => ({
+        id: String(i),
+        role: m.role === 'user' ? 'user' : 'assistant',
+        text: m.content,
+      }))
+    } catch {
+      // ignore
+    }
+  }
 
   function newConversation() {
     const id = String(Date.now())
-    conversations.value.push({
+    conversations.value.unshift({
       id,
       title: 'Cuộc hội thoại mới',
       messages: [],
@@ -66,20 +99,39 @@ export const useChatStore = defineStore('chat', () => {
     activeId.value = id
   }
 
-  function setActive(id: string) {
+  async function setActive(id: string) {
     activeId.value = id
+    const conv = conversations.value.find(c => c.id === id)
+    if (conv && !conv.messages.length) {
+      await fetchSessionMessages(id)
+    }
   }
 
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string) {
+    try {
+      await api.delete(`/chat/sessions/${id}`)
+    } catch { /* ignore */ }
     conversations.value = conversations.value.filter(c => c.id !== id)
     if (activeId.value === id) {
       activeId.value = conversations.value[0]?.id ?? ''
     }
   }
 
-  function togglePin(id: string) {
+  async function togglePin(id: string) {
     const c = conversations.value.find(c => c.id === id)
-    if (c) c.pinned = !c.pinned
+    if (!c) return
+    try {
+      await api.put(`/chat/sessions/${id}/pin`)
+      c.pinned = !c.pinned
+    } catch { /* ignore */ }
+  }
+
+  async function renameConversation(id: string, title: string) {
+    try {
+      await api.put(`/chat/sessions/${id}/title`, { title })
+      const c = conversations.value.find(c => c.id === id)
+      if (c) c.title = title
+    } catch { /* ignore */ }
   }
 
   async function sendMessage(question: string) {
@@ -109,7 +161,14 @@ export const useChatStore = defineStore('chat', () => {
         session_id: conv.sessionId || undefined,
       })
 
-      conv.sessionId = data.session_id
+      // If first message, session_id is now set — update the id to match server
+      if (!conv.sessionId) {
+        conv.sessionId = data.session_id
+        // Replace client-generated id with server id so sidebar matches
+        const oldId = conv.id
+        conv.id = data.session_id
+        if (activeId.value === oldId) activeId.value = data.session_id
+      }
 
       conv.messages.push({
         id: data.answer_id,
@@ -128,18 +187,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function clearMessages() {
-    const conv = conversations.value.find(c => c.id === activeId.value)
-    if (conv) {
-      conv.messages = []
-      conv.sessionId = ''
-    }
-  }
-
   return {
     conversations, activeId, loading, error,
-    activeConversation, sessionId, messages,
+    activeConversation, messages,
+    fetchSessions, fetchSessionMessages,
     newConversation, setActive, deleteConversation, togglePin,
-    sendMessage, clearMessages,
+    renameConversation,
+    sendMessage,
   }
 })
