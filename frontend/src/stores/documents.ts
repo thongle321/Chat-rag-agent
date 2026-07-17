@@ -17,10 +17,10 @@ export interface UploadResult {
 export const useDocumentStore = defineStore('documents', () => {
   const documents = ref<DocumentInfo[]>([])
   const loading = ref(false)
-  const indexing = ref(false)
   const error = ref('')
 
-  async function fetchDocuments() {
+  async function fetchDocuments(force = false) {
+    if (documents.value.length > 0 && !force) return
     loading.value = true
     error.value = ''
     try {
@@ -54,9 +54,7 @@ export const useDocumentStore = defineStore('documents', () => {
         .filter(Boolean)
 
       if (queued.length) {
-        indexing.value = true
-        await pollForIndexing(queued)
-        indexing.value = false
+        setTimeout(() => fetchDocuments(true), 5000)
       }
 
       return results
@@ -65,32 +63,17 @@ export const useDocumentStore = defineStore('documents', () => {
       throw err
     } finally {
       loading.value = false
-      indexing.value = false
-    }
-  }
-
-  async function pollForIndexing(filenames: string[]) {
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 2000))
-      try {
-        const { data } = await api.get('/documents')
-        documents.value = data.documents
-        const titles = data.documents.map((d: DocumentInfo) => d.title)
-        if (filenames.every(f => titles.includes(f))) return
-      } catch {
-        // non-fatal, keep polling
-      }
     }
   }
 
   async function deleteDocument(title: string) {
     try {
       await api.delete(`/documents/${encodeURIComponent(title)}`)
-      await fetchDocuments()
+      await fetchDocuments(true)
     } catch (err: any) {
       error.value = getErrorMessage(err)
     }
   }
 
-  return { documents, loading, indexing, error, fetchDocuments, uploadDocuments, deleteDocument }
+  return { documents, loading, error, fetchDocuments, uploadDocuments, deleteDocument }
 })

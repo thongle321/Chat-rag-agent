@@ -10,6 +10,7 @@ export default defineConfig({
     }),
     vue(),
     ui({
+      prose: true,
       autoImport: {
         imports: ['vue', 'vue-router', '@vueuse/core'],
       },

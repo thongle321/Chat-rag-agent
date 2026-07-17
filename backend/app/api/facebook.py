@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
-from app.channels.facebook import  mark_seen, send_message, typing_on
+from app.channels.facebook import mark_seen, send_message, typing_on
 from app.services.facebook_config import (
     delete_facebook_config,
     get_facebook_config,
@@ -60,6 +60,7 @@ async def get_config(user: User = current_active_user):
 async def save_config(req: FacebookConfigRequest, user: User = current_active_user):
     """Save Facebook channel config."""
     config = save_facebook_config(req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name)
+
     return FacebookConfigResponse(
         page_id=config["page_id"],
         page_name=config.get("page_name", "Facebook Page"),
@@ -83,9 +84,9 @@ async def delete_config(user: User = current_active_user):
 
 @router.get("/webhook")
 async def fb_verify(
-    hub_mode: str = Query(default=""),
-    hub_verify_token: str = Query(default=""),
-    hub_challenge: str = Query(default=""),
+    hub_mode: str = Query(default="", alias="hub.mode"),
+    hub_verify_token: str = Query(default="", alias="hub.verify_token"),
+    hub_challenge: str = Query(default="", alias="hub.challenge"),
 ):
     """Facebook webhook verification endpoint."""
     config = get_facebook_config()

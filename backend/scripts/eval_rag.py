@@ -40,8 +40,8 @@ async def evaluate_sessions(limit: int | None = None) -> list[dict]:
     """Score all (or last N) chat sessions. Returns list of scored results."""
     judge = OllamaJudge()
     retriever = vector_store.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 10, "fetch_k": 20},
+        search_type="similarity",
+        search_kwargs={"k": 5},
     )
     results = []
 

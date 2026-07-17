@@ -116,7 +116,7 @@ def _format_context(docs: list) -> str:
         title = d.metadata.get("title", "unknown")
         page = d.metadata.get("page")
         page_str = f", page {page + 1}" if page is not None else ""
-        parts.append(f"[Source: {title}{page_str}]\n{d.page_content}")
+        parts.append(d.page_content)
     return "\n\n".join(parts)
 
 
@@ -153,8 +153,8 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         agent = _get_agent()
 
         retriever = vector_store.as_retriever(
-            search_type="mmr",
-            search_kwargs={"k": 10, "fetch_k": 20},
+            search_type="similarity",
+            search_kwargs={"k": 5},
         )
         docs = retriever.invoke(question)
         context = _format_context(docs)

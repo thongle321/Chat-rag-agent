@@ -19,6 +19,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     UAlert: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Alert.vue')['default']
     UApp: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/App.vue')['default']
+    UAvatar: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Avatar.vue')['default']
     UBadge: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Badge.vue')['default']
     UButton: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Button.vue')['default']
     UCard: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Card.vue')['default']
@@ -35,9 +36,9 @@ declare module 'vue' {
     UInput: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Input.vue')['default']
     UModal: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Modal.vue')['default']
     UNavigationMenu: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/NavigationMenu.vue')['default']
-    UProgress: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Progress.vue')['default']
     USelect: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Select.vue')['default']
     UserMenu: typeof import('./src/components/UserMenu.vue')['default']
+    USkeleton: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Skeleton.vue')['default']
     UTabs: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Tabs.vue')['default']
     UTextarea: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Textarea.vue')['default']
   }

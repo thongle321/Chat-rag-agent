@@ -98,12 +98,6 @@ async function deleteDocument() {
             </UButton>
           </div>
 
-          <!-- Indexing indicator -->
-          <div v-if="documentStore.indexing" class="mt-4 flex items-center gap-2 text-sm text-muted">
-            <UIcon name="i-lucide-loader-2" class="animate-spin text-primary" />
-            <span>Indexing in background — documents will appear below when ready</span>
-          </div>
-
           <!-- Upload Results -->
           <div v-if="uploadResults.length" class="mt-4 space-y-2">
             <div

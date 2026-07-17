@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@comark/vue": "^0.5.1",
     "@iconify-json/lucide": "^1.2.117",
     "@nuxt/ui": "^4.9.0",
     "@unhead/vue": "^2.1.15",

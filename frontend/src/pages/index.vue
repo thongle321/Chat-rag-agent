@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted } from 'vue'
+import { Comark } from '@comark/vue'
 import { useChatStore } from '../stores/chat'
 
 const chatStore = useChatStore()
@@ -93,18 +94,18 @@ function pickSuggestion(q: string) {
               </div>
 
               <div v-else class="flex gap-3.5 mb-3.5">
-                <div class="flex items-center justify-center size-8 rounded-lg bg-primary/10 shrink-0">
-                  <UIcon name="i-lucide-bot" class="size-4.5 text-primary" />
-                </div>
+                <UAvatar icon="i-lucide-bot" size="md" class="bg-primary/10 text-primary shrink-0" />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-2 text-xs text-muted">
                     <span class="font-semibold text-default">Chat RAG</span>
-                    <span v-if="msg.sources?.length">• Dựa trên {{ msg.sources.length }} nguồn</span>
+                    <span v-if="false">• Dựa trên {{ msg.sources.length }} nguồn</span>
                   </div>
 
-                  <div class="text-sm text-default leading-relaxed whitespace-pre-wrap">{{ msg.text }}</div>
+                  <Suspense>
+                    <Comark :markdown="msg.text" class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+                  </Suspense>
 
-                  <div v-if="msg.sources?.length" class="mt-3 border border-default rounded-xl bg-elevated overflow-hidden">
+                  <div v-if="false" class="mt-3 border border-default rounded-xl bg-elevated overflow-hidden">
                     <UCollapsible>
                       <template #trigger="{ open }">
                         <UButton
@@ -153,13 +154,11 @@ function pickSuggestion(q: string) {
             </div>
 
             <div v-if="chatStore.loading" class="flex gap-3.5 mb-3.5">
-              <div class="flex items-center justify-center size-8 rounded-lg bg-primary/10 shrink-0">
-                <UIcon name="i-lucide-bot" class="size-4.5 text-primary" />
-              </div>
+              <UAvatar icon="i-lucide-bot" size="md" class="bg-primary/10 text-primary shrink-0" />
               <div class="flex-1 flex flex-col gap-2 py-1">
-                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 92%" />
-                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 78%" />
-                <div class="h-2.5 rounded bg-muted animate-pulse" style="width: 60%" />
+                <USkeleton class="h-2.5 rounded" style="width: 92%" />
+                <USkeleton class="h-2.5 rounded" style="width: 78%" />
+                <USkeleton class="h-2.5 rounded" style="width: 60%" />
               </div>
             </div>
 

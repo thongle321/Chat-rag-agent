@@ -59,23 +59,9 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/admin/integrations/': RouteRecordInfo<
-      '/admin/integrations/',
+    '/admin/integrations': RouteRecordInfo<
       '/admin/integrations',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/admin/integrations/connect': RouteRecordInfo<
-      '/admin/integrations/connect',
-      '/admin/integrations/connect',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/admin/integrations/edit': RouteRecordInfo<
-      '/admin/integrations/edit',
-      '/admin/integrations/edit',
+      '/admin/integrations',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -139,25 +125,9 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/admin/integrations/index.vue': {
+    'src/pages/admin/integrations.vue': {
       routes:
-        | '/admin/integrations/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/admin/integrations/connect.vue': {
-      routes:
-        | '/admin/integrations/connect'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/admin/integrations/edit.vue': {
-      routes:
-        | '/admin/integrations/edit'
+        | '/admin/integrations'
       views:
         | never
       pathParamNames:

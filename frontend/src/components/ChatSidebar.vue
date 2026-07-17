@@ -9,8 +9,6 @@ defineProps<{
 
 const chatStore = useChatStore()
 const search = ref('')
-const menuId = ref<string | null>(null)
-
 const filtered = computed(() => {
   const s = search.value.trim().toLowerCase()
   if (!s) return chatStore.conversations
@@ -19,23 +17,42 @@ const filtered = computed(() => {
 
 const groups = computed(() => groupByDate(filtered.value))
 
-function toggleMenu(id: string) {
-  menuId.value = menuId.value === id ? null : id
-}
-
 function handleNew() {
   chatStore.newConversation()
 }
 
 function handleDelete(id: string) {
   chatStore.deleteConversation(id)
-  menuId.value = null
 }
 
+const renameModalOpen = ref(false)
+const renameId = ref<string | null>(null)
+const renameTitle = ref('')
+
 function handleRename(id: string) {
-  const title = prompt('Đặt tên mới:')
-  if (title) chatStore.renameConversation(id, title)
-  menuId.value = null
+  const conv = chatStore.conversations.find(c => c.id === id)
+  renameId.value = id
+  renameTitle.value = conv?.title ?? ''
+  renameModalOpen.value = true
+}
+
+function confirmRename() {
+  if (renameId.value && renameTitle.value.trim()) {
+    chatStore.renameConversation(renameId.value, renameTitle.value.trim())
+  }
+  renameModalOpen.value = false
+}
+
+function getItems(c: any) {
+  return [
+    [
+      { label: c.pinned ? 'Bỏ ghim' : 'Ghim', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },
+      { label: 'Đổi tên', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) }
+    ],
+    [
+      { label: 'Xoá', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => handleDelete(c.id) }
+    ]
+  ]
 }
 
 const colorMode = useColorMode()
@@ -71,14 +88,7 @@ function toggleColorMode() {
     </div>
 
     <div class="px-3.5 pb-3">
-      <div class="flex items-center gap-2 px-2.5 py-2 bg-muted rounded-lg">
-        <UIcon name="i-lucide-search" class="size-3.5 text-muted shrink-0" />
-        <input
-          v-model="search"
-          placeholder="Tìm trong lịch sử..."
-          class="flex-1 bg-transparent outline-none text-xs text-default placeholder:text-muted"
-        />
-      </div>
+      <UInput v-model="search" icon="i-lucide-search" placeholder="Tìm trong lịch sử..." size="xs" />
     </div>
 
     <div class="flex-1 overflow-y-auto px-2 pb-4">
@@ -101,55 +111,17 @@ function toggleColorMode() {
           >
             <span class="text-xs truncate flex-1">{{ c.title }}</span>
 
-            <UButton
-              variant="ghost"
-              color="neutral"
-              size="2xs"
-              :square="true"
-              :icon="'i-lucide-ellipsis'"
-              class="!w-6 !h-6 opacity-0 group-hover:opacity-100 transition"
-              @click.stop="toggleMenu(c.id)"
-            />
-
-            <div
-              v-if="menuId === c.id"
-              class="absolute right-1 top-8 z-10 bg-elevated border border-default rounded-lg shadow-md py-1 min-w-[140px]"
-              @mouseleave="menuId = null"
-            >
+            <UDropdownMenu :items="getItems(c)">
               <UButton
                 variant="ghost"
                 color="neutral"
-                size="xs"
-                block
-                :icon="c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin'"
-                class="justify-start !rounded-none"
-                @click="chatStore.togglePin(c.id); menuId = null"
-              >
-                {{ c.pinned ? 'Bỏ ghim' : 'Ghim' }}
-              </UButton>
-              <UButton
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                block
-                :icon="'i-lucide-pencil'"
-                class="justify-start !rounded-none"
-                @click="handleRename(c.id)"
-              >
-                Đổi tên
-              </UButton>
-              <UButton
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                block
-                :icon="'i-lucide-trash-2'"
-                class="justify-start !rounded-none !text-error"
-                @click="handleDelete(c.id)"
-              >
-                Xoá
-              </UButton>
-            </div>
+                size="2xs"
+                :square="true"
+                :icon="'i-lucide-ellipsis'"
+                class="!w-6 !h-6 opacity-0 group-hover:opacity-100 transition"
+                @click.stop
+              />
+            </UDropdownMenu>
           </div>
         </div>
       </template>
@@ -178,4 +150,22 @@ function toggleColorMode() {
       />
     </div>
   </aside>
+
+  <UModal v-model:open="renameModalOpen" title="Đổi tên" description="Nhập tên mới cho cuộc hội thoại." @close="renameModalOpen = false">
+    <template #body>
+      <form id="rename-form" @submit.prevent="confirmRename">
+        <UInput
+          v-model="renameTitle"
+          placeholder="Nhập tên mới..."
+          size="sm"
+          class="w-full"
+        />
+      </form>
+    </template>
+
+    <template #footer="{ close }">
+      <UButton label="Huỷ" color="neutral" variant="outline" @click="close" />
+      <UButton type="submit" form="rename-form" label="Đổi tên" :disabled="!renameTitle.trim()" />
+    </template>
+  </UModal>
 </template>

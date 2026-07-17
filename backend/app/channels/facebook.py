@@ -40,13 +40,14 @@ async def get_page_name(page_id: str, page_token: str) -> str:
 async def send_message(page_id: str, page_token: str, recipient_id: str, text: str) -> bool:
     """Send a text message to a Facebook user via the Graph API."""
     url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
     payload = {
+        "messaging_type": "RESPONSE",
         "recipient": {"id": recipient_id},
         "message": {"text": text},
-        "access_token": page_token,
     }
 
-    resp = await _get_client().post(url, json=payload)
+    resp = await _get_client().post(url, params=params, json=payload)
     if resp.status_code != 200:
         logger.error("Facebook send failed: %s %s", resp.status_code, resp.text)
         return False
@@ -57,20 +58,23 @@ async def send_message(page_id: str, page_token: str, recipient_id: str, text: s
 async def mark_seen(page_id: str, page_token: str, recipient_id: str) -> None:
     """Mark the conversation as seen."""
     url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
     payload = {
         "recipient": {"id": recipient_id},
         "sender_action": "mark_seen",
-        "access_token": page_token,
     }
-    await _get_client().post(url, json=payload)
+    await _get_client().post(url, params=params, json=payload)
 
 
 async def typing_on(page_id: str, page_token: str, recipient_id: str) -> None:
     """Show typing indicator."""
     url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
     payload = {
         "recipient": {"id": recipient_id},
         "sender_action": "typing_on",
-        "access_token": page_token,
     }
-    await _get_client().post(url, json=payload)
+    await _get_client().post(url, params=params, json=payload)
+
+
+
