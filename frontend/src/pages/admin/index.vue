@@ -87,7 +87,7 @@ onMounted(async () => {
               </div>
             </div>
             <div v-else class="flex flex-col items-center justify-center py-8">
-              <UIcon name="i-lucide-check-circle" class="text-4xl text-success mb-2" />
+              <UIcon name="i-lucide-inbox" class="text-4xl text-muted mb-2" />
               <p class="text-muted">No data</p>
             </div>
           </UCard>

@@ -100,6 +100,10 @@ async function deleteDocument() {
 
           <!-- Upload Results -->
           <div v-if="uploadResults.length" class="mt-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Upload Results</span>
+              <UButton variant="ghost" color="neutral" size="xs" icon="i-lucide-x" @click="uploadResults = []" />
+            </div>
             <div
               v-for="result in uploadResults"
               :key="result.name"

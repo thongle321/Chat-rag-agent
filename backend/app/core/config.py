@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:31b-cloud"
 
     # Embeddings (local, no API key needed)
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model: str = "intfloat/multilingual-e5-small"
 
     # System prompt for the RAG agent
     context_prompt: str = (

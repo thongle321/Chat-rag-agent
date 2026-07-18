@@ -128,9 +128,7 @@ function toggleColorMode() {
     </div>
 
     <div class="px-3.5 py-3 border-t border-default/50 flex items-center gap-2.5">
-      <div class="size-7 rounded-full bg-muted grid place-items-center text-muted text-[10px] font-semibold">
-        NV
-      </div>
+      <UAvatar icon="i-lucide-user" size="xs" class="bg-muted text-muted" />
       <div class="flex-1 text-[11px] text-default font-medium">Người dùng</div>
       <UButton
         variant="ghost"

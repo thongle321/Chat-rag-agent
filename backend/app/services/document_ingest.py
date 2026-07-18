@@ -19,6 +19,7 @@ MANIFEST_PATH = Path(settings.vector_store_dir) / "_manifest.json"
 BATCH_SIZE = 500
 
 MARKDOWN_SEPARATORS = [
+    "(?<=[.?!;:])\\s+",  # sentence boundaries first
     "\n#{1,6} ",
     "```\n",
     "\n\\*\\*\\*+\n",

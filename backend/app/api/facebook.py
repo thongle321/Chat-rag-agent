@@ -25,8 +25,8 @@ router = APIRouter()
 
 class FacebookConfigRequest(BaseModel):
     page_id: str
-    page_name: str = "Facebook Page"
-    page_token: str | None = None
+    page_name: str
+    page_token: str
     verify_token: str
 
 

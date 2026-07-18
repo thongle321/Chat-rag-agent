@@ -3,8 +3,6 @@ import api, { getErrorMessage } from '../../api'
 
 const channels = ref<any[]>([])
 const loading = ref(true)
-const activeTab = ref('facebook')
-
 const connectModalOpen = ref(false)
 const connectPageName = ref('')
 const connectPageId = ref('')
@@ -15,6 +13,7 @@ const connectError = ref('')
 
 const editModalOpen = ref(false)
 const editLoading = ref(true)
+const editPageId = ref('')
 const editPageName = ref('')
 const editPageToken = ref('')
 const editVerifyToken = ref('')
@@ -77,7 +76,9 @@ async function loadEditConfig() {
   editLoading.value = true
   try {
     const { data } = await api.get('/facebook/config')
+    editPageId.value = data.page_id
     editPageName.value = data.page_name || 'Facebook Page'
+    editPageToken.value = ''
     editVerifyToken.value = data.verify_token
   } catch {
     editModalOpen.value = false
@@ -90,14 +91,12 @@ async function handleSave() {
   editSaving.value = true
   editError.value = ''
   try {
-    const payload: Record<string, string> = {
+    await api.post('/facebook/config', {
+      page_id: editPageId.value,
       page_name: editPageName.value || 'Facebook Page',
+      page_token: editPageToken.value,
       verify_token: editVerifyToken.value,
-    }
-    if (editPageToken.value) {
-      payload.page_token = editPageToken.value
-    }
-    await api.post('/facebook/config', payload)
+    })
     editModalOpen.value = false
     await loadChannels()
   } catch (err: any) {
@@ -153,9 +152,7 @@ onMounted(() => {
       </div>
 
       <div v-else>
-        <UTabs :items="[{ label: channels[0].page_name, icon: 'i-lucide-facebook', value: 'facebook' }]" v-model="activeTab" />
-
-        <div v-if="activeTab === 'facebook' && channels.length" class="mt-6">
+        <div class="mt-2">
           <UCard>
             <div class="flex items-center gap-3 mb-6">
               <div class="flex items-center justify-center size-10 rounded-lg bg-primary/10">
@@ -177,7 +174,6 @@ onMounted(() => {
               </UButton>
             </div>
           </UCard>
-        </div>
       </div>
     </template>
   </UDashboardPanel>
@@ -224,16 +220,19 @@ onMounted(() => {
           </div>
           <div>
             <h3 class="font-semibold">Facebook Messenger</h3>
-            <p class="text-sm text-muted">Page ID: {{ channels[0]?.page_id }}</p>
           </div>
         </div>
+
+        <UFormField label="Page ID" hint="Cannot be changed">
+          <UInput :model-value="editPageId" size="sm" class="w-full" disabled />
+        </UFormField>
 
         <UFormField label="Page Name" hint="Display name for this channel" required>
           <UInput v-model="editPageName" placeholder="e.g. My Business Page" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Page Access Token" hint="Leave blank to keep current">
-          <UInput v-model="editPageToken" placeholder="Paste new token to update" type="password" size="sm" class="w-full" />
+        <UFormField label="Page Access Token" hint="Long-lived token for production" required>
+          <UInput v-model="editPageToken" placeholder="Paste your Page Access Token" type="password" size="sm" class="w-full" />
         </UFormField>
 
         <UFormField label="Verify Token" hint="Must match the verification code in Facebook Developer Console" required>
@@ -246,7 +245,7 @@ onMounted(() => {
 
     <template #footer="{ close }">
       <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
-      <UButton v-if="!editLoading" type="submit" form="edit-form" label="Save" :loading="editSaving" />
+      <UButton v-if="!editLoading" type="submit" form="edit-form" label="Save" :loading="editSaving" :disabled="!editPageName || !editPageToken || !editVerifyToken" />
     </template>
   </UModal>
 
