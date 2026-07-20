@@ -1,4 +1,5 @@
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,10 +13,33 @@ from app.db.session import create_db_and_tables
 from app.services.rag import close_checkpointer, get_checkpointer
 from app.services.seed import seed_admin_user
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Generate JWT secret if not set
+    if not settings.jwt_secret_key:
+        secret_path = Path(settings.upload_dir).resolve().parent / ".jwt_secret"
+        if secret_path.exists():
+            settings.jwt_secret_key = secret_path.read_text().strip()
+        else:
+            settings.jwt_secret_key = secrets.token_urlsafe(32)
+            secret_path.write_text(settings.jwt_secret_key)
+
+    await create_db_and_tables()
+    await seed_admin_user()
+    await get_checkpointer()
+
+    yield
+
+    await close_client()
+    await close_checkpointer()
+
+
 app = FastAPI(
     title=settings.app_name,
     description="FastAPI backend for ingesting documents, answering user questions, collecting feedback, and connecting Facebook.",
     version=settings.version,
+    lifespan=lifespan,
 )
 
 # Add middleware (last added = first executed)
@@ -32,31 +56,6 @@ app.add_middleware(
 )
 
 app.include_router(router)
-
-
-@app.on_event("startup")
-async def startup():
-    # Generate JWT secret if not set
-    if not settings.jwt_secret_key:
-        secret_path = Path(settings.upload_dir).resolve().parent / ".jwt_secret"
-        if secret_path.exists():
-            settings.jwt_secret_key = secret_path.read_text().strip()
-        else:
-            settings.jwt_secret_key = secrets.token_urlsafe(32)
-            secret_path.write_text(settings.jwt_secret_key)
-
-    # Create DB tables and seed admin user
-    await create_db_and_tables()
-    await seed_admin_user()
-
-    # Initialize LangGraph checkpointer for chat sessions
-    await get_checkpointer()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await close_client()
-    await close_checkpointer()
 
 
 @app.get("/")

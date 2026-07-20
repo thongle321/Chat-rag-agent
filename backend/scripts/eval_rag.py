@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Batch RAG evaluator — scores historical chat sessions for 4 quality metrics.
+"""Batch RAG evaluator — scores quality using two modes:
+
+Mode 1 (default): Evaluate historical chat sessions
+  python -m scripts.eval_rag [--limit N] [--output FILE] [--format json|markdown]
+
+Mode 2 (--test-set): Evaluate against a generated test set
+  python -m scripts.eval_rag --test-set [--limit N] [--output FILE] [--format json|markdown]
 
 Metrics: Faithfulness, Answer Relevance, Context Precision, Context Recall.
-Run from backend/ directory:
-  python -m scripts.eval_rag [--limit N] [--output FILE] [--format json|markdown]
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import async_session_factory
 from app.models.session import ChatSession
 from app.services.eval import EvalResult, OllamaJudge, evaluate_answer
-from app.services.rag import get_messages, vector_store
+from app.services.rag import answer_question, get_messages, vector_store
 
 
 async def get_all_sessions(db: AsyncSession, limit: int | None = None) -> list[ChatSession]:
@@ -98,7 +102,71 @@ async def evaluate_sessions(limit: int | None = None) -> list[dict]:
     return results
 
 
-def print_summary(results: list[dict]):
+async def evaluate_test_set(limit: int | None = None) -> list[dict]:
+    """Evaluate against a generated test set. Runs full RAG pipeline for each query."""
+    test_set_path = _BACKEND / "data" / "test_set.json"
+    if not test_set_path.exists():
+        print(f"Test set not found: {test_set_path}")
+        print("Run 'python -m scripts.generate_test_set' first.")
+        sys.exit(1)
+
+    test_cases = json.loads(test_set_path.read_text(encoding="utf-8"))
+    if limit:
+        test_cases = test_cases[:limit]
+
+    judge = OllamaJudge()
+    results = []
+
+    print(f"Evaluating {len(test_cases)} test cases from {test_set_path.name}\n")
+
+    for i, tc in enumerate(test_cases, 1):
+        query = tc["query"]
+        ground_truth = tc.get("ground_truth", "")
+        expected = tc.get("expected_sources", [])
+
+        print(f"[{i}/{len(test_cases)}] {query[:60]}...")
+
+        # Run RAG pipeline
+        try:
+            response = await answer_question(query)
+            answer_text = response.answer
+            source_docs = response.source_documents
+        except Exception as e:
+            print(f"  RAG failed: {e}")
+            answer_text = ""
+            source_docs = []
+
+        # Retrieve context for scoring
+        retriever = vector_store.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": 5},
+        )
+        try:
+            docs = retriever.invoke(query)
+        except Exception:
+            docs = []
+
+        # Score
+        try:
+            eval_result = evaluate_answer(query, answer_text, docs, judge)
+        except Exception as e:
+            print(f"  Scoring failed: {e}")
+            eval_result = EvalResult(error=str(e))
+
+        results.append({
+            "query": query[:200],
+            "ground_truth": ground_truth[:200],
+            "answer_preview": answer_text[:200],
+            "expected_sources": expected,
+            "num_sources": len(docs),
+            "scores": eval_result.to_dict(),
+        })
+        print(f"  → overall={eval_result.overall:.2f}  faith={eval_result.faithfulness:.2f}  rel={eval_result.answer_relevance:.2f}  prec={eval_result.context_precision:.2f}  recall={eval_result.context_recall:.2f}")
+
+    return results
+
+
+def print_summary(results: list[dict], mode: str = "sessions"):
     if not results:
         print("\nNo results to summarize.")
         return
@@ -113,7 +181,8 @@ def print_summary(results: list[dict]):
     print("\n" + "=" * 60)
     print("EVALUATION SUMMARY")
     print("=" * 60)
-    print(f"Total sessions:   {len(results)}")
+    print(f"Mode:             {mode}")
+    print(f"Total evaluated:  {len(results)}")
     print(f"Scored:           {len(valid)}")
     print(f"Errors/skipped:   {len(errored)}")
     print()
@@ -130,11 +199,12 @@ def print_summary(results: list[dict]):
         print("Worst 5:")
         for r in worst:
             s = r["scores"]
-            print(f"  {s['overall']:.2f}  {r['title'][:40]}")
+            label = r.get("title") or r.get("query", "")[:40]
+            print(f"  {s['overall']:.2f}  {label[:40]}")
     print()
 
 
-def format_markdown(results: list[dict]) -> str:
+def format_markdown(results: list[dict], mode: str = "sessions") -> str:
     lines = ["# RAG Evaluation Report\n", f"Generated: {datetime.now().isoformat()}\n"]
 
     valid = [r for r in results if r["scores"]["error"] is None]
@@ -146,7 +216,8 @@ def format_markdown(results: list[dict]) -> str:
     lines.append("## Summary\n")
     lines.append(f"| Metric | Score |")
     lines.append(f"|--------|-------|")
-    lines.append(f"| Sessions evaluated | {len(valid)} |")
+    lines.append(f"| Mode | {mode} |")
+    lines.append(f"| Cases evaluated | {len(valid)} |")
     lines.append(f"| Avg faithfulness | {avg('faithfulness'):.3f} |")
     lines.append(f"| Avg answer relevance | {avg('answer_relevance'):.3f} |")
     lines.append(f"| Avg context precision | {avg('context_precision'):.3f} |")
@@ -154,14 +225,15 @@ def format_markdown(results: list[dict]) -> str:
     lines.append(f"| Avg overall | {avg('overall'):.3f} |")
     lines.append("")
 
-    lines.append("## Per-Session Results\n")
-    lines.append("| Session | Overall | Faithfulness | Relevance | Precision | Recall |")
-    lines.append("|---------|---------|--------------|-----------|-----------|--------|")
+    lines.append("## Per-Case Results\n")
+    lines.append("| Query | Overall | Faithfulness | Relevance | Precision | Recall |")
+    lines.append("|-------|---------|--------------|-----------|-----------|--------|")
     for r in sorted(results, key=lambda x: x["scores"]["overall"]):
         s = r["scores"]
+        label = r.get("title") or r.get("query", "")[:40]
         err = f" ⚠ {s['error']}" if s["error"] else ""
         lines.append(
-            f"| {r['title'][:40]} | {s['overall']:.2f}{err} | "
+            f"| {label[:40]} | {s['overall']:.2f}{err} | "
             f"{s['faithfulness']:.2f} | {s['answer_relevance']:.2f} | "
             f"{s['context_precision']:.2f} | {s['context_recall']:.2f} |"
         )
@@ -170,23 +242,30 @@ def format_markdown(results: list[dict]) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Batch RAG quality evaluator")
-    parser.add_argument("--limit", type=int, default=None, help="Max sessions to evaluate")
+    parser.add_argument("--test-set", action="store_true", help="Evaluate against test set instead of chat sessions")
+    parser.add_argument("--limit", type=int, default=None, help="Max cases to evaluate")
     parser.add_argument("--output", type=str, default=None, help="Output file path")
     parser.add_argument("--format", choices=["json", "markdown"], default="json", help="Output format")
     args = parser.parse_args()
 
-    results = asyncio.run(evaluate_sessions(limit=args.limit))
-    print_summary(results)
+    if args.test_set:
+        mode = "test-set"
+        results = asyncio.run(evaluate_test_set(limit=args.limit))
+    else:
+        mode = "sessions"
+        results = asyncio.run(evaluate_sessions(limit=args.limit))
+
+    print_summary(results, mode)
 
     if args.output:
         out = Path(args.output)
         if args.format == "markdown":
-            out.write_text(format_markdown(results), encoding="utf-8")
+            out.write_text(format_markdown(results, mode), encoding="utf-8")
         else:
             out.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"Results written to {out}")
     elif args.format == "markdown":
-        print(format_markdown(results))
+        print(format_markdown(results, mode))
 
 
 if __name__ == "__main__":

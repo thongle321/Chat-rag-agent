@@ -3,7 +3,6 @@ from pydantic import BaseModel
 
 class DocumentIngestResponse(BaseModel):
     status: str
-    document_id: str
     message: str
 
 

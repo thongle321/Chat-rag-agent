@@ -1,5 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks
-from fastapi import UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File
 from pathlib import Path
 from app.models.schemas import DocumentIngestResponse, DocumentListResponse, DocumentInfo
 from app.services.document_ingest import save_and_queue_indexing, _index_file
@@ -30,7 +29,6 @@ async def upload_files(
         if len(content) > MAX_UPLOAD_SIZE:
             results.append(DocumentIngestResponse(
                 status="error",
-                document_id="",
                 message=f"File {safe_name} exceeds 50 MB limit",
             ))
             continue
@@ -40,7 +38,6 @@ async def upload_files(
             background_tasks.add_task(_index_file, saved_path)
         results.append(DocumentIngestResponse(
             status=status,
-            document_id="",
             message=message,
         ))
     return {"results": results}

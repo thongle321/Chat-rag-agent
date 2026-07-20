@@ -1,10 +1,10 @@
-import re
 import uuid
 from pathlib import Path
 
 import aiosqlite
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.utils.uuid import uuid7
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
@@ -18,15 +18,6 @@ logger = get_logger(__name__)
 _checkpointer: AsyncSqliteSaver | None = None
 _cached_agent = None
 _cached_agent_key: str = ""
-
-_CONTEXT_PREFIX = "Context:\n"
-
-def _strip_injected_context(content: str) -> str:
-    if content.startswith(_CONTEXT_PREFIX):
-        m = re.search(r"\n\nQuestion: ", content)
-        if m:
-            return content[m.end():]
-    return content
 
 
 async def get_checkpointer() -> AsyncSqliteSaver:
@@ -65,7 +56,7 @@ async def get_messages(session_id: str) -> list[dict]:
         if hasattr(m, "type") and m.type in ("human", "ai"):
             out.append({
                 "role": "user" if m.type == "human" else "assistant",
-                "content": _strip_injected_context(m.content or ""),
+                "content": m.content or "",
             })
     return out
 
@@ -115,8 +106,8 @@ def _format_context(docs: list) -> str:
     for d in docs:
         title = d.metadata.get("title", "unknown")
         page = d.metadata.get("page")
-        page_str = f", page {page + 1}" if page is not None else ""
-        parts.append(d.page_content)
+        page_str = f", p.{page + 1}" if page is not None else ""
+        parts.append(f"[Source: {title}{page_str}]\n{d.page_content}")
     return "\n\n".join(parts)
 
 
@@ -160,7 +151,10 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         context = _format_context(docs)
 
         result = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}]},
+            {"messages": [
+                SystemMessage(content=f"Relevant context from the knowledge base:\n\n{context}"),
+                HumanMessage(content=question),
+            ]},
             {"configurable": {"thread_id": sid}},
         )
 

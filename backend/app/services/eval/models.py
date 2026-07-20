@@ -2,25 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 
+
+@dataclass
 class EvalResult:
-    __slots__ = ("faithfulness", "answer_relevance", "context_precision", "context_recall", "overall", "error")
-
-    def __init__(
-        self,
-        faithfulness: float = 0.0,
-        answer_relevance: float = 0.0,
-        context_precision: float = 0.0,
-        context_recall: float = 0.0,
-        overall: float = 0.0,
-        error: str | None = None,
-    ):
-        self.faithfulness = faithfulness
-        self.answer_relevance = answer_relevance
-        self.context_precision = context_precision
-        self.context_recall = context_recall
-        self.overall = overall
-        self.error = error
+    faithfulness: float = 0.0
+    answer_relevance: float = 0.0
+    context_precision: float = 0.0
+    context_recall: float = 0.0
+    overall: float = 0.0
+    error: str | None = None
 
     def to_dict(self) -> dict:
         return {

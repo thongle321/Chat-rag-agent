@@ -37,7 +37,7 @@ No explanation, no other text. Example: {"score": 0.85}"""
 class OllamaJudge:
     """LLM-as-Judge using ChatOllama for structured scoring."""
 
-    def __init__(self, model: str | None = None, temperature: float = 0.0):
+    def __init__(self):
         self.llm = _get_model()
 
     def score(self, system_prompt: str, user_prompt: str) -> float:

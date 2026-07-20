@@ -1,4 +1,3 @@
-import uuid
 from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, String
 from sqlalchemy.orm import DeclarativeBase

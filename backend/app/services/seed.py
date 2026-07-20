@@ -1,12 +1,11 @@
 from sqlalchemy import select
 from fastapi_users.password import PasswordHelper
 
-from app.db.session import async_session_factory, create_db_and_tables
+from app.db.session import async_session_factory
 from app.models.user import User
 
 
 async def seed_admin_user():
-    await create_db_and_tables()
     async with async_session_factory() as session:
         result = await session.execute(
             select(User).where(User.email == "admin@example.com")

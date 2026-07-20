@@ -39,7 +39,6 @@ declare module 'vue' {
     USelect: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Select.vue')['default']
     UserMenu: typeof import('./src/components/UserMenu.vue')['default']
     USkeleton: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Skeleton.vue')['default']
-    UTabs: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Tabs.vue')['default']
     UTextarea: typeof import('./node_modules/.pnpm/@nuxt+ui@4.9.0_203eb11119ceb084afa11fa032f291a3/node_modules/@nuxt/ui/dist/runtime/components/Textarea.vue')['default']
   }
 }

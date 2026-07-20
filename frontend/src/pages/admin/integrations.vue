@@ -175,6 +175,7 @@ onMounted(() => {
             </div>
           </UCard>
       </div>
+      </div>
     </template>
   </UDashboardPanel>
 
