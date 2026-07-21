@@ -19,8 +19,25 @@ chroma_collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"},
 )
 
-# LangChain Chroma vector store
-embed_model = get_embeddings()
+
+class LazyEmbeddings:
+    """Proxy around get_embeddings() that defers loading the embedding
+    model until it is actually needed (i.e. on first embed call), rather
+    than at module import / application startup time.
+    """
+
+    def embed_documents(self, texts):
+        return get_embeddings().embed_documents(texts)
+
+    def embed_query(self, text):
+        return get_embeddings().embed_query(text)
+
+
+# LangChain Chroma vector store. The embedding model itself is not loaded
+# here - `embed_model` is a lazy proxy so the underlying HuggingFace model
+# only downloads/loads on first actual use (e.g. first upload or chat
+# request), keeping application startup fast.
+embed_model = LazyEmbeddings()
 vector_store = Chroma(
     client=chroma_client,
     collection_name="documents",
