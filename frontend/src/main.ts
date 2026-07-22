@@ -44,9 +44,12 @@ app.use(head)
 app.use(router)
 app.use(ui)
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.path.startsWith('/admin') && to.path !== '/admin/login') {
+    if (auth.token && !auth.user) {
+      await auth.fetchUser()
+    }
     if (!auth.isAuthenticated) return '/admin/login'
   }
   if (to.path === '/admin/login' && auth.isAuthenticated) return '/admin/'
