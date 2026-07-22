@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
 
     # CORS
-    allowed_cors_origins: str = "https://chat-rag-agent.vercel.app,https://chat-rag-agent-production.up.railway.app"
+    allowed_cors_origins: str = "*"
 
     model_config = {
         "env_file": ".env",
