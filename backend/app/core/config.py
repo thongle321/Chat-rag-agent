@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.4"
 
     # Ollama
+    ollama_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "gemma4:31b-cloud"
 

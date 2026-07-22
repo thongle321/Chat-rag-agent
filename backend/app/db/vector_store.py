@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import chromadb
@@ -41,14 +42,19 @@ def list_documents() -> list[dict]:
     if not result["ids"]:
         return []
 
+    upload_dir = Path(settings.upload_dir)
+
     seen: dict[str, dict] = {}
     for doc_id, meta in zip(result["ids"], result["metadatas"]):
         title = meta.get("title", doc_id)
         if title not in seen:
+            file_path = upload_dir / title
+            size = os.path.getsize(file_path) if file_path.exists() else 0
             seen[title] = {
                 "document_id": doc_id,
                 "title": title,
                 "chunks": 0,
+                "size": size,
             }
         seen[title]["chunks"] += 1
 

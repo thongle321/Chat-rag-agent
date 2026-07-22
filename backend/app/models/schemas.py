@@ -23,6 +23,7 @@ class DocumentInfo(BaseModel):
     document_id: str
     title: str
     chunks: int
+    size: int
 
 
 class DocumentListResponse(BaseModel):

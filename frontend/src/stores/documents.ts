@@ -6,6 +6,7 @@ export interface DocumentInfo {
   document_id: string
   title: string
   chunks: number
+  size: number
 }
 
 export interface UploadResult {
