@@ -26,6 +26,7 @@ dependencies = [
     "fastapi-users[sqlalchemy]>=13.0.0",
     "aiosqlite>=0.20.0",
     "langgraph-checkpoint-sqlite>=3.0.0",
+    "easyocr>=1.7.0",
 ]
 
 [tool.setuptools.packages.find]

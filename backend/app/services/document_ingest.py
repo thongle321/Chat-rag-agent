@@ -3,13 +3,16 @@ import json
 import uuid
 from pathlib import Path
 
+import numpy as np
+import fitz
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.db.vector_store import chroma_collection, embed_model
+from app.db.vector_store import chroma_collection, embed_model, delete_document
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,6 +58,37 @@ def _clean_text(text: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+_OCR_READER = None
+
+
+def _get_ocr_reader():
+    global _OCR_READER
+    if _OCR_READER is None:
+        import easyocr
+        logger.info("Loading EasyOCR reader (Vietnamese + English)...")
+        _OCR_READER = easyocr.Reader(["vi", "en"], gpu=False, verbose=False)
+        logger.info("EasyOCR reader loaded")
+    return _OCR_READER
+
+
+def _ocr_pdf(file_path: Path) -> list[Document]:
+    reader = _get_ocr_reader()
+    doc = fitz.open(str(file_path))
+    texts = []
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        pix = page.get_pixmap(dpi=200)
+        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        if pix.n == 4:
+            img = img[:, :, :3]
+        result = reader.readtext(img, paragraph=True)
+        page_text = "\n".join(r[1] for r in result)
+        texts.append(page_text)
+    doc.close()
+    full_text = _clean_text("\n\n".join(texts))
+    return [Document(page_content=full_text, metadata={"title": file_path.name, "ocr": True})]
+
+
 EXTENSIONS = {
     ".pdf": PyMuPDF4LLMLoader,
     ".txt": TextLoader,
@@ -73,6 +107,12 @@ def _load_file(file_path: Path) -> list[Document]:
         if suffix == ".pdf":
             loader = PyMuPDF4LLMLoader(str(file_path), mode="single")
             docs = loader.load()
+            text_len = sum(len(d.page_content) for d in docs)
+            with fitz.open(str(file_path)) as pdf:
+                page_count = len(pdf)
+            if text_len < max(100, page_count * 80):
+                logger.info("PDF appears to be scanned (text=%d for %d pages), falling back to OCR: %s", text_len, page_count, file_path.name)
+                docs = _ocr_pdf(file_path)
         else:
             loader_cls = EXTENSIONS.get(suffix)
             if not loader_cls:
@@ -145,7 +185,11 @@ async def save_and_queue_indexing(
 
     saved_path = upload_folder / filename
     if saved_path.exists():
-        return False, f"File '{filename}' already exists.", None
+        saved_path.unlink()
+        delete_document(filename)
+        manifest = _load_manifest()
+        manifest.pop(filename, None)
+        _save_manifest(manifest)
 
     saved_path.write_bytes(file_bytes)
     return True, f"File '{filename}' queued for indexing.", saved_path
