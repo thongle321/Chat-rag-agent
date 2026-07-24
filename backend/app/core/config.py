@@ -1,4 +1,3 @@
-import secrets
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
@@ -33,7 +32,6 @@ class Settings(BaseSettings):
         "RULES:\n"
         "1) Answer ONLY using the provided context. Do not use outside knowledge.\n"
         "2) Synthesize information across all provided context chunks when answering.\n"
-        # "3) Cite sources inline: [Source: filename, p.X] where X is the page number.\n"
         "3) If the context fully answers the question, respond directly.\n"
         "4) If the context partially answers, provide what's available and note what's missing.\n"
         "5) If the context does not contain relevant information, say: \"I don't have enough information in the provided documents to answer this.\"\n"

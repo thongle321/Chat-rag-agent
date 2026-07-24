@@ -23,20 +23,6 @@ async def close_client() -> None:
         _client = None
 
 
-async def get_page_name(page_id: str, page_token: str) -> str:
-    """Fetch the page name from Facebook Graph API."""
-    url = f"{FB_GRAPH_API}/{page_id}"
-    params = {"fields": "name", "access_token": page_token}
-    try:
-        resp = await _get_client().get(url, params=params)
-        if resp.status_code == 200:
-            return resp.json().get("name", "Facebook Page")
-        logger.warning("Failed to fetch page name: %s %s", resp.status_code, resp.text)
-    except Exception:
-        logger.exception("Error fetching page name")
-    return "Facebook Page"
-
-
 async def send_message(page_id: str, page_token: str, recipient_id: str, text: str) -> bool:
     """Send a text message to a Facebook user via the Graph API."""
     url = f"{FB_GRAPH_API}/{page_id}/messages"

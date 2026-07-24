@@ -52,8 +52,5 @@ function onKeydown(e: KeyboardEvent) {
         @click="submit"
       />
     </div>
-    <!-- <p class="text-[11px] text-muted text-center mt-2">
-      Câu trả lời chỉ mang tính tham khảo. Vui lòng đối chiếu với tài liệu gốc.
-    </p> -->
   </div>
 </template>

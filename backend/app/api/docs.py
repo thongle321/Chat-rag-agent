@@ -61,6 +61,21 @@ async def delete_document_by_title(title: str, user: User = current_active_user)
     return {"status": "deleted", "chunks_deleted": deleted}
 
 
+def _build_status_results(titles: list[str]) -> dict:
+    existing = list_documents()
+    existing_map = {d["title"]: d for d in existing}
+    results = {}
+    for title in titles:
+        if title in existing_map:
+            doc = existing_map[title]
+            results[title] = {
+                "status": "completed", "chunks": doc["chunks"], "size": doc["size"],
+            }
+        else:
+            results[title] = {"status": "indexed", "chunks": 0, "size": 0}
+    return results
+
+
 @router.get("/upload/status")
 async def poll_upload_status(titles: str = Query(...), user: User = current_active_user):
     """Long-poll endpoint: waits up to 30s for files to finish indexing."""
@@ -69,36 +84,9 @@ async def poll_upload_status(titles: str = Query(...), user: User = current_acti
         raise HTTPException(status_code=400, detail="No titles provided")
 
     for _ in range(15):
-        existing = list_documents()
-        existing_map = {d["title"]: d for d in existing}
-        all_done = True
-        results = {}
-        for title in title_list:
-            if title in existing_map:
-                doc = existing_map[title]
-                results[title] = {
-                    "status": "completed",
-                    "chunks": doc["chunks"],
-                    "size": doc["size"],
-                }
-            else:
-                results[title] = {"status": "indexed", "chunks": 0, "size": 0}
-                all_done = False
-        if all_done:
+        results = _build_status_results(title_list)
+        if all(r["status"] == "completed" for r in results.values()):
             return {"results": results}
         await asyncio.sleep(2)
 
-    existing = list_documents()
-    existing_map = {d["title"]: d for d in existing}
-    results = {}
-    for title in title_list:
-        if title in existing_map:
-            doc = existing_map[title]
-            results[title] = {
-                "status": "completed",
-                "chunks": doc["chunks"],
-                "size": doc["size"],
-            }
-        else:
-            results[title] = {"status": "indexed", "chunks": 0, "size": 0}
-    return {"results": results}
+    return {"results": _build_status_results(title_list)}

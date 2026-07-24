@@ -30,13 +30,6 @@ async function handleSend(question: string) {
   }
 }
 
-function pickSuggestion(q: string) {
-  chatInput.value = q
-  nextTick(() => {
-    const ta = document.querySelector<HTMLTextAreaElement>('textarea')
-    ta?.focus()
-  })
-}
 </script>
 
 <template>
@@ -79,7 +72,7 @@ function pickSuggestion(q: string) {
         <template v-if="!chatStore.messages.length">
           <div class="min-h-full flex items-center">
             <div class="w-full">
-              <ChatEmpty @pick="pickSuggestion" />
+              <ChatEmpty />
             </div>
           </div>
         </template>
@@ -98,45 +91,11 @@ function pickSuggestion(q: string) {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-2 text-xs text-muted">
                     <span class="font-semibold text-default">Chat RAG</span>
-                    <span v-if="false">• Dựa trên {{ msg.sources.length }} nguồn</span>
                   </div>
 
                   <Suspense>
                     <Comark :markdown="msg.text" class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
                   </Suspense>
-
-                  <div v-if="false" class="mt-3 border border-default rounded-xl bg-elevated overflow-hidden">
-                    <UCollapsible>
-                      <template #trigger="{ open }">
-                        <UButton
-                          variant="ghost"
-                          color="neutral"
-                          block
-                          class="justify-between px-3.5 py-2.5 text-xs font-medium !text-default"
-                          :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-                        >
-                          <div class="flex items-center gap-2">
-                            <UIcon name="i-lucide-book" class="size-3.5 text-primary" />
-                            Nguồn tài liệu
-                            <UBadge size="sm" variant="soft" color="neutral">{{ msg.sources.length }}</UBadge>
-                          </div>
-                        </UButton>
-                      </template>
-
-                      <div class="border-t border-default p-2.5 flex flex-col gap-2">
-                        <div
-                          v-for="(src, si) in msg.sources"
-                          :key="si"
-                          class="flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted/50 transition"
-                        >
-                          <div class="size-7 rounded-md bg-muted grid place-items-center text-muted text-xs font-bold">
-                            {{ si + 1 }}
-                          </div>
-                          <span class="text-xs text-default truncate">{{ src }}</span>
-                        </div>
-                      </div>
-                    </UCollapsible>
-                  </div>
 
                   <div class="flex items-center gap-1 mt-3">
                     <UButton

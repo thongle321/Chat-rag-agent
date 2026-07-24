@@ -7,7 +7,6 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   model?: string
-  sources?: string[]
 }
 
 export interface Conversation {
@@ -175,7 +174,6 @@ export const useChatStore = defineStore('chat', () => {
         role: 'assistant',
         text: data.answer,
         model: data.model,
-        sources: data.source_documents,
       })
 
       return data
