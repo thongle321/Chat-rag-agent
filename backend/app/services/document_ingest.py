@@ -13,6 +13,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.db.vector_store import chroma_collection, embed_model, delete_document
+from app.services.spelling_correction import get_spelling_corrector
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -73,6 +74,7 @@ def _get_ocr_reader():
 
 def _ocr_pdf(file_path: Path) -> list[Document]:
     reader = _get_ocr_reader()
+    corrector = get_spelling_corrector()
     doc = fitz.open(str(file_path))
     texts = []
     for page_num in range(len(doc)):
@@ -83,6 +85,7 @@ def _ocr_pdf(file_path: Path) -> list[Document]:
             img = img[:, :, :3]
         result = reader.readtext(img, paragraph=True)
         page_text = "\n".join(r[1] for r in result)
+        page_text = corrector.fix_spelling(page_text)
         texts.append(page_text)
     doc.close()
     full_text = _clean_text("\n\n".join(texts))
