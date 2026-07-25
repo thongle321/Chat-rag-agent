@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import ClassVar
 
@@ -12,9 +13,6 @@ logger = get_logger(__name__)
 class PrefixedEmbeddings(HuggingFaceEmbeddings):
     QUERY_INSTRUCTION: ClassVar[str] = "Instruct: Given a question, retrieve passages that can help answer the question.\nQuery: "
 
-    def embed_documents(self, texts):
-        return super().embed_documents(texts)
-
     def embed_query(self, text):
         return super().embed_query(f"{self.QUERY_INSTRUCTION}{text}")
 
@@ -23,6 +21,8 @@ class PrefixedEmbeddings(HuggingFaceEmbeddings):
 def get_embeddings() -> HuggingFaceEmbeddings:
     """Return a cached HuggingFaceEmbeddings instance."""
     logger.info("Loading embedding model: %s", settings.embedding_model)
+    if settings.hf_token:
+        os.environ["HF_TOKEN"] = settings.hf_token
     embeddings = PrefixedEmbeddings(
         model_name=settings.embedding_model,
         model_kwargs={"device": "cpu"},

@@ -1,5 +1,3 @@
-import hashlib
-import json
 import uuid
 from pathlib import Path
 
@@ -17,8 +15,6 @@ from app.services.spelling_correction import get_spelling_corrector
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-MANIFEST_PATH = Path(settings.vector_store_dir) / "_manifest.json"
 
 BATCH_SIZE = 500
 
@@ -131,21 +127,6 @@ def _load_file(file_path: Path) -> list[Document]:
         return []
 
 
-def _load_manifest() -> dict[str, str]:
-    if MANIFEST_PATH.exists():
-        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    return {}
-
-
-def _save_manifest(manifest: dict[str, str]) -> None:
-    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-
-
-def _file_hash(file_path: Path) -> str:
-    return hashlib.md5(file_path.read_bytes()).hexdigest()
-
-
 def _index_file(file_path: Path) -> int:
     """Index a single file. Returns chunk count added."""
     if not (file_path.is_file() and file_path.suffix.lower() in EXTENSIONS):
@@ -169,11 +150,6 @@ def _index_file(file_path: Path) -> int:
             metadatas=[c.metadata for c in batch],
         )
 
-    # Update manifest for this file
-    manifest = _load_manifest()
-    manifest[file_path.name] = _file_hash(file_path)
-    _save_manifest(manifest)
-
     logger.info("Indexed %d chunks from %s", len(chunks), file_path.name)
     return len(chunks)
 
@@ -190,9 +166,6 @@ async def save_and_queue_indexing(
     if saved_path.exists():
         saved_path.unlink()
         delete_document(filename)
-        manifest = _load_manifest()
-        manifest.pop(filename, None)
-        _save_manifest(manifest)
 
     saved_path.write_bytes(file_bytes)
     return True, f"File '{filename}' queued for indexing.", saved_path

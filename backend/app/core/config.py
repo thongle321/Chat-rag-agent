@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = ""
     ollama_model: str = "gemma4:31b-cloud"
 
+    # Hugging Face
+    hf_token: str = ""
+
     # Embeddings (local, no API key needed)
     embedding_model: str = "intfloat/multilingual-e5-small"
 
