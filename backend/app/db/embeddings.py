@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import ClassVar
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -9,15 +10,13 @@ logger = get_logger(__name__)
 
 
 class PrefixedEmbeddings(HuggingFaceEmbeddings):
+    QUERY_INSTRUCTION: ClassVar[str] = "Instruct: Given a question, retrieve passages that can help answer the question.\nQuery: "
+
     def embed_documents(self, texts):
-        if "e5" in settings.embedding_model:
-            texts = [f"passage: {t}" for t in texts]
         return super().embed_documents(texts)
 
     def embed_query(self, text):
-        if "e5" in settings.embedding_model:
-            return super().embed_query(f"query: {text}")
-        return super().embed_query(text)
+        return super().embed_query(f"{self.QUERY_INSTRUCTION}{text}")
 
 
 @lru_cache(maxsize=1)

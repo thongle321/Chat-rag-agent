@@ -1,6 +1,4 @@
-import secrets
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,14 +14,8 @@ from app.services.seed import seed_admin_user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Generate JWT secret if not set
     if not settings.jwt_secret_key:
-        secret_path = Path(settings.upload_dir).resolve().parent / ".jwt_secret"
-        if secret_path.exists():
-            settings.jwt_secret_key = secret_path.read_text().strip()
-        else:
-            settings.jwt_secret_key = secrets.token_urlsafe(32)
-            secret_path.write_text(settings.jwt_secret_key)
+        raise RuntimeError("JWT_SECRET_KEY must be set via env var in production")
 
     await create_db_and_tables()
     await seed_admin_user()

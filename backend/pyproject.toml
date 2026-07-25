@@ -27,6 +27,7 @@ dependencies = [
     "easyocr>=1.7.0",
     "symspellpy>=6.7.7",
     "underthesea>=6.8.4",
+    "sentence-transformers>=5.2.0",
 ]
 
 [tool.setuptools.packages.find]

@@ -6,20 +6,22 @@ const toast = useToast()
 
 const saving = ref(false)
 const error = ref('')
-const showKey = ref(false)
+const showOpenaiKey = ref(false)
+const showOllamaKey = ref(false)
 const testing = ref(false)
 
 const form = ref({
   ai_provider: 'ollama',
   ollama_base_url: '',
   ollama_model: '',
+  ollama_api_key: '',
   openai_api_key: '',
   openai_model: '',
 })
 
 const providerOptions = [
-  { label: 'Ollama (Local)', value: 'ollama' },
-  { label: 'OpenAI (Cloud)', value: 'openai' },
+  { label: 'Ollama', value: 'ollama' },
+  { label: 'OpenAI', value: 'openai' },
 ]
 
 const settings = computed(() => settingsStore.settings)
@@ -58,6 +60,9 @@ async function save() {
       ollama_base_url: form.value.ollama_base_url,
       ollama_model: form.value.ollama_model,
       openai_model: form.value.openai_model,
+    }
+    if (form.value.ai_provider === 'ollama' && form.value.ollama_api_key) {
+      payload.ollama_api_key = form.value.ollama_api_key
     }
     if (form.value.ai_provider === 'openai' && form.value.openai_api_key) {
       payload.openai_api_key = form.value.openai_api_key
@@ -110,6 +115,19 @@ async function save() {
             <UFormField label="Base URL" required>
               <UInput v-model="form.ollama_base_url" placeholder="http://localhost:11434" :disabled="saving" class="w-full" />
             </UFormField>
+            <UFormField label="API Key" :hint="settings.has_ollama_key ? 'Configured' : '(optional) Leave blank for local Ollama'">
+              <UInput
+                v-model="form.ollama_api_key"
+                placeholder="ollama-api-key"
+                :type="showOllamaKey ? 'text' : 'password'"
+                :disabled="saving"
+                class="w-full"
+              >
+                <template #trailing>
+                  <UButton :icon="showOllamaKey ? 'i-lucide-eye-off' : 'i-lucide-eye'" variant="ghost" size="sm" @click="showOllamaKey = !showOllamaKey" />
+                </template>
+              </UInput>
+            </UFormField>
             <UFormField label="Model Name" required>
               <UInput v-model="form.ollama_model" placeholder="llama3.2" :disabled="saving" class="w-full" />
             </UFormField>
@@ -126,12 +144,12 @@ async function save() {
               <UInput
                 v-model="form.openai_api_key"
                 placeholder="sk-..."
-                :type="showKey ? 'text' : 'password'"
+                :type="showOpenaiKey ? 'text' : 'password'"
                 :disabled="saving"
                 class="w-full"
               >
                 <template #trailing>
-                  <UButton :icon="showKey ? 'i-lucide-eye-off' : 'i-lucide-eye'" variant="ghost" size="sm" @click="showKey = !showKey" />
+                  <UButton :icon="showOpenaiKey ? 'i-lucide-eye-off' : 'i-lucide-eye'" variant="ghost" size="sm" @click="showOpenaiKey = !showOpenaiKey" />
                 </template>
               </UInput>
             </UFormField>

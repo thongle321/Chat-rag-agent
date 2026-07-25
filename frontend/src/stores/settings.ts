@@ -6,6 +6,7 @@ export interface AISettings {
   ai_provider: string
   ollama_base_url: string
   ollama_model: string
+  has_ollama_key: boolean
   openai_model: string
   has_openai_key: boolean
 }
@@ -20,6 +21,7 @@ export const useSettingsStore = defineStore('settings', () => {
     ai_provider: 'ollama',
     ollama_base_url: '',
     ollama_model: '',
+    has_ollama_key: false,
     openai_model: '',
     has_openai_key: false,
   })
@@ -39,7 +41,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function updateSettings(payload: Partial<AISettings> & { openai_api_key?: string }) {
+  async function updateSettings(payload: Partial<AISettings> & { openai_api_key?: string; ollama_api_key?: string }) {
     loading.value = true
     error.value = ''
     try {

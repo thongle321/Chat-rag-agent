@@ -65,7 +65,11 @@ def _get_model() -> BaseChatModel:
     provider = settings.ai_provider.lower()
     if provider == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(model=settings.ollama_model, base_url=settings.ollama_base_url)
+        return ChatOllama(
+            model=settings.ollama_model,
+            base_url=settings.ollama_base_url,
+            api_key=settings.ollama_api_key or None,
+        )
     if provider == "openai":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model=settings.openai_model)

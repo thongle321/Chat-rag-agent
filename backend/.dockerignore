@@ -1,0 +1,10 @@
+.venv
+.chromadb/
+data/
+.env
+__pycache__/
+*.pyc
+.git
+.gitignore
+README.md
+uv.lock

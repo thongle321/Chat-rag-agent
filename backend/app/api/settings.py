@@ -11,6 +11,7 @@ class AISettingsResponse(BaseModel):
     ai_provider: str
     ollama_base_url: str
     ollama_model: str
+    has_ollama_key: bool
     openai_model: str
     has_openai_key: bool
 
@@ -19,6 +20,7 @@ class AISettingsUpdate(BaseModel):
     ai_provider: str | None = None
     ollama_base_url: str | None = None
     ollama_model: str | None = None
+    ollama_api_key: str | None = None
     openai_api_key: str | None = None
     openai_model: str | None = None
 
@@ -37,6 +39,7 @@ async def get_ai_settings(user: User = current_active_user):
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
+        has_ollama_key=bool(settings.ollama_api_key),
         openai_model=settings.openai_model,
         has_openai_key=bool(settings.openai_api_key),
     )
@@ -55,6 +58,9 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
     if body.ollama_model is not None:
         settings.ollama_model = body.ollama_model
 
+    if body.ollama_api_key is not None:
+        settings.ollama_api_key = body.ollama_api_key
+
     if body.openai_api_key is not None:
         settings.openai_api_key = body.openai_api_key
 
@@ -65,6 +71,7 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
+        has_ollama_key=bool(settings.ollama_api_key),
         openai_model=settings.openai_model,
         has_openai_key=bool(settings.openai_api_key),
     )
@@ -75,9 +82,12 @@ async def test_connection(user: User = current_active_user):
     provider = settings.ai_provider.lower()
 
     if provider == "ollama":
+        headers = {}
+        if settings.ollama_api_key:
+            headers["Authorization"] = f"Bearer {settings.ollama_api_key}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{settings.ollama_base_url}/api/tags")
+                resp = await client.get(f"{settings.ollama_base_url}/api/tags", headers=headers)
                 resp.raise_for_status()
                 return TestConnectionResponse(ok=True, message=f"Connected to Ollama at {settings.ollama_base_url}")
         except httpx.ConnectError:
