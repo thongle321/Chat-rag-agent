@@ -9,32 +9,7 @@ import { createHead } from '@unhead/vue/client'
 import ui from '@nuxt/ui/vue-plugin'
 import App from './App.vue'
 
-import DefaultLayout from './layouts/default.vue'
-import PublicLayout from './layouts/public.vue'
-
-// ponytail: lazy import matches auto-router's dynamic imports
-const NotFoundPage = () => import('./pages/404.vue')
-// ponytail: /admin/login as standalone to avoid catch-all swallowing it
-const AdminLogin = () => import('./pages/admin/login.vue')
-
-const autoAdmin = autoRoutes.find(r => r.path === '/admin')
-const adminChildren = (autoAdmin?.children || []).filter(c => c.path !== 'login' && c.path !== '')
-
-const routes = [
-  // Standalone login — before /admin to avoid catch-all
-  { path: '/admin/login', component: AdminLogin },
-  ...autoRoutes.filter(r => r.path !== '/admin'),
-  {
-    path: '/admin',
-    component: DefaultLayout,
-    children: [
-      ...adminChildren,
-      { path: ':pathMatch(.*)', redirect: '/404' }
-    ]
-  },
-  { path: '/404', name: 'NotFound', component: NotFoundPage },
-  { path: '/:all(.*)', redirect: '/404' }
-]
+const routes = [...autoRoutes]
 
 const app = createApp(App)
 const head = createHead()
