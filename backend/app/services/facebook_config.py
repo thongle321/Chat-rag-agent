@@ -1,51 +1,67 @@
-import json
-from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.facebook_config import FacebookConfigModel
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-CHANNELS_FILE = Path("channels.json")
 
-
-def _load_channels() -> dict:
-    if CHANNELS_FILE.exists():
-        return json.loads(CHANNELS_FILE.read_text(encoding="utf-8"))
-    return {}
-
-
-def _save_channels(data: dict) -> None:
-    CHANNELS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def get_facebook_config() -> Optional[dict]:
-    """Get stored Facebook channel config."""
-    channels = _load_channels()
-    return channels.get("facebook")
-
-
-def save_facebook_config(page_id: str, verify_token: str, page_token: str | None = None, page_name: str = "Facebook Page") -> dict:
-    """Save Facebook channel config. Only updates page_token if provided."""
-    channels = _load_channels()
-    existing = channels.get("facebook", {})
-    channels["facebook"] = {
-        "page_id": page_id,
-        "page_name": page_name,
-        "page_token": page_token if page_token else existing.get("page_token", ""),
-        "verify_token": verify_token,
+async def get_facebook_config(session: AsyncSession) -> Optional[dict]:
+    result = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
+    row = result.scalar_one_or_none()
+    if not row:
+        return None
+    return {
+        "page_id": row.page_id,
+        "page_name": row.page_name,
+        "page_token": row.page_token,
+        "verify_token": row.verify_token,
     }
-    _save_channels(channels)
+
+
+async def save_facebook_config(
+    session: AsyncSession,
+    page_id: str,
+    verify_token: str,
+    page_token: str | None = None,
+    page_name: str = "Facebook Page",
+) -> dict:
+    result = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
+    row = result.scalar_one_or_none()
+    if row:
+        row.page_id = page_id
+        row.page_name = page_name
+        row.verify_token = verify_token
+        if page_token is not None:
+            row.page_token = page_token
+    else:
+        session.add(FacebookConfigModel(
+            id=1,
+            page_id=page_id,
+            page_name=page_name,
+            page_token=page_token or "",
+            verify_token=verify_token,
+        ))
+    await session.commit()
+    new_row = row or (await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))).scalar_one()
     logger.info("Facebook config saved for page %s", page_id)
-    return channels["facebook"]
+    return {
+        "page_id": new_row.page_id,
+        "page_name": new_row.page_name,
+        "page_token": new_row.page_token,
+        "verify_token": new_row.verify_token,
+    }
 
 
-def delete_facebook_config() -> bool:
-    """Delete Facebook channel config."""
-    channels = _load_channels()
-    if "facebook" in channels:
-        del channels["facebook"]
-        _save_channels(channels)
-        logger.info("Facebook config deleted")
-        return True
-    return False
+async def delete_facebook_config(session: AsyncSession) -> bool:
+    result = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
+    row = result.scalar_one_or_none()
+    if not row:
+        return False
+    await session.delete(row)
+    await session.commit()
+    logger.info("Facebook config deleted")
+    return True

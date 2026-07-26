@@ -1,18 +1,20 @@
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.facebook import mark_seen, send_message, typing_on
+from app.db.session import get_async_session
+from app.models.user import User
 from app.services.facebook_config import (
     delete_facebook_config,
     get_facebook_config,
     save_facebook_config,
 )
 from app.services.rag import answer_question
-from app.utils.logger import get_logger
 from app.services.user_manager import current_active_user
-from app.models.user import User
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -42,9 +44,8 @@ class FacebookConfigResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/config", response_model=FacebookConfigResponse)
-async def get_config(user: User = current_active_user):
-    """Get Facebook channel config."""
-    config = get_facebook_config()
+async def get_config(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+    config = await get_facebook_config(db)
     if not config:
         raise HTTPException(status_code=404, detail="No Facebook config found")
 
@@ -57,9 +58,8 @@ async def get_config(user: User = current_active_user):
 
 
 @router.post("/config", response_model=FacebookConfigResponse)
-async def save_config(req: FacebookConfigRequest, user: User = current_active_user):
-    """Save Facebook channel config."""
-    config = save_facebook_config(req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name)
+async def save_config(req: FacebookConfigRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+    config = await save_facebook_config(db, req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name)
 
     return FacebookConfigResponse(
         page_id=config["page_id"],
@@ -70,9 +70,8 @@ async def save_config(req: FacebookConfigRequest, user: User = current_active_us
 
 
 @router.delete("/config")
-async def delete_config(user: User = current_active_user):
-    """Delete Facebook channel config."""
-    deleted = delete_facebook_config()
+async def delete_config(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+    deleted = await delete_facebook_config(db)
     if not deleted:
         raise HTTPException(status_code=404, detail="No Facebook config found")
     return {"status": "deleted"}
@@ -87,9 +86,9 @@ async def fb_verify(
     hub_mode: str = Query(default="", alias="hub.mode"),
     hub_verify_token: str = Query(default="", alias="hub.verify_token"),
     hub_challenge: str = Query(default="", alias="hub.challenge"),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    """Facebook webhook verification endpoint."""
-    config = get_facebook_config()
+    config = await get_facebook_config(db)
     stored_token = config.get("verify_token", "") if config else ""
 
     logger.info(
@@ -108,9 +107,8 @@ async def fb_verify(
 
 
 @router.post("/webhook")
-async def fb_webhook(request: Request):
-    """Facebook webhook - receives messages and replies via RAG."""
-    config = get_facebook_config()
+async def fb_webhook(request: Request, db: AsyncSession = Depends(get_async_session)):
+    config = await get_facebook_config(db)
     if not config:
         logger.warning("Facebook webhook received but no config saved. Configure in Integrations page.")
         return Response(status_code=200)
@@ -135,7 +133,6 @@ async def fb_webhook(request: Request):
             if not sender_id or not text:
                 continue
 
-            # Skip messages from the page itself
             if sender_id == page_id:
                 logger.debug("Skipping message from page itself (sender=%s)", sender_id)
                 continue
@@ -143,7 +140,6 @@ async def fb_webhook(request: Request):
             messages_found += 1
             logger.info("Facebook message from user %s: '%s'", sender_id, text[:100])
 
-            # Process in background so we return 200 to Facebook quickly
             asyncio.create_task(_handle_message(page_id, page_token, sender_id, text))
 
     if messages_found == 0:
@@ -153,7 +149,6 @@ async def fb_webhook(request: Request):
 
 
 async def _handle_message(page_id: str, page_token: str, sender_id: str, text: str) -> None:
-    """Process a Facebook message through RAG and reply."""
     try:
         logger.info("Processing Facebook message from %s: '%s'", sender_id, text[:100])
 
@@ -164,7 +159,6 @@ async def _handle_message(page_id: str, page_token: str, sender_id: str, text: s
         reply_text = response.answer
         logger.info("RAG response for %s: '%s'", sender_id, reply_text[:100])
 
-        # Facebook has a 2000 char limit per message
         if len(reply_text) > 2000:
             reply_text = reply_text[:1997] + "..."
 
