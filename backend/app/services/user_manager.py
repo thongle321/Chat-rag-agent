@@ -15,8 +15,8 @@ from app.models.user import User
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
-    reset_password_token_secret = "reset-password-secret"
-    verification_token_secret = "verification-secret"
+    reset_password_token_secret = settings.jwt_secret_key
+    verification_token_secret = settings.jwt_secret_key
 
 
 async def get_user_manager() -> AsyncGenerator[UserManager, None]:
@@ -28,8 +28,7 @@ jwt_backend = AuthenticationBackend(
     name="jwt",
     transport=BearerTransport(tokenUrl="api/auth/login"),
     get_strategy=lambda: JWTStrategy(
-        # ponytail: fallback until Task 7 adds jwt_secret_key to settings
-        secret=getattr(settings, "jwt_secret_key", "dev-secret-change-me"),
+        secret=settings.jwt_secret_key,
         lifetime_seconds=3600,
     ),
 )

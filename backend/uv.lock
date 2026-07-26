@@ -266,6 +266,8 @@ dependencies = [
     { name = "python-multipart" },
     { name = "sentence-transformers" },
     { name = "symspellpy" },
+    { name = "torch" },
+    { name = "torchvision" },
     { name = "underthesea" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -293,6 +295,8 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sentence-transformers", specifier = ">=5.2.0" },
     { name = "symspellpy", specifier = ">=6.7.7" },
+    { name = "torch" },
+    { name = "torchvision" },
     { name = "underthesea", specifier = ">=6.8.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.23.0" },
 ]

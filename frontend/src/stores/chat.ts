@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api, { getErrorMessage } from '../api'
 
+const STORAGE_KEY = 'chat_sessions'
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -51,22 +53,38 @@ export const useChatStore = defineStore('chat', () => {
 
   const messages = computed(() => activeConversation.value?.messages ?? [])
 
-  async function fetchSessions() {
+  function saveToStorage() {
+    const data = conversations.value.map(c => ({
+      id: c.id,
+      title: c.title,
+      pinned: c.pinned,
+      createdAt: c.createdAt,
+      sessionId: c.sessionId,
+    }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  }
+
+  function loadFromStorage() {
     try {
-      const { data } = await api.get('/chat/sessions')
-      conversations.value = data.map((s: any) => ({
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      conversations.value = JSON.parse(raw).map((s: any) => ({
         id: s.id,
         title: s.title,
         messages: [],
         pinned: s.pinned,
-        createdAt: new Date(s.created_at).getTime(),
-        sessionId: s.id,
+        createdAt: s.createdAt,
+        sessionId: s.sessionId || s.id,
       }))
-      if (!activeId.value && conversations.value.length) {
-        activeId.value = conversations.value[0].id
-      }
     } catch {
-      // offline fallback — keep current state
+      // corrupted storage
+    }
+  }
+
+  function fetchSessions() {
+    loadFromStorage()
+    if (!activeId.value && conversations.value.length) {
+      activeId.value = conversations.value[0].id
     }
   }
 
@@ -96,6 +114,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionId: '',
     })
     activeId.value = id
+    saveToStorage()
   }
 
   async function setActive(id: string) {
@@ -114,23 +133,21 @@ export const useChatStore = defineStore('chat', () => {
     if (activeId.value === id) {
       activeId.value = conversations.value[0]?.id ?? ''
     }
+    saveToStorage()
   }
 
-  async function togglePin(id: string) {
+  function togglePin(id: string) {
     const c = conversations.value.find(c => c.id === id)
     if (!c) return
-    try {
-      await api.put(`/chat/sessions/${id}/pin`)
-      c.pinned = !c.pinned
-    } catch { /* ignore */ }
+    c.pinned = !c.pinned
+    saveToStorage()
   }
 
-  async function renameConversation(id: string, title: string) {
-    try {
-      await api.put(`/chat/sessions/${id}/title`, { title })
-      const c = conversations.value.find(c => c.id === id)
-      if (c) c.title = title
-    } catch { /* ignore */ }
+  function renameConversation(id: string, title: string) {
+    const c = conversations.value.find(c => c.id === id)
+    if (!c) return
+    c.title = title
+    saveToStorage()
   }
 
   async function sendMessage(question: string) {
@@ -175,6 +192,8 @@ export const useChatStore = defineStore('chat', () => {
         text: data.answer,
         model: data.model,
       })
+
+      saveToStorage()
 
       return data
     } catch (err: any) {

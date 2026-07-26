@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.4"
+    openai_model: str = "gpt-5.5"
 
     # Ollama
     ollama_api_key: str = ""
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     hf_token: str = ""
 
     # Embeddings (local, no API key needed)
-    embedding_model: str = "intfloat/multilingual-e5-small"
+    embedding_model: str = "codefuse-ai/F2LLM-v2-80M"
 
     # System prompt for the RAG agent
     context_prompt: str = (
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         "6) If the context contains conflicting information, note the conflict.\n\n"
     )
 
-    jwt_secret_key: str = ""
+    jwt_secret_key: str
 
     # Storage
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
