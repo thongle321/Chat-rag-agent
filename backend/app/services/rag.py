@@ -67,7 +67,7 @@ def _get_model() -> BaseChatModel:
         from langchain_ollama import ChatOllama
         return ChatOllama(
             model=settings.ollama_model,
-            base_url=settings.ollama_base_url,
+            base_url=settings.ollama_base_url or "http://localhost:11434",
             api_key=settings.ollama_api_key or None,
         )
     if provider == "openai":

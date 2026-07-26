@@ -25,6 +25,13 @@ class AISettingsUpdate(BaseModel):
     openai_model: str | None = None
 
 
+class TestConnectionRequest(BaseModel):
+    provider: str | None = None
+    ollama_base_url: str | None = None
+    ollama_api_key: str | None = None
+    openai_api_key: str | None = None
+
+
 class TestConnectionResponse(BaseModel):
     ok: bool
     message: str
@@ -53,7 +60,10 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
         settings.ai_provider = body.ai_provider
 
     if body.ollama_base_url is not None:
-        settings.ollama_base_url = body.ollama_base_url
+        url = body.ollama_base_url.rstrip("/")
+        if url.endswith("/api"):
+            url = url[:-4]
+        settings.ollama_base_url = url
 
     if body.ollama_model is not None:
         settings.ollama_model = body.ollama_model
@@ -78,34 +88,37 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
 
 
 @router.post("/test", response_model=TestConnectionResponse)
-async def test_connection(user: User = current_active_user):
-    provider = settings.ai_provider.lower()
+async def test_connection(body: TestConnectionRequest, user: User = current_active_user):
+    provider = (body.provider or settings.ai_provider).lower()
+    ollama_base_url = body.ollama_base_url or settings.ollama_base_url or "http://localhost:11434"
+    ollama_key = body.ollama_api_key or settings.ollama_api_key
+    openai_key = body.openai_api_key or settings.openai_api_key
 
     if provider == "ollama":
         headers = {}
-        if settings.ollama_api_key:
-            headers["Authorization"] = f"Bearer {settings.ollama_api_key}"
+        if ollama_key:
+            headers["Authorization"] = f"Bearer {ollama_key}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{settings.ollama_base_url}/api/tags", headers=headers)
+                resp = await client.get(f"{ollama_base_url}/api/tags", headers=headers)
                 resp.raise_for_status()
-                return TestConnectionResponse(ok=True, message=f"Connected to Ollama at {settings.ollama_base_url}")
+                return TestConnectionResponse(ok=True, message=f"Connected to Ollama at {ollama_base_url}")
         except httpx.ConnectError:
-            return TestConnectionResponse(ok=False, message=f"Cannot connect to Ollama at {settings.ollama_base_url}")
+            return TestConnectionResponse(ok=False, message=f"Cannot connect to Ollama at {ollama_base_url}")
         except Exception as e:
             return TestConnectionResponse(ok=False, message=f"Ollama error: {e}")
 
     if provider == "openai":
-        if not settings.openai_api_key:
+        if not openai_key:
             return TestConnectionResponse(ok=False, message="OpenAI API key is not set.")
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(
                     "https://api.openai.com/v1/models",
-                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    headers={"Authorization": f"Bearer {openai_key}"},
                 )
                 resp.raise_for_status()
-                return TestConnectionResponse(ok=True, message=f"Connected to OpenAI with model '{settings.openai_model}'.")
+                return TestConnectionResponse(ok=True, message=f"Connected to OpenAI.")
         except Exception as e:
             return TestConnectionResponse(ok=False, message=f"OpenAI error: {e}")
 

@@ -55,9 +55,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function testConnection(): Promise<TestResult> {
+  async function testConnection(opts?: { provider?: string; ollama_base_url?: string; ollama_api_key?: string; openai_api_key?: string }): Promise<TestResult> {
     try {
-      const { data } = await api.post('/settings/test')
+      const { data } = await api.post('/settings/test', opts ?? {})
       return data
     } catch (err: any) {
       return { ok: false, message: getErrorMessage(err) }

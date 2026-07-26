@@ -6,6 +6,7 @@ const toast = useToast()
 
 const saving = ref(false)
 const error = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 const showOpenaiKey = ref(false)
 const showOllamaKey = ref(false)
 const testing = ref(false)
@@ -38,7 +39,12 @@ onMounted(async () => {
 async function testConnection() {
   testing.value = true
   try {
-    const result = await settingsStore.testConnection()
+    const result = await settingsStore.testConnection({
+      provider: form.value.ai_provider,
+      ollama_base_url: form.value.ollama_base_url || undefined,
+      ollama_api_key: form.value.ollama_api_key || undefined,
+      openai_api_key: form.value.openai_api_key || undefined,
+    })
     toast.add({
       title: result.ok ? 'Connected' : 'Connection failed',
       description: result.message,
@@ -52,8 +58,16 @@ async function testConnection() {
 }
 
 async function save() {
-  saving.value = true
+  fieldErrors.value = {}
   error.value = ''
+
+  if (form.value.ai_provider === 'ollama' && !form.value.ollama_base_url.trim()) {
+    fieldErrors.value.ollama_base_url = 'Base URL is required'
+    saving.value = false
+    return
+  }
+
+  saving.value = true
   try {
     const payload: Record<string, string> = {
       ai_provider: form.value.ai_provider,
@@ -112,10 +126,10 @@ async function save() {
           </template>
 
           <div class="flex flex-col gap-4">
-            <UFormField label="Base URL" required>
+            <UFormField label="Base URL" required :error="fieldErrors.ollama_base_url">
               <UInput v-model="form.ollama_base_url" placeholder="http://localhost:11434" :disabled="saving" class="w-full" />
             </UFormField>
-            <UFormField label="API Key" :hint="settings.has_ollama_key ? 'Configured' : '(optional) Leave blank for local Ollama'">
+            <UFormField label="API Key">
               <UInput
                 v-model="form.ollama_api_key"
                 placeholder="ollama-api-key"

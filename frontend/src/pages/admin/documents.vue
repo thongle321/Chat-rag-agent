@@ -190,7 +190,7 @@ async function deleteDocument() {
                   {{ item.title }}
                   <UBadge
                     v-if="item.isProcessing"
-                    size="xs"
+                    size="sm"
                     variant="soft"
                     :color="item.status === 'indexed' ? 'warning' : 'error'"
                   >

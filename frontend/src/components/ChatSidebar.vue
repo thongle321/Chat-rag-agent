@@ -79,7 +79,7 @@ function toggleColorMode() {
         block
         color="primary"
         variant="solid"
-        size="sm"
+        size="lg"
         :icon="'i-lucide-plus'"
         @click="handleNew"
       >
@@ -88,7 +88,7 @@ function toggleColorMode() {
     </div>
 
     <div class="px-3.5 pb-3">
-      <UInput v-model="search" icon="i-lucide-search" placeholder="Tìm trong lịch sử..." size="xs" />
+      <UInput v-model="search" icon="i-lucide-search" placeholder="Tìm trong lịch sử..." variant="none" size="sm" class="w-full rounded-sm" />
     </div>
 
     <div class="flex-1 overflow-y-auto px-2 pb-4">
