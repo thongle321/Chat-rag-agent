@@ -11,12 +11,16 @@ import App from './App.vue'
 
 import DefaultLayout from './layouts/default.vue'
 import PublicLayout from './layouts/public.vue'
+import NotFoundPage from './pages/404.vue'
+import AdminIndex from './pages/admin/index.vue'
 
 const autoAdmin = autoRoutes.find(r => r.path === '/admin')
 const loginChild = autoAdmin?.children?.find(c => c.path === 'login')
 const adminChildren = (autoAdmin?.children || []).filter(c => c.path !== 'login')
 
 const routes = [
+  // Standalone login — before /admin to avoid catch-all
+  loginChild ? { ...loginChild, path: '/admin/login' } : null,
   {
     path: '/',
     component: PublicLayout,
@@ -25,11 +29,14 @@ const routes = [
   {
     path: '/admin',
     component: DefaultLayout,
-    children: adminChildren
+    children: [
+      { path: '', component: AdminIndex },
+      ...adminChildren,
+      { path: ':pathMatch(.*)', redirect: '/404' }
+    ]
   },
-  // Standalone login — no sidebar layout
-  loginChild ? { ...loginChild, path: '/admin/login' } : null,
-  autoRoutes.find(r => r.path === '/:all(.*)')
+  { path: '/404', name: 'NotFound', component: NotFoundPage },
+  { path: '/:all(.*)', redirect: '/404' }
 ].filter(Boolean)
 
 const app = createApp(App)
@@ -46,10 +53,10 @@ app.use(ui)
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  if (auth.token && !auth.user) {
+    await auth.fetchUser()
+  }
   if (to.path.startsWith('/admin') && to.path !== '/admin/login') {
-    if (auth.token && !auth.user) {
-      await auth.fetchUser()
-    }
     if (!auth.isAuthenticated) return '/admin/login'
   }
   if (to.path === '/admin/login' && auth.isAuthenticated) return '/admin/'

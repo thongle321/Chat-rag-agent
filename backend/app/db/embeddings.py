@@ -1,8 +1,6 @@
-import os
 from functools import lru_cache
-from typing import ClassVar
 
-from langchain_huggingface import HuggingFaceEmbeddings
+from fastembed import TextEmbedding
 
 from app.core.config import settings
 from app.utils.logger import get_logger
@@ -10,23 +8,20 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class PrefixedEmbeddings(HuggingFaceEmbeddings):
-    QUERY_INSTRUCTION: ClassVar[str] = "Instruct: Given a question, retrieve passages that can help answer the question.\nQuery: "
+class FastEmbeddings:
+    def __init__(self, model_name: str):
+        self._model = TextEmbedding(model_name=model_name)
 
-    def embed_query(self, text):
-        return super().embed_query(f"{self.QUERY_INSTRUCTION}{text}")
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return list(self._model.embed(texts))
+
+    def embed_query(self, text: str) -> list[float]:
+        return next(self._model.query_embed(text))
 
 
 @lru_cache(maxsize=1)
-def get_embeddings() -> HuggingFaceEmbeddings:
-    """Return a cached HuggingFaceEmbeddings instance."""
+def get_embeddings() -> FastEmbeddings:
     logger.info("Loading embedding model: %s", settings.embedding_model)
-    if settings.hf_token:
-        os.environ["HF_TOKEN"] = settings.hf_token
-    embeddings = PrefixedEmbeddings(
-        model_name=settings.embedding_model,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True, "batch_size": 32},
-    )
+    embeddings = FastEmbeddings(model_name=settings.embedding_model)
     logger.info("Embedding model loaded.")
     return embeddings

@@ -11,9 +11,9 @@ class AISettingsResponse(BaseModel):
     ai_provider: str
     ollama_base_url: str
     ollama_model: str
-    has_ollama_key: bool
+    ollama_api_key: str = ""
     openai_model: str
-    has_openai_key: bool
+    openai_api_key: str = ""
 
 
 class AISettingsUpdate(BaseModel):
@@ -46,9 +46,9 @@ async def get_ai_settings(user: User = current_active_user):
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
-        has_ollama_key=bool(settings.ollama_api_key),
+        ollama_api_key=settings.ollama_api_key or "",
         openai_model=settings.openai_model,
-        has_openai_key=bool(settings.openai_api_key),
+        openai_api_key=settings.openai_api_key or "",
     )
 
 
@@ -81,9 +81,9 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
-        has_ollama_key=bool(settings.ollama_api_key),
+        ollama_api_key=settings.ollama_api_key or "",
         openai_model=settings.openai_model,
-        has_openai_key=bool(settings.openai_api_key),
+        openai_api_key=settings.openai_api_key or "",
     )
 
 

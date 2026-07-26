@@ -65,10 +65,13 @@ def _get_model() -> BaseChatModel:
     provider = settings.ai_provider.lower()
     if provider == "ollama":
         from langchain_ollama import ChatOllama
+        client_kwargs = {}
+        if settings.ollama_api_key:
+            client_kwargs["headers"] = {"Authorization": f"Bearer {settings.ollama_api_key}"}
         return ChatOllama(
             model=settings.ollama_model,
             base_url=settings.ollama_base_url or "http://localhost:11434",
-            api_key=settings.ollama_api_key or None,
+            client_kwargs=client_kwargs,
         )
     if provider == "openai":
         from langchain_openai import ChatOpenAI

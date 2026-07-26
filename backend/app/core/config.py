@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:31b-cloud"
 
     # Hugging Face
-    hf_token: str = ""
+    hf_token: str = " "
 
     # Embeddings (local, no API key needed)
-    embedding_model: str = "codefuse-ai/F2LLM-v2-80M"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     # System prompt for the RAG agent
     context_prompt: str = (

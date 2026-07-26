@@ -6,9 +6,9 @@ export interface AISettings {
   ai_provider: string
   ollama_base_url: string
   ollama_model: string
-  has_ollama_key: boolean
+  ollama_api_key: string
   openai_model: string
-  has_openai_key: boolean
+  openai_api_key: string
 }
 
 export interface TestResult {
@@ -21,9 +21,9 @@ export const useSettingsStore = defineStore('settings', () => {
     ai_provider: 'ollama',
     ollama_base_url: '',
     ollama_model: '',
-    has_ollama_key: false,
+    ollama_api_key: '',
     openai_model: '',
-    has_openai_key: false,
+    openai_api_key: '',
   })
   const loading = ref(false)
   const error = ref('')
