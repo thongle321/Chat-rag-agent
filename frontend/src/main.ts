@@ -11,33 +11,30 @@ import App from './App.vue'
 
 import DefaultLayout from './layouts/default.vue'
 import PublicLayout from './layouts/public.vue'
-import NotFoundPage from './pages/404.vue'
-import AdminIndex from './pages/admin/index.vue'
+
+// ponytail: lazy import matches auto-router's dynamic imports
+const NotFoundPage = () => import('./pages/404.vue')
+// ponytail: /admin/login as standalone to avoid catch-all swallowing it
+const AdminLogin = () => import('./pages/admin/login.vue')
 
 const autoAdmin = autoRoutes.find(r => r.path === '/admin')
-const loginChild = autoAdmin?.children?.find(c => c.path === 'login')
-const adminChildren = (autoAdmin?.children || []).filter(c => c.path !== 'login')
+const adminChildren = (autoAdmin?.children || []).filter(c => c.path !== 'login' && c.path !== '')
 
 const routes = [
   // Standalone login — before /admin to avoid catch-all
-  loginChild ? { ...loginChild, path: '/admin/login' } : null,
-  {
-    path: '/',
-    component: PublicLayout,
-    children: autoRoutes.filter(r => r.path === '/')
-  },
+  { path: '/admin/login', component: AdminLogin },
+  ...autoRoutes.filter(r => r.path !== '/admin'),
   {
     path: '/admin',
     component: DefaultLayout,
     children: [
-      { path: '', component: AdminIndex },
       ...adminChildren,
       { path: ':pathMatch(.*)', redirect: '/404' }
     ]
   },
   { path: '/404', name: 'NotFound', component: NotFoundPage },
   { path: '/:all(.*)', redirect: '/404' }
-].filter(Boolean)
+]
 
 const app = createApp(App)
 const head = createHead()
