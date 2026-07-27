@@ -136,7 +136,7 @@ class SpellingCorrector:
     def _is_valid_token(token: str) -> bool:
         if re.match(r'^\d+(\.\d+)?$', token):
             return False
-        if "_" in token and ner(token.replace("_", " "))[0][1] == "Np":
+        if "_" in token and (ents := ner(token.replace("_", " "))) and ents[0][1] == "Np":
             return False
         if re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", token):
             return False

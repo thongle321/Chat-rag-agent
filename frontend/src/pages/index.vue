@@ -23,7 +23,11 @@ function closeSidebarOnMobile() {
 }
 
 async function handleSend(question: string) {
-  await chatStore.sendMessage(question)
+  try {
+    await chatStore.sendMessage(question)
+  } catch {
+    // error is already displayed via chatStore.error
+  }
   await nextTick()
   if (chatWindow.value) {
     chatWindow.value.scrollTop = chatWindow.value.scrollHeight

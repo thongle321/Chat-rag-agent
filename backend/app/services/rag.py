@@ -71,6 +71,8 @@ def _get_model() -> BaseChatModel:
         return ChatOllama(
             model=settings.ollama_model,
             base_url=settings.ollama_base_url or "http://localhost:11434",
+            timeout=300,
+            num_predict=4096,
             client_kwargs=client_kwargs,
         )
     if provider == "openai":
@@ -125,7 +127,7 @@ def _get_agent():
         raise RuntimeError("Checkpointer not initialized. Call get_checkpointer() first.")
 
     system_msg = settings.context_prompt.strip()
-    key = f"{settings.ai_provider}:{settings.ollama_model}:{settings.openai_model}:{system_msg}"
+    key = f"{settings.ai_provider}:{settings.ollama_model}:{settings.openai_model}:{settings.ollama_base_url}:{system_msg}"
 
     if _cached_agent is not None and _cached_agent_key == key:
         return _cached_agent

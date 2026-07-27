@@ -198,7 +198,6 @@ export const useChatStore = defineStore('chat', () => {
       return data
     } catch (err: any) {
       error.value = getErrorMessage(err)
-      throw err
     } finally {
       loading.value = false
     }

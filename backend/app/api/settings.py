@@ -1,10 +1,13 @@
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.session import get_async_session
 from app.services.user_manager import current_active_user
 from app.models.user import User
+from app.services.ai_settings import save_ai_settings
 
 
 class AISettingsResponse(BaseModel):
@@ -41,7 +44,16 @@ router = APIRouter()
 
 
 @router.get("/ai", response_model=AISettingsResponse)
-async def get_ai_settings(user: User = current_active_user):
+async def get_ai_settings(user: User = current_active_user, session: AsyncSession = Depends(get_async_session)):
+    from app.services.ai_settings import get_ai_settings as load_db_settings
+    db = await load_db_settings(session)
+    if db:
+        settings.ai_provider = db["ai_provider"]
+        settings.ollama_base_url = db["ollama_base_url"]
+        settings.ollama_model = db["ollama_model"]
+        settings.ollama_api_key = db["ollama_api_key"]
+        settings.openai_model = db["openai_model"]
+        settings.openai_api_key = db["openai_api_key"]
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
@@ -53,7 +65,7 @@ async def get_ai_settings(user: User = current_active_user):
 
 
 @router.put("/ai", response_model=AISettingsResponse)
-async def update_ai_settings(body: AISettingsUpdate, user: User = current_active_user):
+async def update_ai_settings(body: AISettingsUpdate, user: User = current_active_user, session: AsyncSession = Depends(get_async_session)):
     if body.ai_provider is not None:
         if body.ai_provider not in ("ollama", "openai"):
             raise HTTPException(status_code=400, detail="ai_provider must be 'ollama' or 'openai'")
@@ -76,6 +88,15 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
 
     if body.openai_model is not None:
         settings.openai_model = body.openai_model
+
+    await save_ai_settings(session, {
+        "ai_provider": settings.ai_provider,
+        "ollama_base_url": settings.ollama_base_url,
+        "ollama_model": settings.ollama_model,
+        "ollama_api_key": settings.ollama_api_key,
+        "openai_model": settings.openai_model,
+        "openai_api_key": settings.openai_api_key,
+    })
 
     return AISettingsResponse(
         ai_provider=settings.ai_provider,

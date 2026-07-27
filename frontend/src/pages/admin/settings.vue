@@ -131,7 +131,7 @@ async function save() {
             <UFormField label="Base URL" required :error="fieldErrors.ollama_base_url">
               <UInput v-model="form.ollama_base_url" placeholder="http://localhost:11434" :disabled="saving" class="w-full" />
             </UFormField>
-            <UFormField label="API Key">
+            <UFormField label="API Key" required>
               <UInput
                 v-model="form.ollama_api_key"
                 placeholder="ollama-api-key"

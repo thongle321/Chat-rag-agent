@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
 from app.channels.facebook import close_client
-from app.db.session import create_db_and_tables
+from app.db.session import async_session_factory, create_db_and_tables
 from app.services.rag import close_checkpointer, get_checkpointer
 from app.services.seed import seed_admin_user
 
@@ -20,6 +20,17 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     await seed_admin_user()
     await get_checkpointer()
+
+    async with async_session_factory() as session:
+        from app.services.ai_settings import get_ai_settings
+        db = await get_ai_settings(session)
+        if db:
+            settings.ai_provider = db["ai_provider"]
+            settings.ollama_base_url = db["ollama_base_url"]
+            settings.ollama_model = db["ollama_model"]
+            settings.ollama_api_key = db["ollama_api_key"]
+            settings.openai_model = db["openai_model"]
+            settings.openai_api_key = db["openai_api_key"]
 
     yield
 
