@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import api from '../../api'
 
-const router = useRouter()
-
 const dashStats = ref({ total_documents: 0, total_chunks: 0, total_sessions: 0, total_queries: 0 })
 
 const stats = computed(() => [
@@ -12,8 +10,6 @@ const stats = computed(() => [
   { label: 'Queries', value: dashStats.value.total_queries, icon: 'i-lucide-search', color: 'warning' as const },
 ])
 
-const recentSessions = ref<any[]>([])
-
 const health = ref({ api: false, vector_store: false })
 
 onMounted(async () => {
@@ -22,12 +18,6 @@ onMounted(async () => {
     dashStats.value = data
   } catch {
     // keep defaults
-  }
-  try {
-    const { data } = await api.get('/chat/sessions')
-    recentSessions.value = data.slice(0, 5)
-  } catch {
-    // keep empty
   }
   try {
     const { data } = await api.get('/health/detailed')
@@ -65,33 +55,7 @@ onMounted(async () => {
           </UCard>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <UCard class="lg:col-span-2">
-            <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-bell" class="text-primary" />
-                <span class="font-semibold">Recent Activity</span>
-              </div>
-            </template>
-
-            <div v-if="recentSessions.length">
-              <div
-                v-for="session in recentSessions"
-                :key="session.id"
-                class="flex items-center gap-2 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                @click="router.push('/')"
-              >
-                <UIcon name="i-lucide-message-square" class="text-primary" />
-                <span class="flex-1 truncate text-sm">{{ session.title }}</span>
-                <span class="text-xs text-muted shrink-0">{{ session.message_count }} msgs</span>
-              </div>
-            </div>
-            <div v-else class="flex flex-col items-center justify-center py-8">
-              <UIcon name="i-lucide-inbox" class="text-4xl text-muted mb-2" />
-              <p class="text-muted">No data</p>
-            </div>
-          </UCard>
-
+        <div class="grid grid-cols-1 lg:grid-cols-1 gap-6">
           <UCard>
             <template #header>
               <div class="flex items-center gap-2">

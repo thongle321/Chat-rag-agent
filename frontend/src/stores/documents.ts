@@ -11,7 +11,6 @@ export interface DocumentInfo {
 
 export interface UploadResult {
   status: string
-  document_id: string
   message: string
 }
 

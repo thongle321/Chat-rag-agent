@@ -160,9 +160,9 @@ async function deleteDocument() {
           <UFileUpload
             v-model="selectedFiles"
             multiple
-            accept=".txt,.md,.csv,.json,.pdf"
+            accept=".txt,.md,.csv,.json,.pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp"
             label="Drop files here"
-            description="Supports TXT, MD, CSV, JSON, PDF"
+            description="Supports TXT, MD, CSV, JSON, PDF, PNG, JPG, TIFF, BMP, WebP"
             layout="list"
             class="w-full"
           />

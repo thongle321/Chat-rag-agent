@@ -151,8 +151,8 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         agent = _get_agent()
 
         retriever = vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 5},
+            search_type="mmr",
+            search_kwargs={"k": 5, "fetch_k": 20, "lambda_mult": 0.5},
         )
         docs = retriever.invoke(question)
         context = _format_context(docs)
