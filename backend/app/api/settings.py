@@ -44,16 +44,7 @@ router = APIRouter()
 
 
 @router.get("/ai", response_model=AISettingsResponse)
-async def get_ai_settings(user: User = current_active_user, session: AsyncSession = Depends(get_async_session)):
-    from app.services.ai_settings import get_ai_settings as load_db_settings
-    db = await load_db_settings(session)
-    if db:
-        settings.ai_provider = db["ai_provider"]
-        settings.ollama_base_url = db["ollama_base_url"]
-        settings.ollama_model = db["ollama_model"]
-        settings.ollama_api_key = db["ollama_api_key"]
-        settings.openai_model = db["openai_model"]
-        settings.openai_api_key = db["openai_api_key"]
+async def get_ai_settings(user: User = current_active_user):
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,

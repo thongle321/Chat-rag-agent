@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.core.config import settings
-from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
+from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
 from app.channels.facebook import close_client
 from app.db.session import async_session_factory, create_db_and_tables
@@ -47,7 +47,6 @@ app = FastAPI(
 
 # Add middleware (last added = first executed)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestIDMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(

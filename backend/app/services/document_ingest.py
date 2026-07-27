@@ -39,7 +39,8 @@ SPLITTER = RecursiveCharacterTextSplitter(
 TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".xml"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
-_PARSER = LiteParse(output_format="markdown", ocr_language="vie+eng")
+_CHEAP_PARSER = LiteParse(output_format="markdown")
+_OCR_PARSER = LiteParse(output_format="markdown", ocr_language="vie+eng")
 
 
 def _load_file(file_path: Path) -> list[Document]:
@@ -47,12 +48,13 @@ def _load_file(file_path: Path) -> list[Document]:
 
     try:
         if suffix == ".pdf":
-            pages = _PARSER.is_complex(file_path)
-            n_ocr = sum(1 for p in pages if p.needs_ocr)
-            if n_ocr:
-                logger.info("OCR %d/%d pages: %s", n_ocr, len(pages), file_path.name)
-        if suffix == ".pdf" or suffix in IMAGE_EXTENSIONS:
-            result = _PARSER.parse(file_path)
+            pages = _CHEAP_PARSER.is_complex(file_path)
+            parser = _OCR_PARSER if any(p.needs_ocr for p in pages) else _CHEAP_PARSER
+            result = parser.parse(file_path)
+            text = get_spelling_corrector().fix_spelling(result.text)
+            docs = [Document(page_content=text, metadata={})]
+        elif suffix in IMAGE_EXTENSIONS:
+            result = _OCR_PARSER.parse(file_path)
             text = get_spelling_corrector().fix_spelling(result.text)
             docs = [Document(page_content=text, metadata={})]
         elif suffix in TEXT_EXTENSIONS:

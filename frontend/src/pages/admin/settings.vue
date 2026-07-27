@@ -29,13 +29,7 @@ const settings = computed(() => settingsStore.settings)
 
 onMounted(async () => {
   await settingsStore.fetchSettings()
-  const s = settingsStore.settings
-  form.value.ai_provider = s.ai_provider
-  form.value.ollama_base_url = s.ollama_base_url
-  form.value.ollama_model = s.ollama_model
-  form.value.ollama_api_key = s.ollama_api_key
-  form.value.openai_model = s.openai_model
-  form.value.openai_api_key = s.openai_api_key
+  Object.assign(form.value, settingsStore.settings)
 })
 
 async function testConnection() {
