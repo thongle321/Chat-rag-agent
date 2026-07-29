@@ -1,14 +1,17 @@
-import json
+import operator
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 import aiosqlite
-from pydantic_ai import Agent, RunContext
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph import END, START, StateGraph
+from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
+from typing_extensions import TypedDict
 
 from app.core.config import settings
 from app.db.vector_store import embed_model, query_similar
@@ -17,86 +20,18 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_checkpoint_db: aiosqlite.Connection | None = None
+
+class RAGState(TypedDict):
+    question: str
+    messages: Annotated[list[ModelMessage], operator.add]
+    source_docs: list[str]
 
 
-@dataclass
-class ChatDeps:
-    context: str
+# ponytail: single-node graph — add nodes (retrieval, re-rank, self-verify) when multistep logic lands
+_graph = None
 
 
-async def get_checkpointer() -> aiosqlite.Connection:
-    global _checkpoint_db
-    if _checkpoint_db is None:
-        ckpt_dir = Path(settings.upload_dir).resolve().parent / "checkpoints"
-        ckpt_dir.mkdir(parents=True, exist_ok=True)
-        _checkpoint_db = await aiosqlite.connect(str(ckpt_dir / "graph.db"))
-        await _checkpoint_db.execute(
-            "CREATE TABLE IF NOT EXISTS messages (session_id TEXT PRIMARY KEY, data TEXT)"
-        )
-        await _checkpoint_db.commit()
-        logger.info("SQLite checkpointer initialized at %s", ckpt_dir / "graph.db")
-    return _checkpoint_db
-
-
-async def close_checkpointer():
-    global _checkpoint_db
-    if _checkpoint_db is not None:
-        await _checkpoint_db.close()
-        _checkpoint_db = None
-        logger.info("Checkpointer closed")
-
-
-async def get_messages(session_id: str) -> list[dict]:
-    """Retrieve messages for a session from the checkpointer state.
-
-    Returns list of {role, content} dicts.
-    """
-    db = await get_checkpointer()
-    cursor = await db.execute("SELECT data FROM messages WHERE session_id = ?", (session_id,))
-    row = await cursor.fetchone()
-    return json.loads(row[0]) if row else []
-
-
-async def save_messages(session_id: str, messages: list[dict]):
-    """Save conversation history to the checkpointer."""
-    db = await get_checkpointer()
-    data = json.dumps(messages, ensure_ascii=False, default=str)
-    try:
-        await db.execute(
-            "INSERT OR REPLACE INTO messages (session_id, data) VALUES (?, ?)",
-            (session_id, data),
-        )
-        await db.commit()
-    except Exception:
-        logger.exception("Failed to save messages to checkpointer")
-
-
-def _dicts_to_model_messages(messages: list[dict]) -> list[ModelMessage]:
-    result = []
-    for msg in messages:
-        if msg["role"] == "user":
-            result.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
-        elif msg["role"] == "assistant":
-            result.append(ModelResponse(parts=[TextPart(content=msg["content"])]))
-    return result
-
-
-def _model_messages_to_dicts(new_messages: list[ModelMessage]) -> list[dict]:
-    result = []
-    for msg in new_messages:
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, UserPromptPart):
-                    result.append({"role": "user", "content": part.content})
-        elif isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, TextPart):
-                    result.append({"role": "assistant", "content": part.content})
-    return result
-
-
-def _get_model() -> tuple[OllamaModel | OpenAIChatModel, str]:
+def _get_model():
     provider = settings.ai_provider.lower()
     if provider == "ollama":
         return (
@@ -104,7 +39,7 @@ def _get_model() -> tuple[OllamaModel | OpenAIChatModel, str]:
                 settings.ollama_model,
                 provider=OllamaProvider(
                     base_url=settings.ollama_base_url or "http://localhost:11434",
-                    api_key=settings.ollama_api_key or None,
+                    api_key=(settings.ollama_api_key.get_secret_value() if hasattr(settings.ollama_api_key, 'get_secret_value') else settings.ollama_api_key) or None,
                 ),
             ),
             f"ollama/{settings.ollama_model}",
@@ -112,6 +47,19 @@ def _get_model() -> tuple[OllamaModel | OpenAIChatModel, str]:
     if provider == "openai":
         return OpenAIChatModel(settings.openai_model), f"openai/{settings.openai_model}"
     raise ValueError("No LLM configured")
+
+
+def _format_context(docs: list[dict]) -> str:
+    if not docs:
+        return "(No relevant documents found.)"
+    parts = []
+    for d in docs:
+        meta = d["metadata"]
+        title = meta.get("title", "unknown")
+        page = meta.get("page")
+        page_str = f", p.{page + 1}" if page is not None else ""
+        parts.append(f"[Source: {title}{page_str}]\n{d['content']}")
+    return "\n\n".join(parts)
 
 
 def _format_sources(docs: list[dict]) -> list[str]:
@@ -133,69 +81,72 @@ def _format_sources(docs: list[dict]) -> list[str]:
     return sources
 
 
-def _format_context(docs: list[dict]) -> str:
-    if not docs:
-        return "(No relevant documents found.)"
-    parts = []
-    for d in docs:
-        meta = d["metadata"]
-        title = meta.get("title", "unknown")
-        page = meta.get("page")
-        page_str = f", p.{page + 1}" if page is not None else ""
-        parts.append(f"[Source: {title}{page_str}]\n{d['content']}")
-    return "\n\n".join(parts)
+def _last_output(messages: list[ModelMessage]) -> str:
+    return next((p.content for m in reversed(messages) if isinstance(m, ModelResponse) for p in m.parts if isinstance(p, TextPart)), "")
 
 
-def _get_agent() -> Agent:
-    if _checkpoint_db is None:
-        raise RuntimeError("Checkpointer not initialized. Call get_checkpointer() first.")
+async def get_messages(session_id: str) -> list[dict]:
+    g = await get_graph()
+    snap = await g.aget_state({"configurable": {"thread_id": session_id}})
+    msgs = snap.values.get("messages", [])
+    result = []
+    for m in msgs:
+        if isinstance(m, ModelRequest):
+            for p in m.parts:
+                if isinstance(p, UserPromptPart):
+                    result.append({"role": "user", "content": p.content})
+        elif isinstance(m, ModelResponse):
+            for p in m.parts:
+                if isinstance(p, TextPart):
+                    result.append({"role": "assistant", "content": p.content})
+    return result
 
-    system_msg = settings.context_prompt.strip()
 
-    agent = Agent(
-        _get_model()[0],
-        system_prompt=system_msg,
-        deps_type=ChatDeps,
-        name="rag_agent",
-    )
+async def answer_node(state: RAGState) -> dict:
+    model, _ = _get_model()
+    query_embedding = embed_model.embed_query(state["question"])
+    docs = query_similar(query_embedding, k=5)
+    context = _format_context(docs)
+    full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
+    agent = Agent(model, system_prompt=full_prompt, name="rag_agent")
+    result = await agent.run(state["question"], message_history=state.get("messages", []))
+    return {"messages": result.new_messages(), "source_docs": _format_sources(docs)}
 
-    @agent.system_prompt
-    def _add_context(ctx: RunContext[ChatDeps]) -> str:
-        return f"\nRelevant context from the knowledge base:\n\n{ctx.deps.context}"
 
-    return agent
+async def get_graph():
+    global _graph
+    if _graph is not None:
+        return _graph
+    db_path = Path(settings.upload_dir).resolve().parent / "checkpoints" / "graph.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = await aiosqlite.connect(str(db_path))
+    checkpointer = AsyncSqliteSaver(conn)
+    builder = StateGraph(RAGState)
+    builder.add_node("answer", answer_node)
+    builder.add_edge(START, "answer")
+    builder.add_edge("answer", END)
+    _graph = builder.compile(checkpointer=checkpointer)
+    logger.info("Graph compiled with SQLite checkpointer at %s", db_path)
+    return _graph
 
 
 async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
     _, model_name = _get_model()
-
     try:
         sid = session_id or str(uuid.uuid4())
-        agent = _get_agent()
-
-        history = await get_messages(sid)
-        pydantic_history = _dicts_to_model_messages(history)
-
-        query_embedding = embed_model.embed_query(question)
-        docs = query_similar(query_embedding, k=5)
-        context = _format_context(docs)
-        deps = ChatDeps(context=context)
-
-        result = await agent.run(question, deps=deps, message_history=pydantic_history)
-
-        new_dicts = _model_messages_to_dicts(result.new_messages())
-        all_messages = history + new_dicts
-        await save_messages(sid, all_messages)
-
+        g = await get_graph()
+        state = await g.ainvoke(
+            {"question": question},
+            {"configurable": {"thread_id": sid}},
+        )
         return ChatResponse(
             answer_id=str(uuid.uuid4()),
-            answer=result.output or "",
-            source_documents=_format_sources(docs),
+            answer=_last_output(state.get("messages", [])),
+            source_documents=state.get("source_docs", []),
             model=model_name,
             session_id=sid,
         )
     except Exception:
-        # ponytail: broad except intentional for chat UX — all errors become friendly responses
         logger.exception("Chat failed")
         return ChatResponse(
             answer_id=str(uuid.uuid4()),

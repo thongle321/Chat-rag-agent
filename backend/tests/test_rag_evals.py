@@ -4,14 +4,13 @@ import pytest
 from pydantic_evals import Dataset
 from pydantic_evals.evaluators import IsInstance
 
-from app.services.rag import answer_question, get_checkpointer
+from app.services.rag import answer_question, get_graph
 
 from tests.eval_dataset import cases
 from tests.evaluators import OllamaJudge
 
 
 async def eval_task(question: str) -> str:
-    await get_checkpointer()
     result = await answer_question(question)
     return result.answer
 

@@ -2,7 +2,7 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -51,10 +51,14 @@ async def get_ai_settings(user: User = current_active_user):
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
-        ollama_api_key=settings.ollama_api_key or "",
+        ollama_api_key=_get_secret_value(settings.ollama_api_key),
         openai_model=settings.openai_model,
-        openai_api_key=settings.openai_api_key or "",
+        openai_api_key=_get_secret_value(settings.openai_api_key),
     )
+
+
+def _get_secret_value(v):
+    return v.get_secret_value() if hasattr(v, 'get_secret_value') else v or ""
 
 
 @router.put("/ai", response_model=AISettingsResponse)
@@ -72,10 +76,10 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
         settings.ollama_model = body.ollama_model
 
     if body.ollama_api_key is not None:
-        settings.ollama_api_key = body.ollama_api_key
+        settings.ollama_api_key = SecretStr(body.ollama_api_key)
 
     if body.openai_api_key is not None:
-        settings.openai_api_key = body.openai_api_key
+        settings.openai_api_key = SecretStr(body.openai_api_key)
 
     if body.openai_model is not None:
         settings.openai_model = body.openai_model
@@ -84,18 +88,18 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
         "ai_provider": settings.ai_provider,
         "ollama_base_url": settings.ollama_base_url,
         "ollama_model": settings.ollama_model,
-        "ollama_api_key": settings.ollama_api_key,
+        "ollama_api_key": _get_secret_value(settings.ollama_api_key),
         "openai_model": settings.openai_model,
-        "openai_api_key": settings.openai_api_key,
+        "openai_api_key": _get_secret_value(settings.openai_api_key),
     })
 
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=settings.ollama_model,
-        ollama_api_key=settings.ollama_api_key or "",
+        ollama_api_key=_get_secret_value(settings.ollama_api_key),
         openai_model=settings.openai_model,
-        openai_api_key=settings.openai_api_key or "",
+        openai_api_key=_get_secret_value(settings.openai_api_key),
     )
 
 
@@ -103,8 +107,8 @@ async def update_ai_settings(body: AISettingsUpdate, user: User = current_active
 async def test_connection(body: TestConnectionRequest, user: User = current_active_user):
     provider = (body.provider or settings.ai_provider).lower()
     ollama_base_url = body.ollama_base_url or settings.ollama_base_url or "http://localhost:11434"
-    ollama_key = body.ollama_api_key or settings.ollama_api_key
-    openai_key = body.openai_api_key or settings.openai_api_key
+    ollama_key = body.ollama_api_key or _get_secret_value(settings.ollama_api_key)
+    openai_key = body.openai_api_key or _get_secret_value(settings.openai_api_key)
 
     if provider == "ollama":
         headers = {}
@@ -112,8 +116,13 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
             headers["Authorization"] = f"Bearer {ollama_key}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{ollama_base_url}/api/tags", headers=headers)
-                resp.raise_for_status()
+                resp = await client.post(
+                    f"{ollama_base_url}/api/chat",
+                    headers=headers,
+                    json={"model": "placeholder", "messages": [{"role": "user", "content": "hi"}], "stream": False},
+                )
+                if resp.status_code == 401:
+                    return TestConnectionResponse(ok=False, message="Invalid API key")
                 return TestConnectionResponse(ok=True, message=f"Connected to Ollama at {ollama_base_url}")
         except httpx.ConnectError:
             return TestConnectionResponse(ok=False, message=f"Cannot connect to Ollama at {ollama_base_url}")

@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-5.5"
     ollama_api_key: SecretStr = SecretStr("")
-    ollama_base_url: str = "https://ollama.com"
-    ollama_model: str = "gemma4:31b"
+    ollama_base_url: str = "https://ollama.com/v1"
+    ollama_model: str = "gemma4:31b-cloud"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     context_prompt: str = (
         "You are a knowledgeable assistant for a private document knowledge base.\n"

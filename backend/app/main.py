@@ -8,7 +8,7 @@ from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
 from app.channels.facebook import close_client
 from app.db.session import async_session_factory, create_db_and_tables
-from app.services.rag import close_checkpointer, get_checkpointer
+from app.services.rag import get_graph
 from app.services.seed import seed_admin_user
 
 
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
     await create_db_and_tables()
     await seed_admin_user()
-    await get_checkpointer()
+    await get_graph()
 
     async with async_session_factory() as session:
         from app.services.ai_settings import get_ai_settings
@@ -35,7 +35,6 @@ async def lifespan(app: FastAPI):
     yield
 
     await close_client()
-    await close_checkpointer()
 
 
 app = FastAPI(

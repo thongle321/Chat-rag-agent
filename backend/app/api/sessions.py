@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_async_session
 from app.models.schemas import SessionDetail, SessionMessage
 from app.models.session import ChatSession
-from app.services.rag import get_checkpointer, get_messages
+from app.services.rag import get_graph, get_messages
 
 router = APIRouter()
 
@@ -31,6 +31,5 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_async_s
     await db.execute(delete(ChatSession).where(ChatSession.id == session_id))
     await db.commit()
 
-    db = await get_checkpointer()
-    await db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
-    await db.commit()
+    g = await get_graph()
+    await g.checkpointer.adelete_thread(session_id)
