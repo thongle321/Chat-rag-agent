@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,11 +12,20 @@ from app.db.session import async_session_factory, create_db_and_tables
 from app.services.rag import get_graph
 from app.services.seed import seed_admin_user
 
+import logfire
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not settings.jwt_secret_key:
         raise RuntimeError("JWT_SECRET_KEY must be set via env var in production")
+
+    logfire.configure(service_name='chat-rag-agent')
+    logfire.instrument_pydantic_ai()
+    logfire.instrument_fastapi(app)
+    logfire.instrument_httpx()
+    logfire.instrument_sqlalchemy()
+    logging.basicConfig(handlers=[logfire.LogfireLoggingHandler()], force=True)
 
     await create_db_and_tables()
     await seed_admin_user()

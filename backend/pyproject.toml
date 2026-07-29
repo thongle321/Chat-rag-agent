@@ -23,6 +23,7 @@ dependencies = [
     "pydantic-evals[logfire]>=0.1.0",
     "langgraph>=1.2.10",
     "langgraph-checkpoint-sqlite>=3.1.0",
+    "logfire[fastapi,httpx,sqlalchemy]",
 ]
 
 [tool.pytest.ini_options]
