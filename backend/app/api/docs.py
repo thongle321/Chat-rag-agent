@@ -47,7 +47,7 @@ async def upload_files(
 @router.get("", response_model=DocumentListResponse)
 async def list_all_documents(user: User = current_active_user):
     docs = list_documents()
-    return DocumentListResponse(documents=[DocumentInfo(**d) for d in docs])
+    return DocumentListResponse(documents=[DocumentInfo.model_validate(d) for d in docs])
 
 
 @router.delete("/{title}")

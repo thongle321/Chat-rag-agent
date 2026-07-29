@@ -18,7 +18,7 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_async_sess
         raise HTTPException(status_code=404, detail="Session not found")
 
     raw = await get_messages(session_id)
-    messages = [SessionMessage(**m) for m in raw]
+    messages = [SessionMessage.model_validate(m) for m in raw]
     return SessionDetail(messages=messages)
 
 
@@ -31,5 +31,6 @@ async def delete_session(session_id: str, db: AsyncSession = Depends(get_async_s
     await db.execute(delete(ChatSession).where(ChatSession.id == session_id))
     await db.commit()
 
-    cp = await get_checkpointer()
-    await cp.adelete_thread(session_id)
+    db = await get_checkpointer()
+    await db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+    await db.commit()

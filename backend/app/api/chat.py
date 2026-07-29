@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
@@ -23,8 +24,7 @@ async def query_chat(request: ChatRequest, db: AsyncSession = Depends(get_async_
             session_id = None
 
     if not session_id:
-        from langchain_core.utils.uuid import uuid7
-        sid = str(uuid7())
+        sid = str(uuid.uuid4())
         session = ChatSession(id=sid, title="Cuộc hội thoại mới")
         db.add(session)
         await db.commit()

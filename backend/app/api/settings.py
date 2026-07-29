@@ -1,3 +1,5 @@
+from typing import Literal
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -20,7 +22,7 @@ class AISettingsResponse(BaseModel):
 
 
 class AISettingsUpdate(BaseModel):
-    ai_provider: str | None = None
+    ai_provider: Literal["ollama", "openai"] | None = None
     ollama_base_url: str | None = None
     ollama_model: str | None = None
     ollama_api_key: str | None = None
@@ -58,8 +60,6 @@ async def get_ai_settings(user: User = current_active_user):
 @router.put("/ai", response_model=AISettingsResponse)
 async def update_ai_settings(body: AISettingsUpdate, user: User = current_active_user, session: AsyncSession = Depends(get_async_session)):
     if body.ai_provider is not None:
-        if body.ai_provider not in ("ollama", "openai"):
-            raise HTTPException(status_code=400, detail="ai_provider must be 'ollama' or 'openai'")
         settings.ai_provider = body.ai_provider
 
     if body.ollama_base_url is not None:

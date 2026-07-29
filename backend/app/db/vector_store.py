@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import chromadb
-from langchain_chroma import Chroma
 
 from app.core.config import settings
 from app.db.embeddings import get_embeddings
@@ -20,15 +19,28 @@ chroma_collection = chroma_client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"},
 )
 
-# LangChain Chroma vector store
 embed_model = get_embeddings()
-vector_store = Chroma(
-    client=chroma_client,
-    collection_name="documents",
-    embedding_function=embed_model,
-)
 
 logger.info("Vector store initialized. Document count: %d", chroma_collection.count())
+
+
+def query_similar(query_embedding: list[float], k: int = 5) -> list[dict]:
+    """Query ChromaDB for similar documents. Returns list of {content, metadata, score}."""
+    results = chroma_collection.query(
+        query_embeddings=[query_embedding],
+        n_results=k,
+        include=["documents", "metadatas", "distances"],
+    )
+    out = []
+    if not results["ids"]:
+        return out
+    for i in range(len(results["ids"][0])):
+        out.append({
+            "content": results["documents"][0][i],
+            "metadata": results["metadatas"][0][i] or {},
+            "score": results["distances"][0][i],
+        })
+    return out
 
 
 def document_count() -> int:

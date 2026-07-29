@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
 from app.db.vector_store import document_count, list_documents
+from app.models.schemas import StatsResponse
 from app.models.session import ChatSession
 from app.services.rag import get_messages
 
@@ -32,9 +33,9 @@ async def get_stats(db: AsyncSession = Depends(get_async_session)):
             # Count user messages only
             total_queries += sum(1 for m in msgs if m["role"] == "user")
 
-    return {
-        "total_documents": total_documents,
-        "total_chunks": total_chunks,
-        "total_sessions": total_sessions,
-        "total_queries": total_queries,
-    }
+    return StatsResponse(
+        total_documents=total_documents,
+        total_chunks=total_chunks,
+        total_sessions=total_sessions,
+        total_queries=total_queries,
+    )

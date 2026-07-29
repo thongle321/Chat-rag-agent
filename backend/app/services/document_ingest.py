@@ -1,9 +1,9 @@
 import uuid
 from pathlib import Path
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+from chonkie import RecursiveChunker
 from liteparse import LiteParse
+
 from app.core.config import settings
 from app.db.vector_store import chroma_collection, embed_model, delete_document
 from app.services.spelling_correction import get_spelling_corrector
@@ -13,37 +13,20 @@ logger = get_logger(__name__)
 
 BATCH_SIZE = 500
 
-MARKDOWN_SEPARATORS = [
-    "(?<=[.?!;:])\\s+",
-    "\n#{1,6} ",
-    "```\n",
-    "\n\\*\\*\\*+\n",
-    "\n---+\n",
-    "\n___+\n",
-    "\n\n",
-    "\n",
-    " ",
-    "",
-]
-SPLITTER = RecursiveCharacterTextSplitter(
-    chunk_size=1200,
-    chunk_overlap=200,
-    add_start_index=True,
-    strip_whitespace=True,
-    separators=MARKDOWN_SEPARATORS,
-    is_separator_regex=True,
-)
-
-
-
 TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".xml"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
 _CHEAP_PARSER = LiteParse(output_format="markdown")
 _OCR_PARSER = LiteParse(output_format="markdown", ocr_language="vie+eng")
 
+chunker = RecursiveChunker(
+    tokenizer="character",
+    chunk_size=1200,
+    min_characters_per_chunk=24,
+)
 
-def _load_file(file_path: Path) -> list[Document]:
+
+def _load_file(file_path: Path) -> tuple[str, dict] | None:
     suffix = file_path.suffix.lower()
 
     try:
@@ -52,46 +35,54 @@ def _load_file(file_path: Path) -> list[Document]:
             parser = _OCR_PARSER if any(p.needs_ocr for p in pages) else _CHEAP_PARSER
             result = parser.parse(file_path)
             text = get_spelling_corrector().fix_spelling(result.text)
-            docs = [Document(page_content=text, metadata={})]
         elif suffix in IMAGE_EXTENSIONS:
             result = _OCR_PARSER.parse(file_path)
             text = get_spelling_corrector().fix_spelling(result.text)
-            docs = [Document(page_content=text, metadata={})]
         elif suffix in TEXT_EXTENSIONS:
-            content = file_path.read_text(encoding="utf-8")
-            docs = [Document(page_content=content, metadata={})]
+            text = file_path.read_text(encoding="utf-8")
         else:
-            return []
+            return None
 
-        for doc in docs:
-            doc.metadata.update(title=file_path.name, source=file_path.name, type=suffix.lstrip("."))
-        return docs
+        base_metadata = {
+            "title": file_path.name,
+            "source": file_path.name,
+            "type": suffix.lstrip("."),
+        }
+        return text, base_metadata
     except Exception:
         logger.exception("Failed to load %s", file_path)
-        return []
+        return None
 
 def _index_file(file_path: Path) -> int:
     if not (file_path.is_file() and file_path.suffix.lower() in TEXT_EXTENSIONS | {".pdf"} | IMAGE_EXTENSIONS):
         return 0
 
-    docs = _load_file(file_path)
-    if not docs:
+    result = _load_file(file_path)
+    if result is None:
         return 0
 
-    chunks = SPLITTER.split_documents(docs)
+    text, base_metadata = result
+    chunks = chunker.chunk(text)
+    if not chunks:
+        return 0
+
+    chunk_texts = []
+    chunk_metadatas = []
     for i, chunk in enumerate(chunks):
-        chunk.metadata["chunk"] = i
-    texts = [c.page_content for c in chunks]
-    embeddings_list = embed_model.embed_documents(texts)
+        chunk_texts.append(chunk.text)
+        chunk_metadatas.append({**base_metadata, "chunk": i})
+
+    embeddings_list = embed_model.embed_documents(chunk_texts)
 
     for i in range(0, len(chunks), BATCH_SIZE):
-        batch = chunks[i : i + BATCH_SIZE]
+        batch_texts = chunk_texts[i : i + BATCH_SIZE]
         batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
+        batch_metadatas = chunk_metadatas[i : i + BATCH_SIZE]
         chroma_collection.add(
-            ids=[str(uuid.uuid4()) for _ in batch],
+            ids=[str(uuid.uuid4()) for _ in batch_texts],
             embeddings=batch_embeddings,
-            documents=[c.page_content for c in batch],
-            metadatas=[c.metadata for c in batch],
+            documents=batch_texts,
+            metadatas=batch_metadatas,
         )
 
     logger.info("Indexed %d chunks from %s", len(chunks), file_path.name)
