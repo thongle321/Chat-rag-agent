@@ -1,17 +1,16 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+
 from app.core.config import settings
 from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
-from app.channels.facebook import close_client
+from app.api.facebook import close_client
 from app.db.session import async_session_factory, create_db_and_tables
 from app.services.rag import get_graph
-from app.services.seed import seed_admin_user
 
 import logfire
 
@@ -29,7 +28,6 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(handlers=[logfire.LogfireLoggingHandler()], force=True)
 
     await create_db_and_tables()
-    await seed_admin_user()
     await get_graph()
 
     async with async_session_factory() as session:
@@ -42,10 +40,24 @@ async def lifespan(app: FastAPI):
             settings.ollama_api_key = db["ollama_api_key"]
             settings.openai_model = db["openai_model"]
             settings.openai_api_key = db["openai_api_key"]
+        from sqlalchemy import select
+        from fastapi_users.password import PasswordHelper
+        from app.models.user import User
+        result = await session.execute(select(User).where(User.email == "admin@example.com"))
+        if not result.scalar_one_or_none():
+            hashed = PasswordHelper().hash("admin123")
+            admin = User(
+                email="admin@example.com",
+                hashed_password=hashed,
+                role="admin",
+                is_active=True,
+                is_superuser=True,
+                is_verified=True,
+            )
+            session.add(admin)
+            await session.commit()
 
     yield
-
-    await close_client()
 
 
 app = FastAPI(
@@ -54,13 +66,6 @@ app = FastAPI(
     version=settings.version,
     lifespan=lifespan,
 )
-
-# Global exception handler for structured JSON error responses
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logging.exception("Unhandled exception on %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "An internal error occurred."})
-
 
 # Add middleware (last added = first executed)
 app.add_middleware(RequestIDMiddleware)

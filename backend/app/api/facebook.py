@@ -1,10 +1,10 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from httpx import AsyncClient
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.channels.facebook import mark_seen, send_message, typing_on
 from app.db.session import get_async_session
 from app.models.user import User
 from app.services.facebook_config import (
@@ -18,6 +18,57 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+
+FB_GRAPH_API = "https://graph.facebook.com/v25.0"
+
+_client: AsyncClient | None = None
+
+
+def _get_client() -> AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = AsyncClient(timeout=30)
+    return _client
+
+async def close_client() -> None:
+    global _client
+    if _client and not _client.is_closed:
+        await _client.aclose()
+        _client = None
+
+async def send_message(page_id: str, page_token: str, recipient_id: str, text: str) -> bool:
+    url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
+    payload = {
+        "messaging_type": "RESPONSE",
+        "recipient": {"id": recipient_id},
+        "message": {"text": text},
+    }
+    resp = await _get_client().post(url, params=params, json=payload)
+    if resp.status_code != 200:
+        logger.error("Facebook send failed: %s %s", resp.status_code, resp.text)
+        return False
+    logger.info("Facebook message sent to %s", recipient_id)
+    return True
+
+async def mark_seen(page_id: str, page_token: str, recipient_id: str) -> None:
+    url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
+    payload = {
+        "recipient": {"id": recipient_id},
+        "sender_action": "mark_seen",
+    }
+    await _get_client().post(url, params=params, json=payload)
+
+async def typing_on(page_id: str, page_token: str, recipient_id: str) -> None:
+    url = f"{FB_GRAPH_API}/{page_id}/messages"
+    params = {"access_token": page_token}
+    payload = {
+        "recipient": {"id": recipient_id},
+        "sender_action": "typing_on",
+    }
+    await _get_client().post(url, params=params, json=payload)
+
 
 router = APIRouter()
 
