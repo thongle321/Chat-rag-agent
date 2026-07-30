@@ -1,0 +1,44 @@
+=== DIFF ===
+diff --git a/backend/app/services/user_manager.py b/backend/app/services/user_manager.py
+index 4920c11..9b938a2 100644
+--- a/backend/app/services/user_manager.py
++++ b/backend/app/services/user_manager.py
+@@ -8,12 +8,19 @@ from fastapi_users.authentication import (
+     BearerTransport,
+     JWTStrategy,
+ )
++from fastapi_users.password import PasswordHelper
++from pwdlib import PasswordHash
++from pwdlib.hashers.argon2 import Argon2Hasher
+ 
+ from app.core.config import settings
+ from app.db.session import get_user_db
+ from app.models.user import User
+ 
+ 
++password_hash = PasswordHash((Argon2Hasher(),))
++password_helper = PasswordHelper(password_hash)
++
++
+ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+     reset_password_token_secret = settings.jwt_secret_key
+     verification_token_secret = settings.jwt_secret_key
+@@ -21,7 +28,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+ 
+ async def get_user_manager() -> AsyncGenerator[UserManager, None]:
+     async for user_db in get_user_db():
+-        yield UserManager(user_db)
++        yield UserManager(user_db, password_helper)
+ 
+ 
+ jwt_backend = AuthenticationBackend(
+@@ -35,4 +42,4 @@ jwt_backend = AuthenticationBackend(
+ 
+ fastapi_users = FastAPIUsers[User, uuid.UUID](get_user_manager, [jwt_backend])
+ 
+-current_active_user = Depends(fastapi_users.current_user(active=True))
++current_active_user = Depends(fastapi_users.current_user(active=True))
+\ No newline at end of file
+
+=== COMMIT ===
+4910166 feat: configure Argon2 password hasher via pwdlib PasswordHash

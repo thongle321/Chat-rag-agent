@@ -1,9 +1,11 @@
+import asyncio
 import operator
 import uuid
 from pathlib import Path
 from typing import Annotated
 
 import aiosqlite
+from fastapi import HTTPException
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from pydantic_ai import Agent
@@ -30,23 +32,31 @@ class RAGState(TypedDict):
 # ponytail: single-node graph — add nodes (retrieval, re-rank, self-verify) when multistep logic lands
 _graph = None
 
+# ponytail: cached after first call; restart server after changing AI provider settings
+_model_instance = None
+_model_instance_name = None
+
 
 def _get_model():
+    global _model_instance, _model_instance_name
+    if _model_instance is not None:
+        return _model_instance, _model_instance_name
     provider = settings.ai_provider.lower()
     if provider == "ollama":
-        return (
-            OllamaModel(
-                settings.ollama_model,
-                provider=OllamaProvider(
-                    base_url=settings.ollama_base_url or "http://localhost:11434",
-                    api_key=(settings.ollama_api_key.get_secret_value() if hasattr(settings.ollama_api_key, 'get_secret_value') else settings.ollama_api_key) or None,
-                ),
+        _model_instance = OllamaModel(
+            settings.ollama_model,
+            provider=OllamaProvider(
+                base_url=settings.ollama_base_url or "http://localhost:11434",
+                api_key=(settings.ollama_api_key.get_secret_value() if hasattr(settings.ollama_api_key, 'get_secret_value') else settings.ollama_api_key) or None,
             ),
-            f"ollama/{settings.ollama_model}",
         )
-    if provider == "openai":
-        return OpenAIChatModel(settings.openai_model), f"openai/{settings.openai_model}"
-    raise ValueError("No LLM configured")
+        _model_instance_name = f"ollama/{settings.ollama_model}"
+    elif provider == "openai":
+        _model_instance = OpenAIChatModel(settings.openai_model)
+        _model_instance_name = f"openai/{settings.openai_model}"
+    else:
+        raise ValueError("No LLM configured")
+    return _model_instance, _model_instance_name
 
 
 def _format_context(docs: list[dict]) -> str:
@@ -109,7 +119,10 @@ async def answer_node(state: RAGState) -> dict:
     context = _format_context(docs)
     full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
     agent = Agent(model, system_prompt=full_prompt, name="rag_agent")
-    result = await agent.run(state["question"], message_history=state.get("messages", []))
+    result = await asyncio.wait_for(
+        agent.run(state["question"], message_history=state.get("messages", [])),
+        timeout=120.0,
+    )
     return {"messages": result.new_messages(), "source_docs": _format_sources(docs)}
 
 
@@ -147,11 +160,5 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
             session_id=sid,
         )
     except Exception:
-        logger.exception("Chat failed")
-        return ChatResponse(
-            answer_id=str(uuid.uuid4()),
-            answer="Sorry, I could not process your question.",
-            source_documents=[],
-            model="error",
-            session_id=session_id or "",
-        )
+        logger.exception("Chat failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail="I encountered an error while processing your request. Please try again.")
