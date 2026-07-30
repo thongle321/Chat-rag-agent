@@ -1,42 +1,67 @@
 <script setup lang="ts">
 import api, { getErrorMessage } from '../../api'
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
 const channels = ref<any[]>([])
 const loading = ref(true)
+
 const connectModalOpen = ref(false)
-const connectPageName = ref('')
-const connectPageId = ref('')
-const connectPageToken = ref('')
-const connectVerifyToken = ref('')
 const connectSaving = ref(false)
 const connectError = ref('')
 
 const editModalOpen = ref(false)
 const editLoading = ref(true)
-const editPageId = ref('')
-const editPageName = ref('')
-const editPageToken = ref('')
-const editVerifyToken = ref('')
 const editSaving = ref(false)
 const editError = ref('')
 
 const disconnectConfirmOpen = ref(false)
 const disconnecting = ref(false)
 
+const connectSchema = z.object({
+  page_name: z.string().min(1, 'Page name is required'),
+  page_id: z.string().min(1, 'Page ID is required'),
+  page_token: z.string().min(1, 'Page access token is required'),
+  verify_token: z.string().min(1, 'Verify token is required'),
+})
+type ConnectSchema = z.output<typeof connectSchema>
+const connectState = reactive<Partial<ConnectSchema>>({
+  page_name: '',
+  page_id: '',
+  page_token: '',
+  verify_token: '',
+})
+
+const editSchema = z.object({
+  page_name: z.string().min(1, 'Page name is required'),
+  page_token: z.string().min(1, 'Page access token is required'),
+  verify_token: z.string().min(1, 'Verify token is required'),
+})
+type EditSchema = z.output<typeof editSchema>
+const editState = reactive<Partial<EditSchema>>({
+  page_name: '',
+  page_token: '',
+  verify_token: '',
+})
+
+const editPageId = ref('')
+
 watch(connectModalOpen, (open) => {
   if (open) {
-    connectPageName.value = ''
-    connectPageId.value = ''
-    connectPageToken.value = ''
-    connectVerifyToken.value = ''
+    connectState.page_name = ''
+    connectState.page_id = ''
+    connectState.page_token = ''
+    connectState.verify_token = ''
     connectError.value = ''
   }
 })
 
 watch(editModalOpen, (open) => {
   if (open) {
+    editState.page_name = ''
+    editState.page_token = ''
+    editState.verify_token = ''
     editError.value = ''
-    editPageToken.value = ''
     loadEditConfig()
   }
 })
@@ -53,15 +78,15 @@ async function loadChannels() {
   }
 }
 
-async function handleConnect() {
+async function handleConnect(event: FormSubmitEvent<ConnectSchema>) {
   connectSaving.value = true
   connectError.value = ''
   try {
     await api.post('/facebook/config', {
-      page_id: connectPageId.value,
-      page_name: connectPageName.value || 'Facebook Page',
-      page_token: connectPageToken.value,
-      verify_token: connectVerifyToken.value,
+      page_id: event.data.page_id,
+      page_name: event.data.page_name || 'Facebook Page',
+      page_token: event.data.page_token,
+      verify_token: event.data.verify_token,
     })
     connectModalOpen.value = false
     await loadChannels()
@@ -77,9 +102,8 @@ async function loadEditConfig() {
   try {
     const { data } = await api.get('/facebook/config')
     editPageId.value = data.page_id
-    editPageName.value = data.page_name || 'Facebook Page'
-    editPageToken.value = ''
-    editVerifyToken.value = data.verify_token
+    editState.page_name = data.page_name || 'Facebook Page'
+    editState.verify_token = data.verify_token
   } catch {
     editModalOpen.value = false
   } finally {
@@ -87,15 +111,15 @@ async function loadEditConfig() {
   }
 }
 
-async function handleSave() {
+async function handleSave(event: FormSubmitEvent<EditSchema>) {
   editSaving.value = true
   editError.value = ''
   try {
     await api.post('/facebook/config', {
       page_id: editPageId.value,
-      page_name: editPageName.value || 'Facebook Page',
-      page_token: editPageToken.value,
-      verify_token: editVerifyToken.value,
+      page_name: event.data.page_name || 'Facebook Page',
+      page_token: event.data.page_token,
+      verify_token: event.data.verify_token,
     })
     editModalOpen.value = false
     await loadChannels()
@@ -181,30 +205,30 @@ onMounted(() => {
 
   <UModal v-model:open="connectModalOpen" title="Connect Channel" description="Connect your Facebook fanpage">
     <template #body>
-      <form id="connect-form" @submit.prevent="handleConnect" class="space-y-4">
-        <UFormField label="Page Name" hint="Display name for this channel" required>
-          <UInput v-model="connectPageName" placeholder="e.g. My Business Page" size="sm" class="w-full" />
+      <UForm id="connect-form" :schema="connectSchema" :state="connectState" class="space-y-4" @submit="handleConnect">
+        <UFormField name="page_name" label="Page Name" hint="Display name for this channel" required>
+          <UInput v-model="connectState.page_name" placeholder="e.g. My Business Page" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Page ID" hint="From Facebook Page Settings" required>
-          <UInput v-model="connectPageId" placeholder="e.g. 1234567890" size="sm" class="w-full" />
+        <UFormField name="page_id" label="Page ID" hint="From Facebook Page Settings" required>
+          <UInput v-model="connectState.page_id" placeholder="e.g. 1234567890" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Page Access Token" hint="Use a long-lived token for production" required>
-          <UInput v-model="connectPageToken" placeholder="Paste your Page Access Token" type="password" size="sm" class="w-full" />
+        <UFormField name="page_token" label="Page Access Token" hint="Use a long-lived token for production" required>
+          <UInput v-model="connectState.page_token" placeholder="Paste your Page Access Token" type="password" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Verify Token" hint="Must match the verification code in Facebook Developer Console" required>
-          <UInput v-model="connectVerifyToken" placeholder="e.g. my_verify_token" size="sm" class="w-full" />
+        <UFormField name="verify_token" label="Verify Token" hint="Must match the verification code in Facebook Developer Console" required>
+          <UInput v-model="connectState.verify_token" placeholder="e.g. my_verify_token" size="sm" class="w-full" />
         </UFormField>
 
-        <UAlert v-if="connectError" type="error" :description="connectError" />
-      </form>
+        <UAlert v-if="connectError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="connectError" />
+      </UForm>
     </template>
 
     <template #footer="{ close }">
       <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
-      <UButton type="submit" form="connect-form" label="Connect" :loading="connectSaving" :disabled="!connectPageId || !connectPageToken || !connectVerifyToken" />
+      <UButton type="submit" form="connect-form" label="Connect" :loading="connectSaving" />
     </template>
   </UModal>
 
@@ -214,7 +238,7 @@ onMounted(() => {
         <ULoader />
       </div>
 
-      <form v-else id="edit-form" @submit.prevent="handleSave" class="space-y-4">
+      <UForm v-else id="edit-form" :schema="editSchema" :state="editState" class="space-y-4" @submit="handleSave">
         <div class="flex items-center gap-3 mb-4">
           <div class="flex items-center justify-center size-10 rounded-lg bg-primary/10">
             <UIcon name="i-lucide-facebook" class="text-primary size-5" />
@@ -224,29 +248,29 @@ onMounted(() => {
           </div>
         </div>
 
-        <UFormField label="Page ID" hint="Cannot be changed">
+        <UFormField name="page_id" label="Page ID" hint="Cannot be changed">
           <UInput :model-value="editPageId" size="sm" class="w-full" disabled />
         </UFormField>
 
-        <UFormField label="Page Name" hint="Display name for this channel" required>
-          <UInput v-model="editPageName" placeholder="e.g. My Business Page" size="sm" class="w-full" />
+        <UFormField name="page_name" label="Page Name" hint="Display name for this channel" required>
+          <UInput v-model="editState.page_name" placeholder="e.g. My Business Page" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Page Access Token" hint="Long-lived token for production" required>
-          <UInput v-model="editPageToken" placeholder="Paste your Page Access Token" type="password" size="sm" class="w-full" />
+        <UFormField name="page_token" label="Page Access Token" hint="Long-lived token for production" required>
+          <UInput v-model="editState.page_token" placeholder="Paste your Page Access Token" type="password" size="sm" class="w-full" />
         </UFormField>
 
-        <UFormField label="Verify Token" hint="Must match the verification code in Facebook Developer Console" required>
-          <UInput v-model="editVerifyToken" placeholder="e.g. my_verify_token" size="sm" class="w-full" />
+        <UFormField name="verify_token" label="Verify Token" hint="Must match the verification code in Facebook Developer Console" required>
+          <UInput v-model="editState.verify_token" placeholder="e.g. my_verify_token" size="sm" class="w-full" />
         </UFormField>
 
-        <UAlert v-if="editError" type="error" :description="editError" />
-      </form>
+        <UAlert v-if="editError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="editError" />
+      </UForm>
     </template>
 
     <template #footer="{ close }">
       <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
-      <UButton v-if="!editLoading" type="submit" form="edit-form" label="Save" :loading="editSaving" :disabled="!editPageName || !editPageToken || !editVerifyToken" />
+      <UButton v-if="!editLoading" type="submit" form="edit-form" label="Save" :loading="editSaving" />
     </template>
   </UModal>
 

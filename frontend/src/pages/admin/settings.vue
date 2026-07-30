@@ -1,17 +1,31 @@
 <script setup lang="ts">
 import { useSettingsStore } from '../../stores/settings'
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
 const settingsStore = useSettingsStore()
 const toast = useToast()
 
 const saving = ref(false)
 const error = ref('')
-const fieldErrors = ref<Record<string, string>>({})
 const showOpenaiKey = ref(false)
 const showOllamaKey = ref(false)
 const testing = ref(false)
 
-const form = ref({
+const schema = z.object({
+  ai_provider: z.string(),
+  ollama_base_url: z.string().default(''),
+  ollama_model: z.string().default(''),
+  ollama_api_key: z.string().default(''),
+  openai_api_key: z.string().default(''),
+  openai_model: z.string().default(''),
+}).refine(
+  data => data.ai_provider !== 'ollama' || (data.ollama_base_url ?? '').trim().length > 0,
+  { message: 'Base URL is required', path: ['ollama_base_url'] }
+)
+
+type Schema = z.output<typeof schema>
+const state = reactive<Partial<Schema>>({
   ai_provider: 'ollama',
   ollama_base_url: '',
   ollama_model: '',
@@ -25,21 +39,19 @@ const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
 ]
 
-const settings = computed(() => settingsStore.settings)
-
 onMounted(async () => {
   await settingsStore.fetchSettings()
-  Object.assign(form.value, settingsStore.settings)
+  Object.assign(state, settingsStore.settings)
 })
 
 async function testConnection() {
   testing.value = true
   try {
     const result = await settingsStore.testConnection({
-      provider: form.value.ai_provider,
-      ollama_base_url: form.value.ollama_base_url || undefined,
-      ollama_api_key: form.value.ollama_api_key || undefined,
-      openai_api_key: form.value.openai_api_key || undefined,
+      provider: state.ai_provider,
+      ollama_base_url: state.ollama_base_url || undefined,
+      ollama_api_key: state.ollama_api_key || undefined,
+      openai_api_key: state.openai_api_key || undefined,
     })
     toast.add({
       title: result.ok ? 'Connected' : 'Connection failed',
@@ -53,29 +65,22 @@ async function testConnection() {
   }
 }
 
-async function save() {
-  fieldErrors.value = {}
+async function save(event: FormSubmitEvent<Schema>) {
   error.value = ''
-
-  if (form.value.ai_provider === 'ollama' && !form.value.ollama_base_url.trim()) {
-    fieldErrors.value.ollama_base_url = 'Base URL is required'
-    saving.value = false
-    return
-  }
 
   saving.value = true
   try {
     const payload: Record<string, string> = {
-      ai_provider: form.value.ai_provider,
-      ollama_base_url: form.value.ollama_base_url,
-      ollama_model: form.value.ollama_model,
-      openai_model: form.value.openai_model,
+      ai_provider: event.data.ai_provider,
+      ollama_base_url: event.data.ollama_base_url ?? '',
+      ollama_model: event.data.ollama_model ?? '',
+      openai_model: event.data.openai_model ?? '',
     }
-    if (form.value.ai_provider === 'ollama' && form.value.ollama_api_key) {
-      payload.ollama_api_key = form.value.ollama_api_key
+    if (event.data.ai_provider === 'ollama' && event.data.ollama_api_key) {
+      payload.ollama_api_key = event.data.ollama_api_key
     }
-    if (form.value.ai_provider === 'openai' && form.value.openai_api_key) {
-      payload.openai_api_key = form.value.openai_api_key
+    if (event.data.ai_provider === 'openai' && event.data.openai_api_key) {
+      payload.openai_api_key = event.data.openai_api_key
     }
     await settingsStore.updateSettings(payload)
     toast.add({
@@ -105,29 +110,29 @@ async function save() {
     </template>
 
     <template #body>
-      <div class="flex flex-col gap-4 sm:gap-6 lg:gap-8 w-full lg:max-w-2xl mx-auto">
+      <UForm :schema="schema" :state="state" class="flex flex-col gap-4 sm:gap-6 lg:gap-8 w-full lg:max-w-2xl mx-auto" @submit="save">
         <UCard>
           <template #header>
             <span class="font-semibold">AI Provider</span>
           </template>
 
-          <UFormField label="Provider">
-            <USelect v-model="form.ai_provider" :items="providerOptions" :disabled="saving" class="w-full" />
+          <UFormField name="ai_provider" label="Provider">
+            <USelect v-model="state.ai_provider" :items="providerOptions" :disabled="saving" class="w-full" />
           </UFormField>
         </UCard>
 
-        <UCard v-if="form.ai_provider === 'ollama'">
+        <UCard v-if="state.ai_provider === 'ollama'">
           <template #header>
             <span class="font-semibold">Ollama Configuration</span>
           </template>
 
           <div class="flex flex-col gap-4">
-            <UFormField label="Base URL" required :error="fieldErrors.ollama_base_url">
-              <UInput v-model="form.ollama_base_url" placeholder="http://localhost:11434" :disabled="saving" class="w-full" />
+            <UFormField name="ollama_base_url" label="Base URL" required>
+              <UInput v-model="state.ollama_base_url" placeholder="http://localhost:11434" :disabled="saving" class="w-full" />
             </UFormField>
-            <UFormField label="API Key" required>
+            <UFormField name="ollama_api_key" label="API Key">
               <UInput
-                v-model="form.ollama_api_key"
+                v-model="state.ollama_api_key"
                 placeholder="ollama-api-key"
                 :type="showOllamaKey ? 'text' : 'password'"
                 :disabled="saving"
@@ -138,21 +143,21 @@ async function save() {
                 </template>
               </UInput>
             </UFormField>
-            <UFormField label="Model Name" required>
-              <UInput v-model="form.ollama_model" placeholder="llama3.2" :disabled="saving" class="w-full" />
+            <UFormField name="ollama_model" label="Model Name" required>
+              <UInput v-model="state.ollama_model" placeholder="llama3.2" :disabled="saving" class="w-full" />
             </UFormField>
           </div>
         </UCard>
 
-        <UCard v-if="form.ai_provider === 'openai'">
+        <UCard v-if="state.ai_provider === 'openai'">
           <template #header>
             <span class="font-semibold">OpenAI Configuration</span>
           </template>
 
           <div class="flex flex-col gap-4">
-            <UFormField label="API Key" required>
+            <UFormField name="openai_api_key" label="API Key" required>
               <UInput
-                v-model="form.openai_api_key"
+                v-model="state.openai_api_key"
                 placeholder="sk-..."
                 :type="showOpenaiKey ? 'text' : 'password'"
                 :disabled="saving"
@@ -163,23 +168,23 @@ async function save() {
                 </template>
               </UInput>
             </UFormField>
-            <UFormField label="Model Name" required>
-              <UInput v-model="form.openai_model" placeholder="gpt-4o" :disabled="saving" class="w-full" />
+            <UFormField name="openai_model" label="Model Name" required>
+              <UInput v-model="state.openai_model" placeholder="gpt-4o" :disabled="saving" class="w-full" />
             </UFormField>
           </div>
         </UCard>
 
-        <UAlert v-if="error" type="error" :description="error" closable @close="error = ''" />
+        <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="error" closable @close="error = ''" />
 
         <div class="flex gap-2">
           <UButton :loading="testing" variant="outline" @click="testConnection">
             Test Connection
           </UButton>
-          <UButton :loading="saving" @click="save">
+          <UButton type="submit" :loading="saving">
             Save
           </UButton>
         </div>
-      </div>
+      </UForm>
     </template>
   </UDashboardPanel>
 </template>

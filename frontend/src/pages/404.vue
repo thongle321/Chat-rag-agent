@@ -1,9 +1,3 @@
 <template>
-  <div class="min-h-screen flex flex-col items-center justify-center bg-bg px-4">
-    <p class="text-7xl font-bold font-[var(--font-display)] text-muted mb-2">404</p>
-    <p class="text-lg text-muted mb-8">Page not found</p>
-    <UButton icon="i-lucide-arrow-left" to="/">
-      Go home
-    </UButton>
-  </div>
+  <UError :error="{ statusCode: 404, statusMessage: 'Page not found', message: 'The page you are looking for does not exist.' }" icon="i-lucide-file-x" redirect="/" />
 </template>

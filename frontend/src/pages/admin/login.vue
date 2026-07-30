@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '../../stores/auth'
+import { z } from 'zod'
+import type { FormSubmitEvent } from '@nuxt/ui'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -10,14 +12,23 @@ onMounted(() => {
   }
 })
 
-const email = ref('admin@example.com')
-const password = ref('')
+const schema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email'),
+  password: z.string().min(1, 'Password is required'),
+})
+
+type Schema = z.output<typeof schema>
+const state = reactive<Partial<Schema>>({
+  email: 'admin@example.com',
+  password: '',
+})
+
 const error = ref('')
 
-async function handleLogin() {
+async function handleLogin(event: FormSubmitEvent<Schema>) {
   error.value = ''
   try {
-    await authStore.login(email.value, password.value)
+    await authStore.login(event.data.email, event.data.password)
     router.push('/admin/')
   } catch (err: any) {
     error.value = authStore.error || 'Login failed'
@@ -35,21 +46,21 @@ async function handleLogin() {
         </div>
       </template>
 
-      <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
-        <UFormField label="Email" required>
-          <UInput v-model="email" placeholder="admin@example.com" type="email" class="w-full" />
+      <UForm :schema="schema" :state="state" class="flex flex-col gap-4" @submit="handleLogin">
+        <UFormField name="email" label="Email" required>
+          <UInput v-model="state.email" placeholder="admin@example.com" type="email" class="w-full" />
         </UFormField>
 
-        <UFormField label="Password" required>
-          <UInput v-model="password" placeholder="Password" type="password" class="w-full" />
+        <UFormField name="password" label="Password" required>
+          <UInput v-model="state.password" placeholder="Password" type="password" class="w-full" />
         </UFormField>
 
-        <UAlert v-if="error" type="error" :description="error" />
+        <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="error" />
 
         <UButton type="submit" :loading="authStore.loading" block size="lg">
           Sign In
         </UButton>
-      </form>
+      </UForm>
     </UCard>
   </div>
 </template>
