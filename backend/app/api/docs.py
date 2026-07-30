@@ -5,11 +5,12 @@ from app.models.schemas import DocumentIngestResponse, DocumentListResponse, Doc
 from app.services.document_ingest import save_and_queue_indexing, _index_file
 from app.db.vector_store import list_documents, delete_document
 from app.core.config import settings
-from app.utils.logger import get_logger
+import logging
+
 from app.services.user_manager import current_active_user
 from app.models.user import User
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

@@ -14,9 +14,10 @@ from app.services.facebook_config import (
 )
 from app.services.rag import answer_question
 from app.services.user_manager import current_active_user
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

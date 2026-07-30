@@ -1,8 +1,9 @@
 import httpx
 
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 FB_GRAPH_API = "https://graph.facebook.com/v25.0"
 

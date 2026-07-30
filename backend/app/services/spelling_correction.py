@@ -3,9 +3,10 @@ from pathlib import Path
 from symspellpy import SymSpell, Verbosity
 from underthesea import word_tokenize, ner
 
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 DICT_DIR = Path(__file__).parent / "dictionary"
 

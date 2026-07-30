@@ -7,9 +7,10 @@ from liteparse import LiteParse
 from app.core.config import settings
 from app.db.vector_store import chroma_collection, embed_model, delete_document
 from app.services.spelling_correction import get_spelling_corrector
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 500
 

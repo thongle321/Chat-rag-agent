@@ -5,9 +5,10 @@ import chromadb
 
 from app.core.config import settings
 from app.db.embeddings import get_embeddings
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 # ChromaDB setup
 persist_dir = Path(settings.vector_store_dir)

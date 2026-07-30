@@ -18,9 +18,10 @@ from typing_extensions import TypedDict
 from app.core.config import settings
 from app.db.vector_store import embed_model, query_similar
 from app.models.schemas import ChatResponse
-from app.utils.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 class RAGState(TypedDict):
