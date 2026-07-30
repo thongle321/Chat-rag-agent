@@ -8,10 +8,17 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
+from fastapi_users.password import PasswordHelper
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
 from app.core.config import settings
 from app.db.session import get_user_db
 from app.models.user import User
+
+
+password_hash = PasswordHash((Argon2Hasher(),))
+password_helper = PasswordHelper(password_hash)
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -21,7 +28,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
 async def get_user_manager() -> AsyncGenerator[UserManager, None]:
     async for user_db in get_user_db():
-        yield UserManager(user_db)
+        yield UserManager(user_db, password_helper)
 
 
 jwt_backend = AuthenticationBackend(
