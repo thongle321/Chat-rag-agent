@@ -11,7 +11,26 @@ const deleting = ref(false)
 const deleteTarget = ref('')
 const showDeleteModal = ref(false)
 
-let pollTimer: ReturnType<typeof setTimeout> | null = null
+const STORAGE_KEY = 'upload-results'
+
+function saveUploadResults() {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(uploadResults.value))
+}
+
+function loadUploadResults() {
+  const stored = sessionStorage.getItem(STORAGE_KEY)
+  if (stored) {
+    try {
+      uploadResults.value = JSON.parse(stored)
+    } catch {
+      uploadResults.value = []
+    }
+  }
+}
+
+function clearUploadResults() {
+  sessionStorage.removeItem(STORAGE_KEY)
+}
 
 const documentList = computed(() => {
   const storeDocs = documentStore.documents
@@ -42,6 +61,11 @@ const documentList = computed(() => {
 
 onMounted(() => {
   documentStore.fetchDocuments()
+  loadUploadResults()
+  const indexed = uploadResults.value.filter(r => r.status === 'indexed')
+  if (indexed.length) {
+    pollTimer = setTimeout(() => pollStatus(indexed.map(r => r.name)), 2000)
+  }
 })
 
 onUnmounted(() => {
@@ -74,9 +98,11 @@ async function pollStatus(titles: string[]) {
   }
 
   const pending = uploadResults.value.filter(r => r.status === 'indexed')
+  saveUploadResults()
   if (pending.length) {
     pollTimer = setTimeout(() => pollStatus(pending.map(r => r.name)), 2000)
   } else {
+    clearUploadResults()
     documentStore.fetchDocuments(true)
   }
 }
@@ -99,6 +125,7 @@ async function handleUpload() {
     selectedFiles.value = []
 
     const indexed = uploadResults.value.filter(r => r.status === 'indexed')
+    saveUploadResults()
     if (indexed.length) {
       pollTimer = setTimeout(() => pollStatus(indexed.map(r => r.name)), 2000)
     }
@@ -118,6 +145,7 @@ async function handleUpload() {
 function handleTrashClick(item: ReturnType<typeof documentList.value>[number]) {
   if (item.isProcessing) {
     uploadResults.value = uploadResults.value.filter(r => r.name !== item.id)
+    saveUploadResults()
   } else {
     confirmDelete(item.title)
   }
