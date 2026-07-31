@@ -61,7 +61,7 @@ async function pollStatus(titles: string[]) {
     for (const res of uploadResults.value) {
       const status = data.results[res.name]
       if (status) {
-        res.status = status.status === 'completed' ? 'indexed' : status.status
+        res.status = status.status
         res.chunks = status.chunks || 0
         res.size = status.size || res.size
       }
@@ -192,9 +192,9 @@ async function deleteDocument() {
                     v-if="item.isProcessing"
                     size="sm"
                     variant="soft"
-                    :color="item.status === 'indexed' ? 'warning' : 'error'"
+                    :color="item.status === 'indexed' ? 'warning' : item.status === 'completed' ? 'success' : 'error'"
                   >
-                    {{ item.status === 'indexed' ? 'Indexed' : 'Failed' }}
+                    {{ item.status === 'indexed' ? 'Indexed' : item.status === 'completed' ? 'Completed' : 'Failed' }}
                   </UBadge>
                 </p>
                 <p class="text-sm text-muted">
