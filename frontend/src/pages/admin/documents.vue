@@ -61,7 +61,7 @@ async function pollStatus(titles: string[]) {
     for (const res of uploadResults.value) {
       const status = data.results[res.name]
       if (status) {
-        res.status = status.status
+        res.status = status.status === 'completed' ? 'indexed' : status.status
         res.chunks = status.chunks || 0
         res.size = status.size || res.size
       }
