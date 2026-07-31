@@ -9,8 +9,9 @@ from app.core.config import settings
 from app.core.middleware import RateLimitMiddleware, RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router
 from app.api.facebook import close_client
-from app.db.session import async_session_factory, create_db_and_tables
+from app.db.session import async_session_factory, create_db_and_tables, engine
 from app.services.rag import get_graph
+import app.services.rag as rag_service
 
 import logfire
 
@@ -61,6 +62,15 @@ async def lifespan(app: FastAPI):
             await session.commit()
 
     yield
+
+    # --- Shutdown: close all persistent resources ---
+    if rag_service._graph is not None:
+        try:
+            await rag_service._graph.checkpointer.conn.close()
+        except Exception:
+            pass
+    await engine.dispose()
+    await close_client()
 
 
 app = FastAPI(
