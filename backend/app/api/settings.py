@@ -42,6 +42,17 @@ class TestConnectionResponse(BaseModel):
     message: str
 
 
+class ListModelsRequest(BaseModel):
+    provider: str | None = None
+    ollama_base_url: str | None = None
+    ollama_api_key: str | None = None
+    openai_api_key: str | None = None
+
+
+class ListModelsResponse(BaseModel):
+    models: list[str]
+
+
 router = APIRouter()
 
 
@@ -144,3 +155,43 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
             return TestConnectionResponse(ok=False, message=f"OpenAI error: {e}")
 
     return TestConnectionResponse(ok=False, message=f"Unknown provider '{provider}'.")
+
+
+@router.get("/models", response_model=ListModelsResponse)
+async def list_models(body: ListModelsRequest | None = None, user: User = current_active_user):
+    provider = (body.provider if body else None) or settings.ai_provider
+    ollama_base_url = (body.ollama_base_url if body else None) or settings.ollama_base_url or "http://localhost:11434"
+    ollama_key = (body.ollama_api_key if body else None) or _get_secret_value(settings.ollama_api_key)
+    openai_key = (body.openai_api_key if body else None) or _get_secret_value(settings.openai_api_key)
+
+    if provider == "ollama":
+        headers = {}
+        if ollama_key:
+            headers["Authorization"] = f"Bearer {ollama_key}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{ollama_base_url.rstrip('/')}/api/tags", headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                return ListModelsResponse(models=[m["name"] for m in data.get("models", [])])
+        except httpx.TimeoutException:
+            return ListModelsResponse(models=[])
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Ollama error: {e}")
+
+    if provider == "openai":
+        if not openai_key:
+            return ListModelsResponse(models=[])
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return ListModelsResponse(models=[m["id"] for m in data.get("data", [])])
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"OpenAI error: {e}")
+
+    return ListModelsResponse(models=[])

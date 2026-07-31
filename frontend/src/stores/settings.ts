@@ -27,6 +27,8 @@ export const useSettingsStore = defineStore('settings', () => {
   })
   const loading = ref(false)
   const error = ref('')
+  const models = ref<string[]>([])
+  const modelLoading = ref(false)
 
   async function fetchSettings() {
     loading.value = true
@@ -64,5 +66,18 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  return { settings, loading, error, fetchSettings, updateSettings, testConnection }
+  async function fetchModels(opts?: { provider?: string; ollama_base_url?: string; ollama_api_key?: string; openai_api_key?: string }) {
+    modelLoading.value = true
+    error.value = ''
+    try {
+      const { data } = await api.get('/settings/models', { params: opts })
+      models.value = data.models
+    } catch (err: any) {
+      models.value = []
+    } finally {
+      modelLoading.value = false
+    }
+  }
+
+  return { settings, loading, error, models, modelLoading, fetchSettings, updateSettings, testConnection, fetchModels }
 })

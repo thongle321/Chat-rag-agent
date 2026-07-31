@@ -39,9 +39,36 @@ const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
 ]
 
+const modelOptions = computed(() => settingsStore.models)
+
+watch(
+  () => state.ai_provider,
+  async (newProvider) => {
+    if (state.ai_provider === 'ollama' && state.ollama_base_url) {
+      await settingsStore.fetchModels({
+        provider: 'ollama',
+        ollama_base_url: state.ollama_base_url,
+        ollama_api_key: state.ollama_api_key,
+      })
+    } else if (state.ai_provider === 'openai') {
+      await settingsStore.fetchModels({
+        provider: 'openai',
+        openai_api_key: state.openai_api_key,
+      })
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
   await settingsStore.fetchSettings()
   Object.assign(state, settingsStore.settings)
+  await settingsStore.fetchModels({
+    provider: settingsStore.settings.ai_provider === 'openai' ? 'openai' : 'ollama',
+    ollama_base_url: settingsStore.settings.ollama_base_url,
+    ollama_api_key: settingsStore.settings.ollama_api_key,
+    openai_api_key: settingsStore.settings.openai_api_key,
+  })
 })
 
 async function testConnection() {
@@ -60,9 +87,21 @@ async function testConnection() {
       icon: result.ok ? 'i-lucide-check-circle' : 'i-lucide-x-circle',
       timeout: result.ok ? 5000 : 0,
     })
+    if (result.ok) {
+      await refreshModels()
+    }
   } finally {
     testing.value = false
   }
+}
+
+async function refreshModels() {
+  await settingsStore.fetchModels({
+    provider: state.ai_provider,
+    ollama_base_url: state.ollama_base_url || undefined,
+    ollama_api_key: state.ollama_api_key || undefined,
+    openai_api_key: state.openai_api_key || undefined,
+  })
 }
 
 async function save(event: FormSubmitEvent<Schema>) {
@@ -144,7 +183,7 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="ollama_model" label="Model Name" required>
-              <UInput v-model="state.ollama_model" placeholder="llama3.2" :disabled="saving" class="w-full" />
+              <USelect v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="llama3.2" :disabled="saving" class="w-full" />
             </UFormField>
           </div>
         </UCard>
@@ -169,7 +208,7 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="openai_model" label="Model Name" required>
-              <UInput v-model="state.openai_model" placeholder="gpt-4o" :disabled="saving" class="w-full" />
+              <USelect v-model="state.openai_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="gpt-4o" :disabled="saving" class="w-full" />
             </UFormField>
           </div>
         </UCard>
@@ -179,6 +218,9 @@ async function save(event: FormSubmitEvent<Schema>) {
         <div class="flex gap-2">
           <UButton :loading="testing" variant="outline" @click="testConnection">
             Test Connection
+          </UButton>
+          <UButton :loading="settingsStore.modelLoading" variant="outline" icon="i-lucide-refresh-cw" @click="refreshModels">
+            Refresh Models
           </UButton>
           <UButton type="submit" :loading="saving">
             Save
