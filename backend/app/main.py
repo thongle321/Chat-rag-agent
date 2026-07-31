@@ -20,7 +20,10 @@ async def lifespan(app: FastAPI):
     if not settings.jwt_secret_key:
         raise RuntimeError("JWT_SECRET_KEY must be set via env var in production")
 
-    logfire.configure(service_name='chat-rag-agent')
+    logfire.configure(
+        service_name='chat-rag-agent',
+        token=settings.logfire_token.get_secret_value() if settings.logfire_token else None,
+    )
     logfire.instrument_pydantic_ai()
     logfire.instrument_fastapi(app)
     logfire.instrument_httpx()

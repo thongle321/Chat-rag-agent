@@ -1,7 +1,0 @@
-D:\chat-rag-agent\backend\app\db\embeddings.py:13: UserWarning: The model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 now uses mean pooling instead of CLS embedding. In order to preserve the previous behaviour, consider either pinning fastembed version to 0.5.1 or using `add_custom_model` functionality.
-  self._model = TextEmbedding(model_name=model_name)
-INFO:     Started server process [6588]
-INFO:     Waiting for application startup.
-Graph compiled with SQLite checkpointer at D:\chat-rag-agent\backend\data\checkpoints\graph.db
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)

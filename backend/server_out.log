@@ -1,4 +1,0 @@
-2026-07-30 02:08:52 | INFO     | app.db.embeddings | Loading embedding model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-2026-07-30 02:08:53 | INFO     | app.db.embeddings | Embedding model loaded.
-2026-07-30 02:08:53 | INFO     | app.db.vector_store | Vector store initialized. Document count: 56
-2026-07-30 02:08:53 | INFO     | app.services.rag | Graph compiled with SQLite checkpointer at D:\chat-rag-agent\backend\data\checkpoints\graph.db
