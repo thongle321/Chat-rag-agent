@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "https://ollama.com/v1"
     ollama_model: str = "gemma4:31b-cloud"
     logfire_token: SecretStr | None = None
+    hf_token: SecretStr | None = None
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     context_prompt: str = (
         "You are a knowledgeable assistant for a private document knowledge base.\n"

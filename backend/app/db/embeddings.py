@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 class FastEmbeddings:
     def __init__(self, model_name: str):
-        self._model = TextEmbedding(model_name=model_name)
+        self._model = TextEmbedding(
+            model_name=model_name,
+            token=settings.hf_token.get_secret_value() if settings.hf_token else None,
+        )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return list(self._model.embed(texts))
