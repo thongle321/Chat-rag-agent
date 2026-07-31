@@ -26,14 +26,17 @@ const documentList = computed(() => {
       status: r.status,
       isProcessing: true as const,
     })),
-    ...storeDocs.map(d => ({
-      id: d.document_id,
-      title: d.title,
-      size: d.size,
-      chunks: d.chunks,
-      status: null as string | null,
-      isProcessing: false as const,
-    })),
+    ...storeDocs.map(d => {
+      const uploadResult = uploadResults.value.find(r => r.name === d.title)
+      return {
+        id: d.document_id,
+        title: d.title,
+        size: d.size,
+        chunks: d.chunks,
+        status: uploadResult?.status || null,
+        isProcessing: false,
+      }
+    }),
   ]
 })
 
@@ -188,14 +191,14 @@ async function deleteDocument() {
               <div class="flex-1 min-w-0">
                 <p class="font-medium truncate flex items-center gap-1.5">
                   {{ item.title }}
-                  <UBadge
-                    v-if="item.isProcessing"
-                    size="sm"
-                    variant="soft"
-                    :color="item.status === 'indexed' ? 'warning' : item.status === 'completed' ? 'success' : 'error'"
-                  >
-                    {{ item.status === 'indexed' ? 'Indexed' : item.status === 'completed' ? 'Completed' : 'Failed' }}
-                  </UBadge>
+<UBadge
+	                     v-if="item.status"
+	                     size="sm"
+	                     variant="soft"
+	                     :color="item.status === 'indexed' ? 'warning' : item.status === 'completed' ? 'success' : 'error'"
+	                   >
+	                     {{ item.status === 'indexed' ? 'Indexed' : item.status === 'completed' ? 'Completed' : 'Failed' }}
+	                   </UBadge>
                 </p>
                 <p class="text-sm text-muted">
                   {{ formatSize(item.size) }}<template v-if="item.chunks"> · {{ item.chunks }} chunk{{ item.chunks === 1 ? '' : 's' }}</template>
