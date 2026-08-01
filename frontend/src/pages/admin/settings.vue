@@ -165,11 +165,11 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="ollama_model" label="Model Name" required>
-              <USelect v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="llama3.2" :disabled="saving" class="w-full">
+              <USelectMenu v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" search-input create-item placeholder="llama3.2" :disabled="saving" class="w-full" @create="(value) => (state.ollama_model = value)">
                 <template #trailing>
                   <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" :loading="settingsStore.modelLoading" @click.stop="refreshModels" />
                 </template>
-              </USelect>
+              </USelectMenu>
             </UFormField>
           </div>
         </UCard>
@@ -194,11 +194,11 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="openai_model" label="Model Name" required>
-              <USelect v-model="state.openai_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="gpt-4o" :disabled="saving" class="w-full">
+              <USelectMenu v-model="state.openai_model" :items="modelOptions" :loading="settingsStore.modelLoading" search-input create-item placeholder="gpt-4o" :disabled="saving" class="w-full" @create="(value) => (state.openai_model = value)">
                 <template #trailing>
                   <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" :loading="settingsStore.modelLoading" @click.stop="refreshModels" />
                 </template>
-              </USelect>
+              </USelectMenu>
             </UFormField>
           </div>
         </UCard>
