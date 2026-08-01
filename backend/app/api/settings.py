@@ -170,14 +170,21 @@ async def list_models(body: ListModelsRequest | None = None, user: User = curren
             headers["Authorization"] = f"Bearer {ollama_key}"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(f"{ollama_base_url.rstrip('/')}/api/tags", headers=headers)
+                is_local = any(
+                    ollama_base_url.startswith(p)
+                    for p in ("http://localhost", "http://127.0.0.1", "http://::1")
+                )
+                endpoint = "/api/tags" if is_local else "/models"
+                resp = await client.get(f"{ollama_base_url.rstrip('/')}{endpoint}", headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
-                return ListModelsResponse(models=[m["name"] for m in data.get("models", [])])
+                if is_local:
+                    return ListModelsResponse(models=[m["name"] for m in data.get("models", [])])
+                return ListModelsResponse(models=[m["id"] for m in data.get("data", [])])
         except httpx.TimeoutException:
             return ListModelsResponse(models=[])
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Ollama error: {e}")
+        except Exception:
+            return ListModelsResponse(models=[])
 
     if provider == "openai":
         if not openai_key:
@@ -191,7 +198,7 @@ async def list_models(body: ListModelsRequest | None = None, user: User = curren
                 resp.raise_for_status()
                 data = resp.json()
                 return ListModelsResponse(models=[m["id"] for m in data.get("data", [])])
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"OpenAI error: {e}")
+        except Exception:
+            return ListModelsResponse(models=[])
 
     return ListModelsResponse(models=[])
