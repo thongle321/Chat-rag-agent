@@ -2,6 +2,8 @@
 import api from '../../api'
 import { useDocumentStore } from '../../stores/documents'
 
+let pollTimer: number | undefined
+
 const documentStore = useDocumentStore()
 
 const selectedFiles = ref<File[]>([])

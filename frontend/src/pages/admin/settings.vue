@@ -57,7 +57,6 @@ watch(
       })
     }
   },
-  { immediate: true },
 )
 
 onMounted(async () => {
