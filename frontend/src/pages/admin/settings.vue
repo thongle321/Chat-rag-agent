@@ -39,8 +39,6 @@ const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
 ]
 
-const modelOptions = computed(() => settingsStore.models)
-
 watch(
   () => state.ai_provider,
   () => {
@@ -165,7 +163,7 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="ollama_model" label="Model Name" required>
-              <USelectMenu v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" search-input create-item placeholder="llama3.2" :disabled="saving" class="w-full" @create="(value) => (state.ollama_model = value)">
+              <USelectMenu v-model="state.ollama_model" :items="settingsStore.models" :loading="settingsStore.modelLoading" search-input create-item placeholder="llama3.2" :disabled="saving" class="w-full" @create="(value) => (state.ollama_model = value)">
                 <template #trailing>
                   <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" :loading="settingsStore.modelLoading" @click.stop="refreshModels" />
                 </template>
@@ -194,7 +192,7 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="openai_model" label="Model Name" required>
-              <USelectMenu v-model="state.openai_model" :items="modelOptions" :loading="settingsStore.modelLoading" search-input create-item placeholder="gpt-4o" :disabled="saving" class="w-full" @create="(value) => (state.openai_model = value)">
+              <USelectMenu v-model="state.openai_model" :items="settingsStore.models" :loading="settingsStore.modelLoading" search-input create-item placeholder="gpt-4o" :disabled="saving" class="w-full" @create="(value) => (state.openai_model = value)">
                 <template #trailing>
                   <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" :loading="settingsStore.modelLoading" @click.stop="refreshModels" />
                 </template>
