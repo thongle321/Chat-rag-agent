@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/api/facebook/webhook",
+      "destination": "http://161.118.229.231/api/facebook/webhook"
+    },
+    {
       "source": "/api/:path*",
       "destination": "http://161.118.229.231/api/:path*"
     },
