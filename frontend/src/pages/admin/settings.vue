@@ -43,19 +43,9 @@ const modelOptions = computed(() => settingsStore.models)
 
 watch(
   () => state.ai_provider,
-  async (newProvider) => {
-    if (state.ai_provider === 'ollama' && state.ollama_base_url) {
-      await settingsStore.fetchModels({
-        provider: 'ollama',
-        ollama_base_url: state.ollama_base_url,
-        ollama_api_key: state.ollama_api_key,
-      })
-    } else if (state.ai_provider === 'openai') {
-      await settingsStore.fetchModels({
-        provider: 'openai',
-        openai_api_key: state.openai_api_key,
-      })
-    }
+  () => {
+    state.ollama_model = ''
+    state.openai_model = ''
   },
 )
 
