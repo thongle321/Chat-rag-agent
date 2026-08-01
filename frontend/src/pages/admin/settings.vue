@@ -183,7 +183,11 @@ async function save(event: FormSubmitEvent<Schema>) {
               </UInput>
             </UFormField>
             <UFormField name="ollama_model" label="Model Name" required>
-              <USelect v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="llama3.2" :disabled="saving" class="w-full" />
+              <USelect v-model="state.ollama_model" :items="modelOptions" :loading="settingsStore.modelLoading" filterable placeholder="llama3.2" :disabled="saving" class="w-full">
+                <template #trailing>
+                  <UButton icon="i-lucide-refresh-cw" variant="ghost" size="sm" :loading="settingsStore.modelLoading" @click="refreshModels" />
+                </template>
+              </USelect>
             </UFormField>
           </div>
         </UCard>
@@ -218,9 +222,6 @@ async function save(event: FormSubmitEvent<Schema>) {
         <div class="flex gap-2">
           <UButton :loading="testing" variant="outline" @click="testConnection">
             Test Connection
-          </UButton>
-          <UButton :loading="settingsStore.modelLoading" variant="outline" icon="i-lucide-refresh-cw" @click="refreshModels">
-            Refresh Models
           </UButton>
           <UButton type="submit" :loading="saving">
             Save
