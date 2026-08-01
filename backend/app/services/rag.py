@@ -33,16 +33,18 @@ class RAGState(TypedDict):
 # ponytail: single-node graph — add nodes (retrieval, re-rank, self-verify) when multistep logic lands
 _graph = None
 
-# ponytail: cached after first call; restart server after changing AI provider settings
 _model_instance = None
 _model_instance_name = None
+_model_key: str | None = None
 
 
 def _get_model():
-    global _model_instance, _model_instance_name
-    if _model_instance is not None:
-        return _model_instance, _model_instance_name
+    global _model_instance, _model_instance_name, _model_key
     provider = settings.ai_provider.lower()
+    model_name = settings.ollama_model if provider == "ollama" else settings.openai_model
+    key = f"{provider}:{model_name}"
+    if _model_key == key:
+        return _model_instance, _model_instance_name
     if provider == "ollama":
         _model_instance = OllamaModel(
             settings.ollama_model,
@@ -57,6 +59,7 @@ def _get_model():
         _model_instance_name = f"openai/{settings.openai_model}"
     else:
         raise ValueError("No LLM configured")
+    _model_key = key
     return _model_instance, _model_instance_name
 
 

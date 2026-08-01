@@ -62,12 +62,6 @@ watch(
 onMounted(async () => {
   await settingsStore.fetchSettings()
   Object.assign(state, settingsStore.settings)
-  await settingsStore.fetchModels({
-    provider: settingsStore.settings.ai_provider === 'openai' ? 'openai' : 'ollama',
-    ollama_base_url: settingsStore.settings.ollama_base_url,
-    ollama_api_key: settingsStore.settings.ollama_api_key,
-    openai_api_key: settingsStore.settings.openai_api_key,
-  })
 })
 
 async function testConnection() {
