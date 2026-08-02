@@ -17,7 +17,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from typing_extensions import TypedDict
 
 from app.core.config import settings
-from app.db.vector_store import embed_model, list_documents, query_similar
+from app.db.vector_store import chroma_collection, embed_model, list_documents, query_similar
 from app.models.schemas import ChatResponse
 import logging
 
@@ -122,10 +122,47 @@ async def get_messages(session_id: str) -> list[dict]:
     return result
 
 
+async def _expand_neighbors(docs: list[dict], radius: int = 1) -> list[dict]:
+    """Add adjacent chunks (same title, chunk index ± radius) to retrieval results.
+
+    Handles questions whose answer spans a chunk boundary but whose decisive
+    chunk scores poorly (e.g. OCR-fragmented text). Requires chunk metadata.
+    """
+    expanded: dict[tuple[str, int], dict] = {}
+    base: set[tuple[str, int]] = set()
+    for d in docs:
+        m = d["metadata"]
+        chunk = m.get("chunk")
+        if chunk is None:
+            expanded[("", id(d))] = d
+            continue
+        key = (m.get("title", ""), chunk)
+        expanded[key] = d
+        base.add(key)
+    titles = {m.get("title") for d in docs for m in [d["metadata"]] if m.get("title")}
+    if not titles:
+        return list(expanded.values())
+    result = chroma_collection.get(
+        where={"title": {"$in": list(titles)}},
+        include=["documents", "metadatas"],
+    )
+    for doc, meta in zip(result["documents"], result["metadatas"] or []):
+        chunk = meta.get("chunk")
+        if chunk is None:
+            continue
+        key = (meta.get("title", ""), chunk)
+        if key in expanded:
+            continue
+        if any(t == key[0] and c - radius <= chunk <= c + radius for (t, c) in base):
+            expanded[key] = {"content": doc, "metadata": meta, "score": 0.0}
+    return list(expanded.values())
+
+
 async def answer_node(state: RAGState) -> dict:
     model, _ = _get_model()
     query_embedding = next(embed_model.query_embed(state["question"]))
     docs = query_similar(query_embedding, k=5)
+    docs = await _expand_neighbors(docs)
     context = _format_context(docs)
     full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
     agent = Agent(model, system_prompt=full_prompt, name="rag_agent")

@@ -9,7 +9,6 @@ from pydantic_ai import Agent
 from app.core.config import settings
 from app.db.vector_store import chroma_collection, embed_model, delete_document
 from app.services.rag import _get_model
-from app.services.spelling_correction import get_spelling_corrector
 import logging
 
 
@@ -55,10 +54,10 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
             pages = _CHEAP_PARSER.is_complex(file_path)
             parser = _OCR_PARSER if any(p.needs_ocr for p in pages) else _CHEAP_PARSER
             result = parser.parse(file_path)
-            text = get_spelling_corrector().fix_spelling(result.text)
+            text = result.text
         elif suffix in IMAGE_EXTENSIONS:
             result = _OCR_PARSER.parse(file_path)
-            text = get_spelling_corrector().fix_spelling(result.text)
+            text = result.text
         elif suffix in TEXT_EXTENSIONS:
             text = file_path.read_text(encoding="utf-8")
         else:
