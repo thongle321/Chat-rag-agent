@@ -9,13 +9,11 @@ import { createHead } from '@unhead/vue/client'
 import ui from '@nuxt/ui/vue-plugin'
 import App from './App.vue'
 
-const routes = [...autoRoutes]
-
 const app = createApp(App)
 const head = createHead()
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: autoRoutes
 })
 
 app.use(createPinia())

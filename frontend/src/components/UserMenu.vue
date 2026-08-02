@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useColorMode } from '@vueuse/core'
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { useAuthStore } from '../stores/auth'
 

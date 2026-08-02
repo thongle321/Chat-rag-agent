@@ -118,7 +118,7 @@ async def get_messages(session_id: str) -> list[dict]:
 
 async def answer_node(state: RAGState) -> dict:
     model, _ = _get_model()
-    query_embedding = embed_model.embed_query(state["question"])
+    query_embedding = next(embed_model.query_embed(state["question"]))
     docs = query_similar(query_embedding, k=5)
     context = _format_context(docs)
     full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"

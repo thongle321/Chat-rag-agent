@@ -1,6 +1,6 @@
-import asyncio
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Query, HTTPException
 from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Query, HTTPException
 from app.models.schemas import DocumentIngestResponse, DocumentListResponse, DocumentInfo
 from app.services.document_ingest import save_and_queue_indexing, _index_file
 from app.db.vector_store import list_documents, delete_document
@@ -34,12 +34,10 @@ async def upload_files(
                 message=f"File {safe_name} exceeds 50 MB limit",
             ))
             continue
-        saved, message, saved_path = await save_and_queue_indexing(safe_name, content)
-        status = "ok" if saved else "error"
-        if saved and saved_path:
-            background_tasks.add_task(_index_file, saved_path)
+        message, saved_path = await save_and_queue_indexing(safe_name, content)
+        background_tasks.add_task(_index_file, saved_path)
         results.append(DocumentIngestResponse(
-            status=status,
+            status="ok",
             message=message,
         ))
     return {"results": results}
@@ -79,15 +77,8 @@ def _build_status_results(titles: list[str]) -> dict:
 
 @router.get("/upload/status")
 async def poll_upload_status(titles: str = Query(...), user: User = current_active_user):
-    """Long-poll endpoint: waits up to 30s for files to finish indexing."""
+    """Return indexing status; the frontend polls this every few seconds."""
     title_list = [t.strip() for t in titles.split(",") if t.strip()]
     if not title_list:
         raise HTTPException(status_code=400, detail="No titles provided")
-
-    for _ in range(15):
-        results = _build_status_results(title_list)
-        if all(r["status"] == "completed" for r in results.values()):
-            return {"results": results}
-        await asyncio.sleep(2)
-
     return {"results": _build_status_results(title_list)}

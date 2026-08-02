@@ -118,7 +118,7 @@ function toggleColorMode() {
                 size="2xs"
                 :square="true"
                 :icon="'i-lucide-ellipsis'"
-                class="!w-6 !h-6 opacity-0 group-hover:opacity-100 transition"
+                class="w-6! h-6! opacity-0 group-hover:opacity-100 transition"
                 @click.stop
               />
             </UDropdownMenu>

@@ -78,23 +78,32 @@ async function loadChannels() {
   }
 }
 
-async function handleConnect(event: FormSubmitEvent<ConnectSchema>) {
-  connectSaving.value = true
-  connectError.value = ''
+async function submitConfig(
+  saving: Ref<boolean>,
+  error: Ref<string>,
+  modal: Ref<boolean>,
+  payload: Record<string, string>,
+) {
+  saving.value = true
+  error.value = ''
   try {
-    await api.post('/facebook/config', {
-      page_id: event.data.page_id,
-      page_name: event.data.page_name || 'Facebook Page',
-      page_token: event.data.page_token,
-      verify_token: event.data.verify_token,
-    })
-    connectModalOpen.value = false
+    await api.post('/facebook/config', payload)
+    modal.value = false
     await loadChannels()
   } catch (err: any) {
-    connectError.value = getErrorMessage(err)
+    error.value = getErrorMessage(err)
   } finally {
-    connectSaving.value = false
+    saving.value = false
   }
+}
+
+function handleConnect(event: FormSubmitEvent<ConnectSchema>) {
+  submitConfig(connectSaving, connectError, connectModalOpen, {
+    page_id: event.data.page_id,
+    page_name: event.data.page_name || 'Facebook Page',
+    page_token: event.data.page_token,
+    verify_token: event.data.verify_token,
+  })
 }
 
 async function loadEditConfig() {
@@ -111,23 +120,13 @@ async function loadEditConfig() {
   }
 }
 
-async function handleSave(event: FormSubmitEvent<EditSchema>) {
-  editSaving.value = true
-  editError.value = ''
-  try {
-    await api.post('/facebook/config', {
-      page_id: editPageId.value,
-      page_name: event.data.page_name || 'Facebook Page',
-      page_token: event.data.page_token,
-      verify_token: event.data.verify_token,
-    })
-    editModalOpen.value = false
-    await loadChannels()
-  } catch (err: any) {
-    editError.value = getErrorMessage(err)
-  } finally {
-    editSaving.value = false
-  }
+function handleSave(event: FormSubmitEvent<EditSchema>) {
+  submitConfig(editSaving, editError, editModalOpen, {
+    page_id: editPageId.value,
+    page_name: event.data.page_name || 'Facebook Page',
+    page_token: event.data.page_token,
+    verify_token: event.data.verify_token,
+  })
 }
 
 async function handleDisconnect() {

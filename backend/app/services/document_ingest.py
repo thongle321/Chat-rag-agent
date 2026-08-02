@@ -73,7 +73,7 @@ def _index_file(file_path: Path) -> int:
         chunk_texts.append(chunk.text)
         chunk_metadatas.append({**base_metadata, "chunk": i})
 
-    embeddings_list = embed_model.embed_documents(chunk_texts)
+    embeddings_list = list(embed_model.embed(chunk_texts))
 
     for i in range(0, len(chunks), BATCH_SIZE):
         batch_texts = chunk_texts[i : i + BATCH_SIZE]
@@ -92,7 +92,7 @@ def _index_file(file_path: Path) -> int:
 async def save_and_queue_indexing(
     filename: str,
     file_bytes: bytes,
-) -> tuple[bool, str, Path | None]:
+) -> tuple[str, Path]:
     upload_folder = Path(settings.upload_dir)
     upload_folder.mkdir(parents=True, exist_ok=True)
 
@@ -102,4 +102,4 @@ async def save_and_queue_indexing(
         delete_document(filename)
 
     saved_path.write_bytes(file_bytes)
-    return True, f"File '{filename}' queued for indexing.", saved_path
+    return f"File '{filename}' queued for indexing.", saved_path

@@ -30,10 +30,6 @@ function loadUploadResults() {
   }
 }
 
-function clearUploadResults() {
-  sessionStorage.removeItem(STORAGE_KEY)
-}
-
 const documentList = computed(() => {
   const storeDocs = documentStore.documents
   const storeNames = new Set(storeDocs.map(d => d.title))

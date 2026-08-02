@@ -56,9 +56,9 @@ async function testConnection() {
   try {
     const result = await settingsStore.testConnection({
       provider: state.ai_provider,
-      ollama_base_url: state.ollama_base_url || undefined,
-      ollama_api_key: state.ollama_api_key || undefined,
-      openai_api_key: state.openai_api_key || undefined,
+      ollama_base_url: state.ollama_base_url,
+      ollama_api_key: state.ollama_api_key,
+      openai_api_key: state.openai_api_key,
     })
     toast.add({
       title: result.ok ? 'Connected' : 'Connection failed',
@@ -78,9 +78,9 @@ async function testConnection() {
 async function refreshModels() {
   await settingsStore.fetchModels({
     provider: state.ai_provider,
-    ollama_base_url: state.ollama_base_url || undefined,
-    ollama_api_key: state.ollama_api_key || undefined,
-    openai_api_key: state.openai_api_key || undefined,
+    ollama_base_url: state.ollama_base_url,
+    ollama_api_key: state.ollama_api_key,
+    openai_api_key: state.openai_api_key,
   })
 }
 

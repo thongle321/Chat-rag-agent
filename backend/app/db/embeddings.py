@@ -9,23 +9,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class FastEmbeddings:
-    def __init__(self, model_name: str):
-        self._model = TextEmbedding(
-            model_name=model_name,
-            token=settings.hf_token.get_secret_value() if settings.hf_token else None,
-        )
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return list(self._model.embed(texts))
-
-    def embed_query(self, text: str) -> list[float]:
-        return next(self._model.query_embed(text))
-
-
 @lru_cache(maxsize=1)
-def get_embeddings() -> FastEmbeddings:
+def get_embeddings() -> TextEmbedding:
     logger.info("Loading embedding model: %s", settings.embedding_model)
-    embeddings = FastEmbeddings(model_name=settings.embedding_model)
-    logger.info("Embedding model loaded.")
-    return embeddings
+    return TextEmbedding(
+        model_name=settings.embedding_model,
+        token=settings.hf_token.get_secret_value() if settings.hf_token else None,
+    )

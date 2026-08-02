@@ -43,7 +43,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function updateSettings(payload: Partial<AISettings> & { openai_api_key?: string; ollama_api_key?: string }) {
+  async function updateSettings(payload: Partial<AISettings>) {
     loading.value = true
     error.value = ''
     try {

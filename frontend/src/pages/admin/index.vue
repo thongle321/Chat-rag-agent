@@ -55,7 +55,7 @@ onMounted(async () => {
           </UCard>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-1 gap-6">
+        <div class="grid gap-6">
           <UCard>
             <template #header>
               <div class="flex items-center gap-2">
