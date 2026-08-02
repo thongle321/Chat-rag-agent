@@ -29,6 +29,12 @@ class Settings(BaseSettings):
         "5) If the context does not contain relevant information, say: \"I don't have enough information in the provided documents to answer this.\"\n"
         "6) If the context contains conflicting information, note the conflict.\n\n"
     )
+    chat_prompt: str = (
+        "You are a friendly assistant for a document knowledge base. "
+        "Respond warmly and concisely to greetings, small talk, thanks, or questions about yourself. "
+        "If a list of available documents is provided below, use it to answer questions about which "
+        "documents or topics are available; otherwise say you have no documents. Answer in the user's language."
+    )
     jwt_secret_key: SecretStr
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")

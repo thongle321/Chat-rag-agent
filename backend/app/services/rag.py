@@ -2,12 +2,13 @@ import asyncio
 import operator
 import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import aiosqlite
 from fastapi import HTTPException
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.models.ollama import OllamaModel
@@ -16,7 +17,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from typing_extensions import TypedDict
 
 from app.core.config import settings
-from app.db.vector_store import embed_model, query_similar
+from app.db.vector_store import embed_model, list_documents, query_similar
 from app.models.schemas import ChatResponse
 import logging
 
@@ -28,9 +29,14 @@ class RAGState(TypedDict):
     question: str
     messages: Annotated[list[ModelMessage], operator.add]
     source_docs: list[str]
+    route: str
 
 
-# ponytail: single-node graph — add nodes (retrieval, re-rank, self-verify) when multistep logic lands
+class RouteResult(BaseModel):
+    category: Literal["chat", "answer"]
+
+
+# ponytail: two-node graph (route -> chat|answer) — add retrieval re-rank, self-verify nodes when multistep logic lands
 _graph = None
 
 _model_instance = None
@@ -130,6 +136,36 @@ async def answer_node(state: RAGState) -> dict:
     return {"messages": result.new_messages(), "source_docs": _format_sources(docs)}
 
 
+ROUTER_PROMPT = (
+    "You route a user message to a RAG system. "
+    "Return 'chat' for greetings, small talk, thanks, or questions about the assistant itself. "
+    "Return 'answer' for anything that asks about information contained in documents. "
+    "Reply ONLY with the category."
+)
+
+
+async def route_node(state: RAGState) -> dict:
+    model, _ = _get_model()
+    router = Agent(model, output_type=RouteResult, system_prompt=ROUTER_PROMPT)
+    result = await asyncio.wait_for(router.run(state["question"]), timeout=30.0)
+    return {"route": result.output.category}
+
+
+async def chat_node(state: RAGState) -> dict:
+    model, _ = _get_model()
+    docs = [d for d in list_documents() if d.get("summary")]
+    prompt = settings.chat_prompt.strip()
+    if docs:
+        listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
+        prompt += f"\n\nAvailable documents:\n{listing}"
+    agent = Agent(model, system_prompt=prompt, name="chat_agent")
+    result = await asyncio.wait_for(
+        agent.run(state["question"], message_history=state.get("messages", [])),
+        timeout=120.0,
+    )
+    return {"messages": result.new_messages(), "source_docs": []}
+
+
 async def get_graph():
     global _graph
     if _graph is not None:
@@ -139,8 +175,16 @@ async def get_graph():
     conn = await aiosqlite.connect(str(db_path))
     checkpointer = AsyncSqliteSaver(conn)
     builder = StateGraph(RAGState)
+    builder.add_node("route", route_node)
+    builder.add_node("chat", chat_node)
     builder.add_node("answer", answer_node)
-    builder.add_edge(START, "answer")
+    builder.add_edge(START, "route")
+    builder.add_conditional_edges(
+        "route",
+        lambda state: state.get("route", "answer"),
+        {"chat": "chat", "answer": "answer"},
+    )
+    builder.add_edge("chat", END)
     builder.add_edge("answer", END)
     _graph = builder.compile(checkpointer=checkpointer)
     logger.info("Graph compiled with SQLite checkpointer at %s", db_path)

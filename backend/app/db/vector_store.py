@@ -65,6 +65,7 @@ def list_documents() -> list[dict]:
             seen[title] = {
                 "document_id": doc_id,
                 "title": title,
+                "summary": meta.get("summary", ""),
                 "chunks": 0,
                 "size": size,
             }

@@ -1,11 +1,14 @@
+import asyncio
 import uuid
 from pathlib import Path
 
 from chonkie import RecursiveChunker
 from liteparse import LiteParse
+from pydantic_ai import Agent
 
 from app.core.config import settings
 from app.db.vector_store import chroma_collection, embed_model, delete_document
+from app.services.rag import _get_model
 from app.services.spelling_correction import get_spelling_corrector
 import logging
 
@@ -27,7 +30,24 @@ chunker = RecursiveChunker(
 )
 
 
-def _load_file(file_path: Path) -> tuple[str, dict] | None:
+SUMMARY_PROMPT = (
+    "Summarize the following document excerpt in 1-2 sentences, "
+    "describing the main topics it covers. Reply ONLY with the summary."
+)
+
+
+async def _summarize(text: str) -> str:
+    try:
+        model, _ = _get_model()
+        agent = Agent(model, system_prompt=SUMMARY_PROMPT)
+        result = await asyncio.wait_for(agent.run(text[:3000]), timeout=60.0)
+        return result.output.strip()[:500]
+    except Exception:
+        logger.exception("Summary generation failed")
+        return ""
+
+
+async def _load_file(file_path: Path) -> tuple[str, dict] | None:
     suffix = file_path.suffix.lower()
 
     try:
@@ -44,21 +64,23 @@ def _load_file(file_path: Path) -> tuple[str, dict] | None:
         else:
             return None
 
+        summary = await _summarize(text)
         base_metadata = {
             "title": file_path.name,
             "source": file_path.name,
             "type": suffix.lstrip("."),
+            "summary": summary,
         }
         return text, base_metadata
     except Exception:
         logger.exception("Failed to load %s", file_path)
         return None
 
-def _index_file(file_path: Path) -> int:
+async def _index_file(file_path: Path) -> int:
     if not (file_path.is_file() and file_path.suffix.lower() in TEXT_EXTENSIONS | {".pdf"} | IMAGE_EXTENSIONS):
         return 0
 
-    result = _load_file(file_path)
+    result = await _load_file(file_path)
     if result is None:
         return 0
 
