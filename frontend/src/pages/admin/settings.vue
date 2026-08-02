@@ -49,6 +49,9 @@ watch(
 onMounted(async () => {
   await settingsStore.fetchSettings()
   Object.assign(state, settingsStore.settings)
+  if (settingsStore.models.length === 0) {
+    await refreshModels()
+  }
 })
 
 async function testConnection() {
@@ -109,7 +112,6 @@ async function save(event: FormSubmitEvent<Schema>) {
       icon: 'i-lucide-check',
       timeout: 3000,
     })
-    await testConnection()
   } catch (err: any) {
     error.value = settingsStore.error || err.message
   } finally {

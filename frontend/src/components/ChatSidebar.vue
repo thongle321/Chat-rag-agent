@@ -115,10 +115,10 @@ function toggleColorMode() {
               <UButton
                 variant="ghost"
                 color="neutral"
-                size="2xs"
+                size="xs"
                 :square="true"
                 :icon="'i-lucide-ellipsis'"
-                class="w-6! h-6! opacity-0 group-hover:opacity-100 transition"
+                class="opacity-0 group-hover:opacity-100 transition"
                 @click.stop
               />
             </UDropdownMenu>
@@ -133,7 +133,7 @@ function toggleColorMode() {
       <UButton
         variant="ghost"
         color="neutral"
-        size="2xs"
+        size="xs"
         :square="true"
         :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
         @click="toggleColorMode"
@@ -141,7 +141,7 @@ function toggleColorMode() {
       <UButton
         variant="ghost"
         color="neutral"
-        size="2xs"
+        size="xs"
         :square="true"
         :icon="'i-lucide-panel-left-close'"
         @click="onCollapse?.()"
