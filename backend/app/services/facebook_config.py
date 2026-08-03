@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +8,7 @@ from app.models.facebook_config import FacebookConfigModel
 logger = logging.getLogger(__name__)
 
 
-async def get_facebook_config(session: AsyncSession) -> Optional[dict]:
+async def get_facebook_config(session: AsyncSession) -> dict | None:
     result = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
     row = result.scalar_one_or_none()
     if not row:

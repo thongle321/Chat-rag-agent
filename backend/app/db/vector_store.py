@@ -1,3 +1,4 @@
+import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
@@ -65,9 +66,43 @@ class ChromaVectorStore:
             "documents",
             metadata={"hnsw:space": "cosine"},
         )
+        self._bm25: bm25s.BM25 | None = None
+        self._bm25_ids: list[str] | None = None
+        self._bm25_dir = Path(settings.upload_dir).resolve().parent / "bm25_index"
         logger.info(
             "Vector store initialized. Document count: %d", self._collection.count()
         )
+
+    def _invalidate_bm25(self) -> None:
+        self._bm25 = None
+        self._bm25_ids = None
+
+    def _ensure_bm25(self) -> list[str]:
+        """Return chroma ids aligned to the cached/persisted BM25 index, building it if stale.
+
+        ponytail: no lock — a single uvicorn worker builds once; add a threading.Lock()
+        in _ensure_bm25 only if concurrent first queries / multi-worker deploy becomes a thing.
+        """
+        ids = self._collection.get(include=[])["ids"]
+        if self._bm25 is not None and self._bm25_ids == ids:
+            return ids
+
+        id_file = self._bm25_dir / "bm25_ids.json"
+        if id_file.exists() and json.loads(id_file.read_text()) == ids:
+            self._bm25 = bm25s.BM25.load(str(self._bm25_dir), load_vocab=True, show_progress=False)
+        else:
+            res = self._collection.get(include=["documents"])
+            retriever = bm25s.BM25(method="lucene", k1=1.2, b=0.75)
+            retriever.index(
+                bm25s.tokenize(res["documents"], stopwords=_STOPWORDS, show_progress=False),
+                show_progress=False,
+            )
+            self._bm25_dir.mkdir(parents=True, exist_ok=True)
+            retriever.save(str(self._bm25_dir), show_progress=False)
+            id_file.write_text(json.dumps(ids))
+            self._bm25 = retriever
+        self._bm25_ids = ids
+        return ids
 
     def add(
         self,
@@ -79,6 +114,7 @@ class ChromaVectorStore:
         self._collection.add(
             ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas
         )
+        self._invalidate_bm25()
 
     def query(self, query_embedding: list[float], k: int = 5) -> list[dict]:
         """Return list of {id, content, metadata, score} for the k nearest chunks."""
@@ -102,25 +138,15 @@ class ChromaVectorStore:
         return out
 
     def hybrid_query(self, query_text: str, query_embedding: list[float], k: int = 5) -> list[dict]:
-        """BM25 lexical search fused with dense vector search via Reciprocal Rank Fusion.
-
-        ponytail: rebuilds the BM25 index per call over the full collection — fine for ~50 chunks,
-        cache it (and update on add/delete) when the KB grows past a few thousand chunks.
-        """
+        """BM25 lexical search fused with dense vector search via Reciprocal Rank Fusion."""
         if not query_text.strip():
             return self.query(query_embedding, k=k)
 
-        all_docs = self._collection.get(include=["documents", "metadatas"])
-        ids = all_docs["ids"]
+        ids = self._ensure_bm25()
         if not ids:
             return []
 
-        # one merged EN+VI stopword list serves both languages
-        corpus_tokens = bm25s.tokenize(all_docs["documents"], stopwords=_STOPWORDS, show_progress=False)
-        # lucene idf is always positive — robertson clamps idf to 0 on tiny corpora (every term in >= N/2 docs)
-        retriever = bm25s.BM25(method="lucene", k1=1.2, b=0.75)
-        retriever.index(corpus_tokens, show_progress=False)
-        hits, _ = retriever.retrieve(
+        hits, _ = self._bm25.retrieve(
             bm25s.tokenize(query_text, stopwords=_STOPWORDS, show_progress=False),
             k=k * 2,
             show_progress=False,
@@ -129,8 +155,9 @@ class ChromaVectorStore:
         vec_ranks = [d["id"] for d in self.query(query_embedding, k=k * 2)]
 
         fused = rrf([vec_ranks, bm25_ranks])[:k]
-        doc_by_id = dict(zip(ids, all_docs["documents"]))
-        meta_by_id = dict(zip(ids, all_docs["metadatas"]))
+        res = self._collection.get(ids=fused, include=["documents", "metadatas"])
+        doc_by_id = dict(zip(res["ids"], res["documents"], strict=True))
+        meta_by_id = dict(zip(res["ids"], res["metadatas"], strict=True))
         return [
             {
                 "id": doc_id,
@@ -152,7 +179,7 @@ class ChromaVectorStore:
 
         upload_dir = Path(settings.upload_dir)
         seen: dict[str, dict[str, Any]] = {}
-        for doc_id, meta in zip(result["ids"], result["metadatas"]):
+        for doc_id, meta in zip(result["ids"], result["metadatas"], strict=True):
             title = meta.get("title", doc_id)
             if title not in seen:
                 file_path = upload_dir / title
@@ -175,6 +202,7 @@ class ChromaVectorStore:
             return 0
 
         self._collection.delete(ids=result["ids"])
+        self._invalidate_bm25()
         logger.info("Deleted %d chunks for document '%s'", len(result["ids"]), title)
         return len(result["ids"])
 

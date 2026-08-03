@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, update
@@ -38,7 +38,7 @@ async def query_chat(request: ChatRequest, db: AsyncSession = Depends(get_async_
     await db.execute(
         update(ChatSession)
         .where(ChatSession.id == session_id)
-        .values(title=session.title, updated_at=datetime.utcnow())
+        .values(title=session.title, updated_at=datetime.now(UTC).replace(tzinfo=None))
     )
     await db.commit()
 

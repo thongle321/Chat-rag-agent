@@ -21,6 +21,10 @@ app.use(head)
 app.use(router)
 app.use(ui)
 
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[vue]', info, err)
+}
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (auth.token && !auth.user) {

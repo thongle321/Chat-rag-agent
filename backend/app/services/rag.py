@@ -244,7 +244,7 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         raise HTTPException(
             status_code=500,
             detail="I encountered an error while processing your request. Please try again.",
-        )
+        ) from None
 
 
 async def close() -> None:
