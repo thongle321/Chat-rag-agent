@@ -1,21 +1,18 @@
 import asyncio
 import logging
-import operator
 import uuid
-from pathlib import Path
-from typing import Annotated, Literal
+from dataclasses import dataclass, field
+from typing import Literal
 
-import aiosqlite
 from fastapi import HTTPException
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ReinjectSystemPrompt
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
-from typing_extensions import TypedDict
+from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
 
 from app.core.config import settings
+from app.db.conversation_store import load_messages, save_messages
 from app.db.embeddings import get_embeddings
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
@@ -23,18 +20,20 @@ from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
-class RAGState(TypedDict):
-    question: str
-    messages: Annotated[list[ModelMessage], operator.add]
-    source_docs: list[str]
-    route: str
-
 
 class RouteResult(BaseModel):
     category: Literal["chat", "answer"]
 
 
-# ponytail: two-node graph (route -> chat|answer) — add retrieval re-rank, self-verify nodes when multistep logic lands
+@dataclass
+class RAGState:
+    question: str
+    history: list[ModelMessage] = field(default_factory=list)
+    new_messages: list[ModelMessage] = field(default_factory=list)
+    source_docs: list[str] = field(default_factory=list)
+
+
+# ponytail: three-node graph (route -> chat|answer) — add re-rank, self-verify nodes when multistep logic lands
 _graph = None
 
 
@@ -84,11 +83,8 @@ def _last_output(messages: list[ModelMessage]) -> str:
 
 
 async def get_messages(session_id: str) -> list[dict]:
-    g = await get_graph()
-    snap = await g.aget_state({"configurable": {"thread_id": session_id}})
-    msgs = snap.values.get("messages", [])
     result = []
-    for m in msgs:
+    for m in await load_messages(session_id):
         if isinstance(m, ModelRequest):
             for p in m.parts:
                 if isinstance(p, UserPromptPart):
@@ -98,27 +94,6 @@ async def get_messages(session_id: str) -> list[dict]:
                 if isinstance(p, TextPart):
                     result.append({"role": "assistant", "content": p.content})
     return result
-
-
-async def answer_node(state: RAGState) -> dict:
-    model, _ = get_llm()
-    messages = state.get("messages", [])
-    query = await _rewrite_question(state["question"], messages)
-    query_embedding = next(get_embeddings().query_embed(query))
-    docs = get_vector_store().query(query_embedding, k=5)
-    context = _format_context(docs)
-    full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
-    agent = Agent(
-        model,
-        system_prompt=full_prompt,
-        name="rag_agent",
-        capabilities=[ReinjectSystemPrompt(replace_existing=True)],
-    )
-    result = await asyncio.wait_for(
-        agent.run(state["question"], message_history=messages),
-        timeout=120.0,
-    )
-    return {"messages": result.new_messages(), "source_docs": _format_sources(docs)}
 
 
 REWRITE_PROMPT = (
@@ -141,7 +116,11 @@ async def _rewrite_question(question: str, messages: list[ModelMessage]) -> str:
     if not messages:
         return question
     model, _ = get_llm()
-    agent = Agent(model, system_prompt=REWRITE_PROMPT)
+    agent = Agent(
+        model,
+        system_prompt=REWRITE_PROMPT,
+        capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+    )
     result = await asyncio.wait_for(
         agent.run(question, message_history=messages[-_MAX_HISTORY:]),
         timeout=30.0,
@@ -158,53 +137,90 @@ ROUTER_PROMPT = (
 )
 
 
-async def route_node(state: RAGState) -> dict:
-    model, _ = get_llm()
-    router = Agent(model, output_type=RouteResult, system_prompt=ROUTER_PROMPT)
-    result = await asyncio.wait_for(
-        router.run(state["question"], message_history=state.get("messages", [])[-_MAX_HISTORY:]),
-        timeout=30.0,
-    )
-    return {"route": result.output.category}
+@dataclass
+class Route(BaseNode[RAGState]):
+    async def run(self, ctx: GraphRunContext[RAGState]) -> "Chat | Answer":
+        model, _ = get_llm()
+        router = Agent(
+            model,
+            output_type=RouteResult,
+            system_prompt=ROUTER_PROMPT,
+            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+        )
+        result = await asyncio.wait_for(
+            router.run(ctx.state.question, message_history=ctx.state.history[-_MAX_HISTORY:]),
+            timeout=30.0,
+        )
+        return Chat() if result.output.category == "chat" else Answer()
 
 
-async def chat_node(state: RAGState) -> dict:
-    model, _ = get_llm()
-    docs = [d for d in get_vector_store().list_documents() if d.get("summary")]
-    prompt = settings.chat_prompt.strip()
-    if docs:
-        listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
-        prompt += f"\n\nAvailable documents:\n{listing}"
-    agent = Agent(model, system_prompt=prompt, name="chat_agent")
-    result = await asyncio.wait_for(
-        agent.run(state["question"], message_history=state.get("messages", [])),
-        timeout=120.0,
-    )
-    return {"messages": result.new_messages(), "source_docs": []}
+@dataclass
+class Chat(BaseNode[RAGState, None, None]):
+    async def run(self, ctx: GraphRunContext[RAGState]) -> End[None]:
+        model, _ = get_llm()
+        docs = [d for d in get_vector_store().list_documents() if d.get("summary")]
+        prompt = settings.chat_prompt.strip()
+        if docs:
+            listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
+            prompt += f"\n\nAvailable documents:\n{listing}"
+        agent = Agent(
+            model,
+            system_prompt=prompt,
+            name="chat_agent",
+            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+        )
+        result = await asyncio.wait_for(
+            agent.run(ctx.state.question, message_history=ctx.state.history),
+            timeout=120.0,
+        )
+        ctx.state.new_messages = result.new_messages()
+        ctx.state.source_docs = []
+        return End(None)
 
 
-async def get_graph():
+@dataclass
+class Answer(BaseNode[RAGState, None, None]):
+    async def run(self, ctx: GraphRunContext[RAGState]) -> End[None]:
+        model, _ = get_llm()
+        messages = ctx.state.history
+        query = await _rewrite_question(ctx.state.question, messages)
+        query_embedding = next(get_embeddings().query_embed(query))
+        docs = get_vector_store().query(query_embedding, k=5)
+        context = _format_context(docs)
+        full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
+        agent = Agent(
+            model,
+            system_prompt=full_prompt,
+            name="rag_agent",
+            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+        )
+        result = await asyncio.wait_for(
+            agent.run(ctx.state.question, message_history=messages),
+            timeout=120.0,
+        )
+        ctx.state.new_messages = result.new_messages()
+        ctx.state.source_docs = _format_sources(docs)
+        return End(None)
+
+
+def get_graph():
     global _graph
     if _graph is not None:
         return _graph
-    db_path = Path(settings.upload_dir).resolve().parent / "checkpoints" / "graph.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = await aiosqlite.connect(str(db_path))
-    checkpointer = AsyncSqliteSaver(conn)
-    builder = StateGraph(RAGState)
-    builder.add_node("route", route_node)
-    builder.add_node("chat", chat_node)
-    builder.add_node("answer", answer_node)
-    builder.add_edge(START, "route")
-    builder.add_conditional_edges(
-        "route",
-        lambda state: state.get("route", "answer"),
-        {"chat": "chat", "answer": "answer"},
+
+    g = GraphBuilder(state_type=RAGState)
+
+    @g.step
+    async def start_step(ctx: StepContext[RAGState, None, None]) -> Route:
+        return Route()
+
+    g.add(
+        g.node(Route),
+        g.node(Chat),
+        g.node(Answer),
+        g.edge_from(g.start_node).to(start_step),
     )
-    builder.add_edge("chat", END)
-    builder.add_edge("answer", END)
-    _graph = builder.compile(checkpointer=checkpointer)
-    logger.info("Graph compiled with SQLite checkpointer at %s", db_path)
+    _graph = g.build()
     return _graph
 
 
@@ -212,15 +228,14 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
     _, model_name = get_llm()
     try:
         sid = session_id or str(uuid.uuid4())
-        g = await get_graph()
-        state = await g.ainvoke(
-            {"question": question},
-            {"configurable": {"thread_id": sid}},
-        )
+        history = await load_messages(sid)
+        state = RAGState(question=question, history=history)
+        await get_graph().run(state=state)
+        await save_messages(sid, history + state.new_messages)
         return ChatResponse(
             answer_id=str(uuid.uuid4()),
-            answer=_last_output(state.get("messages", [])),
-            source_documents=state.get("source_docs", []),
+            answer=_last_output(state.new_messages),
+            source_documents=state.source_docs,
             model=model_name,
             session_id=sid,
         )
@@ -233,11 +248,9 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
 
 
 async def close() -> None:
-    """Close the graph checkpointer connection."""
+    """Close the conversation store connection."""
     global _graph
-    if _graph is not None:
-        try:
-            await _graph.checkpointer.conn.close()
-        except Exception:
-            pass
-        _graph = None
+    _graph = None
+    from app.db import conversation_store
+
+    await conversation_store.close()

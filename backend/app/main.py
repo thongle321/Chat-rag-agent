@@ -11,7 +11,7 @@ from app.api.routes import router
 from app.core.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory, create_db_and_tables, engine
-from app.services.rag import close, get_graph
+from app.services.rag import close
 
 
 @asynccontextmanager
@@ -30,7 +30,6 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(handlers=[logfire.LogfireLoggingHandler()], force=True)
 
     await create_db_and_tables()
-    await get_graph()
 
     async with async_session_factory() as session:
         from app.services.ai_settings import get_ai_settings
