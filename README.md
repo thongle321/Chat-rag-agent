@@ -16,10 +16,10 @@ Features:
 ## Running the backend
 
 1. Create a virtual environment
-2. Install dependencies from `backend/requirements.txt`
-3. Run `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+2. Install dependencies: `uv sync` (or `pip install -e .`)
+3. Run `fastapi dev` for development (auto-reload) or `fastapi run` for production
 
 ## Running the frontend
 
-1. In `frontend`, install dependencies with `npm install`
-2. Start dev server with `npm run dev`
+1. In `frontend`, install dependencies with `pnpm install`
+2. Start dev server with `pnpm dev`

@@ -6,6 +6,7 @@ from pathlib import Path
 from chonkie import RecursiveChunker
 from liteparse import LiteParse
 from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
 from app.core.config import settings
 from app.db.embeddings import get_embeddings, passage_prefix
@@ -35,12 +36,14 @@ SUMMARY_PROMPT = (
     "describing the main topics it covers. Reply ONLY with the summary."
 )
 
+_SUMMARY_LIMITS = UsageLimits(request_limit=3)
+
 
 async def _summarize(text: str) -> str:
     try:
         model, _ = get_llm()
         agent = Agent(model, system_prompt=SUMMARY_PROMPT)
-        result = await asyncio.wait_for(agent.run(text[:3000]), timeout=60.0)
+        result = await asyncio.wait_for(agent.run(text[:3000], usage_limits=_SUMMARY_LIMITS), timeout=60.0)
         return result.output.strip()[:500]
     except Exception:
         logger.exception("Summary generation failed")
@@ -75,6 +78,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
     except Exception:
         logger.exception("Failed to load %s", file_path)
         return None
+
 
 async def index_file(file_path: Path) -> int:
     if not (file_path.is_file() and file_path.suffix.lower() in TEXT_EXTENSIONS | {".pdf"} | IMAGE_EXTENSIONS):
@@ -111,6 +115,7 @@ async def index_file(file_path: Path) -> int:
 
     logger.info("Indexed %d chunks from %s", len(chunks), file_path.name)
     return len(chunks)
+
 
 async def save_and_queue_indexing(
     filename: str,

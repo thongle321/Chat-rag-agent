@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ReinjectSystemPrompt
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.usage import UsageLimits
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
 
 from app.core.config import settings
@@ -111,6 +112,9 @@ REWRITE_PROMPT = (
 
 _MAX_HISTORY = 10
 
+_SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
+_RAG_LIMITS = UsageLimits(request_limit=8, tool_calls_limit=10)
+
 
 async def _rewrite_question(question: str, messages: list[ModelMessage]) -> str:
     if not messages:
@@ -122,7 +126,7 @@ async def _rewrite_question(question: str, messages: list[ModelMessage]) -> str:
         capabilities=[ReinjectSystemPrompt(replace_existing=True)],
     )
     result = await asyncio.wait_for(
-        agent.run(question, message_history=messages[-_MAX_HISTORY:]),
+        agent.run(question, message_history=messages[-_MAX_HISTORY:], usage_limits=_SINGLE_SHOT_LIMITS),
         timeout=30.0,
     )
     first_line = str(result.output or "").strip().split("\n", 1)[0].strip()
@@ -148,7 +152,11 @@ class Route(BaseNode[RAGState]):
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            router.run(ctx.state.question, message_history=ctx.state.history[-_MAX_HISTORY:]),
+            router.run(
+                ctx.state.question,
+                message_history=ctx.state.history[-_MAX_HISTORY:],
+                usage_limits=_SINGLE_SHOT_LIMITS,
+            ),
             timeout=30.0,
         )
         return Chat() if result.output.category == "chat" else Answer()
@@ -170,7 +178,7 @@ class Chat(BaseNode[RAGState, None, None]):
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=ctx.state.history),
+            agent.run(ctx.state.question, message_history=ctx.state.history, usage_limits=_RAG_LIMITS),
             timeout=120.0,
         )
         ctx.state.new_messages = result.new_messages()
@@ -195,7 +203,7 @@ class Answer(BaseNode[RAGState, None, None]):
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=messages),
+            agent.run(ctx.state.question, message_history=messages, usage_limits=_RAG_LIMITS),
             timeout=120.0,
         )
         ctx.state.new_messages = result.new_messages()
