@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useChatStore, groupByDate } from '../stores/chat'
+import { useChatStore, groupByDate, type Conversation } from '../stores/chat'
 
 defineProps<{
   onCollapse?: () => void
@@ -43,7 +43,7 @@ function confirmRename() {
   renameModalOpen.value = false
 }
 
-function getItems(c: any) {
+function getItems(c: Conversation) {
   return [
     [
       { label: c.pinned ? 'Bỏ ghim' : 'Ghim', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },

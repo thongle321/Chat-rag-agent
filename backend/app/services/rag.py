@@ -13,7 +13,7 @@ from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepCon
 
 from app.core.config import settings
 from app.db.conversation_store import load_messages, save_messages
-from app.db.embeddings import get_embeddings
+from app.db.embeddings import get_embeddings, query_prefix
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
 from app.services.llm import get_llm
@@ -184,8 +184,8 @@ class Answer(BaseNode[RAGState, None, None]):
         model, _ = get_llm()
         messages = ctx.state.history
         query = await _rewrite_question(ctx.state.question, messages)
-        query_embedding = next(get_embeddings().query_embed(query))
-        docs = get_vector_store().query(query_embedding, k=5)
+        query_embedding = next(get_embeddings().query_embed(query_prefix() + query))
+        docs = get_vector_store().hybrid_query(query, query_embedding, k=8)
         context = _format_context(docs)
         full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
         agent = Agent(

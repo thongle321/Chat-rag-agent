@@ -21,6 +21,7 @@ dependencies = [
     "fastembed>=0.5.0",
     "logfire[fastapi,httpx,sqlalchemy]",
     "cryptography>=49.0.0",
+    "bm25s>=0.3.10",
 ]
 
 [tool.setuptools.packages.find]

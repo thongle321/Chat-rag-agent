@@ -30,7 +30,7 @@ async function handleLogin(event: FormSubmitEvent<Schema>) {
   try {
     await authStore.login(event.data.email, event.data.password)
     router.push('/admin/')
-  } catch (err: any) {
+  } catch (err: unknown) {
     error.value = authStore.error || 'Login failed'
   }
 }

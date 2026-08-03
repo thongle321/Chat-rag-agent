@@ -90,7 +90,7 @@ async function submitConfig(
     await api.post('/facebook/config', payload)
     modal.value = false
     await loadChannels()
-  } catch (err: any) {
+  } catch (err: unknown) {
     error.value = getErrorMessage(err)
   } finally {
     saving.value = false

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma4:31b-cloud"
     logfire_token: SecretStr | None = None
     hf_token: SecretStr | None = None
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model: str = "intfloat/multilingual-e5-small"
     context_prompt: str = (
         "You are a knowledgeable assistant for a private document knowledge base.\n"
         "RULES:\n"

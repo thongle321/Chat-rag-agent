@@ -47,10 +47,14 @@ watch(
 )
 
 onMounted(async () => {
-  await settingsStore.fetchSettings()
-  Object.assign(state, settingsStore.settings)
-  if (settingsStore.models.length === 0) {
-    await refreshModels()
+  try {
+    await settingsStore.fetchSettings()
+    Object.assign(state, settingsStore.settings)
+    if (settingsStore.models.length === 0) {
+      await refreshModels()
+    }
+  } catch {
+    error.value = settingsStore.error || 'Failed to load settings'
   }
 })
 
@@ -112,8 +116,8 @@ async function save(event: FormSubmitEvent<Schema>) {
       icon: 'i-lucide-check',
       timeout: 3000,
     })
-  } catch (err: any) {
-    error.value = settingsStore.error || err.message
+  } catch (err: unknown) {
+    error.value = settingsStore.error || (err instanceof Error ? err.message : 'Save failed')
   } finally {
     saving.value = false
   }

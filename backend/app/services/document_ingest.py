@@ -8,7 +8,7 @@ from liteparse import LiteParse
 from pydantic_ai import Agent
 
 from app.core.config import settings
-from app.db.embeddings import get_embeddings
+from app.db.embeddings import get_embeddings, passage_prefix
 from app.db.vector_store import get_vector_store
 from app.services.llm import get_llm
 
@@ -20,7 +20,8 @@ TEXT_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".xml"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
 _CHEAP_PARSER = LiteParse(output_format="markdown")
-_OCR_PARSER = LiteParse(output_format="markdown", ocr_language="vie+eng")
+# dpi=400: default render DPI dropped digits in scanned legal docs (e.g. "3.000 tỷ đồng" in Điều 7)
+_OCR_PARSER = LiteParse(output_format="markdown", ocr_language="vie+eng", dpi=400)
 
 chunker = RecursiveChunker(
     tokenizer="character",
@@ -94,7 +95,7 @@ async def index_file(file_path: Path) -> int:
         chunk_texts.append(chunk.text)
         chunk_metadatas.append({**base_metadata, "chunk": i})
 
-    embeddings_list = list(get_embeddings().embed(chunk_texts))
+    embeddings_list = list(get_embeddings().embed([passage_prefix() + c for c in chunk_texts]))
 
     store = get_vector_store()
     for i in range(0, len(chunks), BATCH_SIZE):

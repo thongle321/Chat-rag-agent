@@ -5,10 +5,11 @@ const api = axios.create({
   timeout: 120000,
 })
 
-export function getErrorMessage(err: any): string {
+export function getErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) return err instanceof Error ? err.message : 'An error occurred'
   const detail = err.response?.data?.detail
   if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d: any) => d.msg).join('; ')
+  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg ?? '').filter(Boolean).join('; ')
   return err.message || 'An error occurred'
 }
 
