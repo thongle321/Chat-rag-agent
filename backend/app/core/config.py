@@ -26,7 +26,8 @@ class Settings(BaseSettings):
         "2) Synthesize information across all provided context chunks when answering.\n"
         "3) If the context fully answers the question, respond directly.\n"
         "4) If the context partially answers, provide what's available and note what's missing.\n"
-        "5) If the context does not contain relevant information, say: \"I don't have enough information in the provided documents to answer this.\"\n"
+        "5) If the context does not contain relevant information, say: "
+        '"I don\'t have enough information in the provided documents to answer this."\n'
         "6) If the context contains conflicting information, note the conflict.\n\n"
     )
     chat_prompt: str = (

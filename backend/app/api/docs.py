@@ -1,14 +1,13 @@
+import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Query, HTTPException
-from app.models.schemas import DocumentIngestResponse, DocumentListResponse, DocumentInfo
-from app.services.document_ingest import save_and_queue_indexing, _index_file
-from app.db.vector_store import list_documents, delete_document
-from app.core.config import settings
-import logging
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 
-from app.services.user_manager import current_active_user
+from app.models.schemas import DocumentInfo, DocumentIngestResponse, DocumentListResponse
 from app.models.user import User
+from app.services import documents
+from app.services.document_ingest import index_file, save_and_queue_indexing
+from app.services.user_manager import current_active_user
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ async def upload_files(
             ))
             continue
         message, saved_path = await save_and_queue_indexing(safe_name, content)
-        background_tasks.add_task(_index_file, saved_path)
+        background_tasks.add_task(index_file, saved_path)
         results.append(DocumentIngestResponse(
             status="ok",
             message=message,
@@ -45,23 +44,18 @@ async def upload_files(
 
 @router.get("", response_model=DocumentListResponse)
 async def list_all_documents(user: User = current_active_user):
-    docs = list_documents()
+    docs = documents.list_documents()
     return DocumentListResponse(documents=[DocumentInfo.model_validate(d) for d in docs])
 
 
 @router.delete("/{title}")
 async def delete_document_by_title(title: str, user: User = current_active_user):
-    deleted = delete_document(title)
-    upload_dir = Path(settings.upload_dir)
-    for f in upload_dir.iterdir():
-        if f.is_file() and f.stem == title:
-            f.unlink()
-            break
+    deleted = documents.delete_document(title)
     return {"status": "deleted", "chunks_deleted": deleted}
 
 
 def _build_status_results(titles: list[str]) -> dict:
-    existing = list_documents()
+    existing = documents.list_documents()
     existing_map = {d["title"]: d for d in existing}
     results = {}
     for title in titles:

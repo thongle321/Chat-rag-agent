@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 
@@ -7,10 +8,9 @@ from liteparse import LiteParse
 from pydantic_ai import Agent
 
 from app.core.config import settings
-from app.db.vector_store import chroma_collection, embed_model, delete_document
-from app.services.rag import _get_model
-import logging
-
+from app.db.embeddings import get_embeddings
+from app.db.vector_store import get_vector_store
+from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ SUMMARY_PROMPT = (
 
 async def _summarize(text: str) -> str:
     try:
-        model, _ = _get_model()
+        model, _ = get_llm()
         agent = Agent(model, system_prompt=SUMMARY_PROMPT)
         result = await asyncio.wait_for(agent.run(text[:3000]), timeout=60.0)
         return result.output.strip()[:500]
@@ -75,7 +75,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
         logger.exception("Failed to load %s", file_path)
         return None
 
-async def _index_file(file_path: Path) -> int:
+async def index_file(file_path: Path) -> int:
     if not (file_path.is_file() and file_path.suffix.lower() in TEXT_EXTENSIONS | {".pdf"} | IMAGE_EXTENSIONS):
         return 0
 
@@ -94,13 +94,14 @@ async def _index_file(file_path: Path) -> int:
         chunk_texts.append(chunk.text)
         chunk_metadatas.append({**base_metadata, "chunk": i})
 
-    embeddings_list = list(embed_model.embed(chunk_texts))
+    embeddings_list = list(get_embeddings().embed(chunk_texts))
 
+    store = get_vector_store()
     for i in range(0, len(chunks), BATCH_SIZE):
         batch_texts = chunk_texts[i : i + BATCH_SIZE]
         batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
         batch_metadatas = chunk_metadatas[i : i + BATCH_SIZE]
-        chroma_collection.add(
+        store.add(
             ids=[str(uuid.uuid4()) for _ in batch_texts],
             embeddings=batch_embeddings,
             documents=batch_texts,
@@ -120,7 +121,7 @@ async def save_and_queue_indexing(
     saved_path = upload_folder / filename
     if saved_path.exists():
         saved_path.unlink()
-        delete_document(filename)
+        get_vector_store().delete_document(filename)
 
     saved_path.write_bytes(file_bytes)
     return f"File '{filename}' queued for indexing.", saved_path

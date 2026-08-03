@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import operator
 import uuid
 from pathlib import Path
@@ -10,20 +11,17 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import ReinjectSystemPrompt
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
-from pydantic_ai.models.ollama import OllamaModel
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.ollama import OllamaProvider
 from typing_extensions import TypedDict
 
 from app.core.config import settings
-from app.db.vector_store import chroma_collection, embed_model, list_documents, query_similar
+from app.db.embeddings import get_embeddings
+from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
-import logging
-
+from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
-
 
 class RAGState(TypedDict):
     question: str
@@ -38,35 +36,6 @@ class RouteResult(BaseModel):
 
 # ponytail: two-node graph (route -> chat|answer) — add retrieval re-rank, self-verify nodes when multistep logic lands
 _graph = None
-
-_model_instance = None
-_model_instance_name = None
-_model_key: str | None = None
-
-
-def _get_model():
-    global _model_instance, _model_instance_name, _model_key
-    provider = settings.ai_provider.lower()
-    model_name = settings.ollama_model if provider == "ollama" else settings.openai_model
-    key = f"{provider}:{model_name}"
-    if _model_key == key:
-        return _model_instance, _model_instance_name
-    if provider == "ollama":
-        _model_instance = OllamaModel(
-            settings.ollama_model,
-            provider=OllamaProvider(
-                base_url=settings.ollama_base_url or "http://localhost:11434",
-                api_key=(settings.ollama_api_key.get_secret_value() if hasattr(settings.ollama_api_key, 'get_secret_value') else settings.ollama_api_key) or None,
-            ),
-        )
-        _model_instance_name = f"ollama/{settings.ollama_model}"
-    elif provider == "openai":
-        _model_instance = OpenAIChatModel(settings.openai_model)
-        _model_instance_name = f"openai/{settings.openai_model}"
-    else:
-        raise ValueError("No LLM configured")
-    _model_key = key
-    return _model_instance, _model_instance_name
 
 
 def _format_context(docs: list[dict]) -> str:
@@ -102,7 +71,16 @@ def _format_sources(docs: list[dict]) -> list[str]:
 
 
 def _last_output(messages: list[ModelMessage]) -> str:
-    return next((p.content for m in reversed(messages) if isinstance(m, ModelResponse) for p in m.parts if isinstance(p, TextPart)), "")
+    return next(
+        (
+            p.content
+            for m in reversed(messages)
+            if isinstance(m, ModelResponse)
+            for p in m.parts
+            if isinstance(p, TextPart)
+        ),
+        "",
+    )
 
 
 async def get_messages(session_id: str) -> list[dict]:
@@ -122,55 +100,54 @@ async def get_messages(session_id: str) -> list[dict]:
     return result
 
 
-async def _expand_neighbors(docs: list[dict], radius: int = 1) -> list[dict]:
-    """Add adjacent chunks (same title, chunk index ± radius) to retrieval results.
-
-    Handles questions whose answer spans a chunk boundary but whose decisive
-    chunk scores poorly (e.g. OCR-fragmented text). Requires chunk metadata.
-    """
-    expanded: dict[tuple[str, int], dict] = {}
-    base: set[tuple[str, int]] = set()
-    for d in docs:
-        m = d["metadata"]
-        chunk = m.get("chunk")
-        if chunk is None:
-            expanded[("", id(d))] = d
-            continue
-        key = (m.get("title", ""), chunk)
-        expanded[key] = d
-        base.add(key)
-    titles = {m.get("title") for d in docs for m in [d["metadata"]] if m.get("title")}
-    if not titles:
-        return list(expanded.values())
-    result = chroma_collection.get(
-        where={"title": {"$in": list(titles)}},
-        include=["documents", "metadatas"],
-    )
-    for doc, meta in zip(result["documents"], result["metadatas"] or []):
-        chunk = meta.get("chunk")
-        if chunk is None:
-            continue
-        key = (meta.get("title", ""), chunk)
-        if key in expanded:
-            continue
-        if any(t == key[0] and c - radius <= chunk <= c + radius for (t, c) in base):
-            expanded[key] = {"content": doc, "metadata": meta, "score": 0.0}
-    return list(expanded.values())
-
-
 async def answer_node(state: RAGState) -> dict:
-    model, _ = _get_model()
-    query_embedding = next(embed_model.query_embed(state["question"]))
-    docs = query_similar(query_embedding, k=5)
-    docs = await _expand_neighbors(docs)
+    model, _ = get_llm()
+    messages = state.get("messages", [])
+    query = await _rewrite_question(state["question"], messages)
+    query_embedding = next(get_embeddings().query_embed(query))
+    docs = get_vector_store().query(query_embedding, k=5)
     context = _format_context(docs)
     full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
-    agent = Agent(model, system_prompt=full_prompt, name="rag_agent")
+    agent = Agent(
+        model,
+        system_prompt=full_prompt,
+        name="rag_agent",
+        capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+    )
     result = await asyncio.wait_for(
-        agent.run(state["question"], message_history=state.get("messages", [])),
+        agent.run(state["question"], message_history=messages),
         timeout=120.0,
     )
     return {"messages": result.new_messages(), "source_docs": _format_sources(docs)}
+
+
+REWRITE_PROMPT = (
+    "Given the conversation history and the latest user message, "
+    "rewrite the latest message into a single standalone question that "
+    "contains all the context needed to answer it on its own. "
+    "Replace pronouns and vague references with specific nouns. "
+    "Fill in any missing subject or object. "
+    "Keep entity names, product codes, and acronyms verbatim. "
+    "If the message is already standalone, return it unchanged. "
+    "If the message is chit-chat with no question, return it unchanged. "
+    "Never add facts that were not in the conversation. "
+    "Reply ONLY with the rewritten question, nothing else."
+)
+
+_MAX_HISTORY = 10
+
+
+async def _rewrite_question(question: str, messages: list[ModelMessage]) -> str:
+    if not messages:
+        return question
+    model, _ = get_llm()
+    agent = Agent(model, system_prompt=REWRITE_PROMPT)
+    result = await asyncio.wait_for(
+        agent.run(question, message_history=messages[-_MAX_HISTORY:]),
+        timeout=30.0,
+    )
+    first_line = str(result.output or "").strip().split("\n", 1)[0].strip()
+    return (first_line[:400] or question) if first_line else question
 
 
 ROUTER_PROMPT = (
@@ -182,15 +159,18 @@ ROUTER_PROMPT = (
 
 
 async def route_node(state: RAGState) -> dict:
-    model, _ = _get_model()
+    model, _ = get_llm()
     router = Agent(model, output_type=RouteResult, system_prompt=ROUTER_PROMPT)
-    result = await asyncio.wait_for(router.run(state["question"]), timeout=30.0)
+    result = await asyncio.wait_for(
+        router.run(state["question"], message_history=state.get("messages", [])[-_MAX_HISTORY:]),
+        timeout=30.0,
+    )
     return {"route": result.output.category}
 
 
 async def chat_node(state: RAGState) -> dict:
-    model, _ = _get_model()
-    docs = [d for d in list_documents() if d.get("summary")]
+    model, _ = get_llm()
+    docs = [d for d in get_vector_store().list_documents() if d.get("summary")]
     prompt = settings.chat_prompt.strip()
     if docs:
         listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
@@ -229,7 +209,7 @@ async def get_graph():
 
 
 async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
-    _, model_name = _get_model()
+    _, model_name = get_llm()
     try:
         sid = session_id or str(uuid.uuid4())
         g = await get_graph()
@@ -246,4 +226,18 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         )
     except Exception:
         logger.exception("Chat failed for session %s", session_id)
-        raise HTTPException(status_code=500, detail="I encountered an error while processing your request. Please try again.")
+        raise HTTPException(
+            status_code=500,
+            detail="I encountered an error while processing your request. Please try again.",
+        )
+
+
+async def close() -> None:
+    """Close the graph checkpointer connection."""
+    global _graph
+    if _graph is not None:
+        try:
+            await _graph.checkpointer.conn.close()
+        except Exception:
+            pass
+        _graph = None

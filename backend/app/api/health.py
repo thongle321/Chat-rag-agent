@@ -26,8 +26,8 @@ async def detailed_health_check():
     }
 
     try:
-        from app.db.vector_store import document_count
-        count = document_count()
+        from app.services import documents
+        count = documents.document_count()
         health["components"]["vector_store"] = "ok"
         health["components"]["vector_store_count"] = count
     except Exception:

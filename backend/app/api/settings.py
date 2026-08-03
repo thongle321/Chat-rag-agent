@@ -1,15 +1,15 @@
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_async_session
-from app.services.user_manager import current_active_user
 from app.models.user import User
 from app.services.ai_settings import save_ai_settings
+from app.services.user_manager import current_active_user
 
 
 class AISettingsResponse(BaseModel):
@@ -73,7 +73,11 @@ def _get_secret_value(v):
 
 
 @router.put("/ai", response_model=AISettingsResponse)
-async def update_ai_settings(body: AISettingsUpdate, user: User = current_active_user, session: AsyncSession = Depends(get_async_session)):
+async def update_ai_settings(
+    body: AISettingsUpdate,
+    user: User = current_active_user,
+    session: AsyncSession = Depends(get_async_session),
+):
     if body.ai_provider is not None:
         settings.ai_provider = body.ai_provider
 
@@ -150,7 +154,7 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
                     headers={"Authorization": f"Bearer {openai_key}"},
                 )
                 resp.raise_for_status()
-                return TestConnectionResponse(ok=True, message=f"Connected to OpenAI.")
+                return TestConnectionResponse(ok=True, message="Connected to OpenAI.")
         except Exception as e:
             return TestConnectionResponse(ok=False, message=f"OpenAI error: {e}")
 

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
@@ -7,8 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.ai_settings import AISettingsModel
-import logging
-
 
 logger = logging.getLogger(__name__)
 

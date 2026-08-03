@@ -1,11 +1,10 @@
+import logging
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.facebook_config import FacebookConfigModel
-import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,8 @@ async def save_facebook_config(
             verify_token=verify_token,
         ))
     await session.commit()
-    new_row = row or (await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))).scalar_one()
+    result = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
+    new_row = row or result.scalar_one()
     logger.info("Facebook config saved for page %s", page_id)
     return {
         "page_id": new_row.page_id,

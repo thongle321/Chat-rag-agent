@@ -1,6 +1,7 @@
 from fastapi import APIRouter
-from app.services.user_manager import fastapi_users, jwt_backend, current_active_user
+
 from app.models.user import User
+from app.services.user_manager import current_active_user, fastapi_users, jwt_backend
 
 router = APIRouter()
 

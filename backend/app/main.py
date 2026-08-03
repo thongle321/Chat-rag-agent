@@ -1,19 +1,17 @@
 import logging
 from contextlib import asynccontextmanager
 
+import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
+from app.api.facebook import close_client
+from app.api.routes import router
 from app.core.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
-from app.api.routes import router
-from app.api.facebook import close_client
 from app.db.session import async_session_factory, create_db_and_tables, engine
-from app.services.rag import get_graph
-import app.services.rag as rag_service
-
-import logfire
+from app.services.rag import close, get_graph
 
 
 @asynccontextmanager
@@ -44,8 +42,9 @@ async def lifespan(app: FastAPI):
             settings.ollama_api_key = db["ollama_api_key"]
             settings.openai_model = db["openai_model"]
             settings.openai_api_key = db["openai_api_key"]
-        from sqlalchemy import select
         from fastapi_users.password import PasswordHelper
+        from sqlalchemy import select
+
         from app.models.user import User
         result = await session.execute(select(User).where(User.email == "admin@example.com"))
         if not result.scalar_one_or_none():
@@ -64,18 +63,17 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown: close all persistent resources ---
-    if rag_service._graph is not None:
-        try:
-            await rag_service._graph.checkpointer.conn.close()
-        except Exception:
-            pass
+    await close()
     await engine.dispose()
     await close_client()
 
 
 app = FastAPI(
     title=settings.app_name,
-    description="FastAPI backend for ingesting documents, answering user questions, collecting feedback, and connecting Facebook.",
+    description=(
+        "FastAPI backend for ingesting documents, answering user questions, "
+        "collecting feedback, and connecting Facebook."
+    ),
     version=settings.version,
     lifespan=lifespan,
 )

@@ -16,7 +16,6 @@ from app.core.config import settings
 from app.db.session import get_user_db
 from app.models.user import User
 
-
 password_hash = PasswordHash((Argon2Hasher(),))
 password_helper = PasswordHelper(password_hash)
 

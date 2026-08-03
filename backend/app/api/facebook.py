@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from httpx import AsyncClient
@@ -14,8 +15,6 @@ from app.services.facebook_config import (
 )
 from app.services.rag import answer_question
 from app.services.user_manager import current_active_user
-import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +109,14 @@ async def get_config(user: User = current_active_user, db: AsyncSession = Depend
 
 
 @router.post("/config", response_model=FacebookConfigResponse)
-async def save_config(req: FacebookConfigRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
-    config = await save_facebook_config(db, req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name)
+async def save_config(
+    req: FacebookConfigRequest,
+    user: User = current_active_user,
+    db: AsyncSession = Depends(get_async_session),
+):
+    config = await save_facebook_config(
+        db, req.page_id, req.verify_token, page_token=req.page_token, page_name=req.page_name
+    )
 
     return FacebookConfigResponse(
         page_id=config["page_id"],
@@ -154,7 +159,11 @@ async def fb_verify(
         logger.info("Facebook webhook verified successfully")
         return Response(content=hub_challenge, media_type="text/plain")
 
-    logger.warning("Facebook webhook verification failed: mode=%s token_match=%s", hub_mode, hub_verify_token == stored_token)
+    logger.warning(
+        "Facebook webhook verification failed: mode=%s token_match=%s",
+        hub_mode,
+        hub_verify_token == stored_token,
+    )
     return Response(status_code=403)
 
 

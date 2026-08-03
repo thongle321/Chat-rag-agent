@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+
 from app.api import auth, chat, docs, facebook, health, sessions, settings, stats
 
 router = APIRouter(prefix="/api")

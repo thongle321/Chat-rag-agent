@@ -1,10 +1,9 @@
+import logging
 from functools import lru_cache
 
 from fastembed import TextEmbedding
 
 from app.core.config import settings
-import logging
-
 
 logger = logging.getLogger(__name__)
 
