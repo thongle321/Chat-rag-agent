@@ -42,14 +42,3 @@ def get_embeddings() -> TextEmbedding:
         model_name=settings.embedding_model,
         token=settings.hf_token.get_secret_value() if settings.hf_token else None,
     )
-
-
-def _check() -> None:
-    q = list(get_embeddings().query_embed(query_prefix() + "Nghị định 135 có hiệu lực"))
-    p = list(get_embeddings().embed([passage_prefix() + "Nghị định này có hiệu lực thi hành"]))
-    assert q[0].shape == p[0].shape == (384,), f"unexpected dim: {q[0].shape} vs {p[0].shape}"
-    print("embeddings check OK")
-
-
-if __name__ == "__main__":
-    _check()

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from pathlib import Path
 
@@ -63,24 +62,3 @@ async def close() -> None:
     if _conn is not None:
         await _conn.close()
         _conn = None
-
-
-def _check() -> None:
-    from pydantic_ai.messages import ModelRequest, UserPromptPart
-
-    async def main() -> None:
-        await close()
-        await save_messages("t", [ModelRequest([UserPromptPart("hi")])])
-        loaded = await load_messages("t")
-        assert len(loaded) == 1
-        assert isinstance(loaded[0].parts[0], UserPromptPart)
-        await delete_conversation("t")
-        assert await load_messages("t") == []
-        await close()
-
-    asyncio.run(main())
-    print("conversation_store round-trip OK")
-
-
-if __name__ == "__main__":
-    _check()

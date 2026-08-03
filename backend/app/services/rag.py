@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -15,7 +15,7 @@ from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepCon
 from app.core.config import settings
 from app.db.conversation_store import load_messages, save_messages
 from app.db.embeddings import get_embeddings, query_prefix
-from app.db.vector_store import get_vector_store
+from app.db.vector_store import VectorStore, get_vector_store
 from app.models.schemas import ChatResponse
 from app.services.llm import get_llm
 
@@ -24,6 +24,15 @@ logger = logging.getLogger(__name__)
 
 class RouteResult(BaseModel):
     category: Literal["chat", "answer"]
+
+
+@dataclass
+class Deps:
+    """Runtime deps injected into the graph per-run. Swap in fakes for tests."""
+
+    model: Any
+    model_name: str
+    vector_store: VectorStore
 
 
 @dataclass
@@ -116,12 +125,11 @@ _SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
 _RAG_LIMITS = UsageLimits(request_limit=8, tool_calls_limit=10)
 
 
-async def _rewrite_question(question: str, messages: list[ModelMessage]) -> str:
+async def _rewrite_question(question: str, messages: list[ModelMessage], deps: Deps) -> str:
     if not messages:
         return question
-    model, _ = get_llm()
     agent = Agent(
-        model,
+        deps.model,
         system_prompt=REWRITE_PROMPT,
         capabilities=[ReinjectSystemPrompt(replace_existing=True)],
     )
@@ -142,11 +150,10 @@ ROUTER_PROMPT = (
 
 
 @dataclass
-class Route(BaseNode[RAGState]):
-    async def run(self, ctx: GraphRunContext[RAGState]) -> "Chat | Answer":
-        model, _ = get_llm()
+class Route(BaseNode[RAGState, Deps]):
+    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> "Chat | Answer":
         router = Agent(
-            model,
+            ctx.deps.model,
             output_type=RouteResult,
             system_prompt=ROUTER_PROMPT,
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
@@ -163,16 +170,15 @@ class Route(BaseNode[RAGState]):
 
 
 @dataclass
-class Chat(BaseNode[RAGState, None, None]):
-    async def run(self, ctx: GraphRunContext[RAGState]) -> End[None]:
-        model, _ = get_llm()
-        docs = [d for d in get_vector_store().list_documents() if d.get("summary")]
+class Chat(BaseNode[RAGState, Deps, None]):
+    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
+        docs = [d for d in ctx.deps.vector_store.list_documents() if d.get("summary")]
         prompt = settings.chat_prompt.strip()
         if docs:
             listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
             prompt += f"\n\nAvailable documents:\n{listing}"
         agent = Agent(
-            model,
+            ctx.deps.model,
             system_prompt=prompt,
             name="chat_agent",
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
@@ -187,17 +193,16 @@ class Chat(BaseNode[RAGState, None, None]):
 
 
 @dataclass
-class Answer(BaseNode[RAGState, None, None]):
-    async def run(self, ctx: GraphRunContext[RAGState]) -> End[None]:
-        model, _ = get_llm()
+class Answer(BaseNode[RAGState, Deps, None]):
+    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
         messages = ctx.state.history
-        query = await _rewrite_question(ctx.state.question, messages)
+        query = await _rewrite_question(ctx.state.question, messages, ctx.deps)
         query_embedding = next(get_embeddings().query_embed(query_prefix() + query))
-        docs = get_vector_store().hybrid_query(query, query_embedding, k=8)
+        docs = ctx.deps.vector_store.hybrid_query(query, query_embedding, k=8)
         context = _format_context(docs)
         full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
         agent = Agent(
-            model,
+            ctx.deps.model,
             system_prompt=full_prompt,
             name="rag_agent",
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
@@ -216,10 +221,10 @@ def get_graph():
     if _graph is not None:
         return _graph
 
-    g = GraphBuilder(state_type=RAGState)
+    g = GraphBuilder(state_type=RAGState, deps_type=Deps)
 
     @g.step
-    async def start_step(ctx: StepContext[RAGState, None, None]) -> Route:
+    async def start_step(ctx: StepContext[RAGState, Deps, None]) -> Route:
         return Route()
 
     g.add(
@@ -233,12 +238,13 @@ def get_graph():
 
 
 async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
-    _, model_name = get_llm()
+    model, model_name = get_llm()
     try:
         sid = session_id or str(uuid.uuid4())
         history = await load_messages(sid)
         state = RAGState(question=question, history=history)
-        await get_graph().run(state=state)
+        deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
+        await get_graph().run(state=state, deps=deps)
         await save_messages(sid, history + state.new_messages)
         return ChatResponse(
             answer_id=str(uuid.uuid4()),
