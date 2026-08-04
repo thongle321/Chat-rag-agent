@@ -121,7 +121,7 @@ REWRITE_PROMPT = (
 _MAX_HISTORY = 10
 
 _SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
-_RAG_LIMITS = UsageLimits(request_limit=8, tool_calls_limit=10)
+_RAG_LIMITS = UsageLimits(request_limit=3)
 
 
 async def _rewrite_question(question: str, messages: list[ModelMessage], deps: Deps) -> str:
@@ -130,6 +130,7 @@ async def _rewrite_question(question: str, messages: list[ModelMessage], deps: D
     agent = Agent(
         deps.model,
         system_prompt=REWRITE_PROMPT,
+        name="rewrite",
         capabilities=[ReinjectSystemPrompt(replace_existing=True)],
     )
     result = await asyncio.wait_for(
@@ -155,6 +156,7 @@ class Route(BaseNode[RAGState, Deps]):
             ctx.deps.model,
             output_type=RouteResult,
             system_prompt=ROUTER_PROMPT,
+            name="router",
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
@@ -183,7 +185,7 @@ class Chat(BaseNode[RAGState, Deps, None]):
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=ctx.state.history, usage_limits=_RAG_LIMITS),
+            agent.run(ctx.state.question, message_history=ctx.state.history[-_MAX_HISTORY:], usage_limits=_RAG_LIMITS),
             timeout=120.0,
         )
         ctx.state.new_messages = result.new_messages()
@@ -206,8 +208,8 @@ class Answer(BaseNode[RAGState, Deps, None]):
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=messages, usage_limits=_RAG_LIMITS),
-            timeout=120.0,
+            agent.run(ctx.state.question, message_history=messages[-_MAX_HISTORY:], usage_limits=_RAG_LIMITS),
+            timeout=180.0,
         )
         ctx.state.new_messages = result.new_messages()
         return End(None)
