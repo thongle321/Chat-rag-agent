@@ -40,7 +40,6 @@ class RAGState:
     question: str
     history: list[ModelMessage] = field(default_factory=list)
     new_messages: list[ModelMessage] = field(default_factory=list)
-    source_docs: list[str] = field(default_factory=list)
 
 
 # ponytail: three-node graph (route -> chat|answer) — add re-rank, self-verify nodes when multistep logic lands
@@ -188,7 +187,6 @@ class Chat(BaseNode[RAGState, Deps, None]):
             timeout=120.0,
         )
         ctx.state.new_messages = result.new_messages()
-        ctx.state.source_docs = []
         return End(None)
 
 
@@ -212,7 +210,6 @@ class Answer(BaseNode[RAGState, Deps, None]):
             timeout=120.0,
         )
         ctx.state.new_messages = result.new_messages()
-        ctx.state.source_docs = _format_sources(docs)
         return End(None)
 
 
@@ -249,7 +246,6 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         return ChatResponse(
             answer_id=str(uuid.uuid4()),
             answer=_last_output(state.new_messages),
-            source_documents=state.source_docs,
             model=model_name,
             session_id=sid,
         )

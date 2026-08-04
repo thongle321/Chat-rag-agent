@@ -16,7 +16,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer_id: str
     answer: str
-    source_documents: list[str]
     model: str
     session_id: str
 

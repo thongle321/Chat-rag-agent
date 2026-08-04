@@ -28,8 +28,7 @@ class Settings(BaseSettings):
         "4) If the context partially answers, provide what's available and note what's missing.\n"
         "5) If the context does not contain relevant information, say you do not have "
         "enough information to answer, in the same language as the user's question.\n"
-        "6) If the context contains conflicting information, note the conflict.\n"
-        "7) Cite the [Source: title, p.X] tag supporting each factual claim, inline with the claim.\n\n"
+        "6) If the context contains conflicting information, note the conflict.\n\n"
     )
     chat_prompt: str = (
         "You are a friendly assistant for a document knowledge base. "
