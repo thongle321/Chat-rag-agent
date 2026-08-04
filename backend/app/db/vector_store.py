@@ -50,13 +50,16 @@ _VI_STOPWORDS = [
 _STOPWORDS = list(STOPWORDS_EN) + _VI_STOPWORDS
 
 
-def rrf(ranked: list[list[str]], k: int = 60) -> list[str]:
-    """Reciprocal Rank Fusion (Chroma RRF formula): score = sum(1 / (k + rank))."""
+def rrf(ranked: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
+    """Reciprocal Rank Fusion (Chroma RRF formula): score = sum(1 / (k + rank)).
+
+    Returns (doc_id, score) pairs sorted by score desc.
+    """
     scores: dict[str, float] = defaultdict(float)
     for lst in ranked:
         for rank, doc_id in enumerate(lst):
             scores[doc_id] += 1.0 / (k + rank + 1)
-    return [i for i, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)]
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
 class ChromaVectorStore:
@@ -155,7 +158,7 @@ class ChromaVectorStore:
         vec_ranks = [d["id"] for d in self.query(query_embedding, k=k * 2)]
 
         fused = rrf([vec_ranks, bm25_ranks])[:k]
-        res = self._collection.get(ids=fused, include=["documents", "metadatas"])
+        res = self._collection.get(ids=[i for i, _ in fused], include=["documents", "metadatas"])
         doc_by_id = dict(zip(res["ids"], res["documents"], strict=True))
         meta_by_id = dict(zip(res["ids"], res["metadatas"], strict=True))
         return [
@@ -163,9 +166,9 @@ class ChromaVectorStore:
                 "id": doc_id,
                 "content": doc_by_id.get(doc_id, ""),
                 "metadata": meta_by_id.get(doc_id, {}),
-                "score": 0.0,
+                "score": score,
             }
-            for doc_id in fused
+            for doc_id, score in fused
         ]
 
     def count(self) -> int:
