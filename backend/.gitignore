@@ -1,10 +1,22 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
 build/
 dist/
 wheels/
 *.egg-info
+.ruff_cache
 
 # Virtual environments
 .venv
+
+# Secrets
+.env
+channels.json
+
+# Data
+.chromadb/
+data/bm25_index/
+
+# Node
+node_modules/
