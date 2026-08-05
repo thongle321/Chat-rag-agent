@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { nextTick, ref, onMounted } from 'vue'
 import { Comark } from '@comark/vue'
+import { useClipboard } from '@vueuse/core'
 import { useChatStore } from '../stores/chat'
 
 const chatStore = useChatStore()
+const { copy, copied } = useClipboard()
 
 const chatInput = ref('')
 const chatWindow = ref<HTMLElement>()
@@ -106,10 +108,10 @@ async function handleSend(question: string) {
                       variant="ghost"
                       color="neutral"
                       size="xs"
-                      icon="i-lucide-copy"
-                      @click="navigator.clipboard.writeText(msg.text)"
+                      :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                      @click="copy(msg.text)"
                     >
-                      Sao chép
+                      {{ copied ? 'Đã sao chép' : 'Sao chép' }}
                     </UButton>
                   </div>
                 </div>
