@@ -1,4 +1,5 @@
 import logging
+import os
 from functools import lru_cache
 
 from fastembed import TextEmbedding
@@ -37,8 +38,12 @@ def get_embeddings() -> TextEmbedding:
         TextEmbedding.add_custom_model(
             settings.embedding_model, **_CUSTOM_MODELS[settings.embedding_model]
         )
+    hf = settings.hf_token.get_secret_value() if settings.hf_token else None
+    if hf:
+        os.environ.setdefault("HF_TOKEN", hf)
+    logger.info("HF token configured: %s", bool(hf))
     logger.info("Loading embedding model: %s", settings.embedding_model)
     return TextEmbedding(
         model_name=settings.embedding_model,
-        token=settings.hf_token.get_secret_value() if settings.hf_token else None,
+        token=hf,
     )
