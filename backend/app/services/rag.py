@@ -120,6 +120,11 @@ REWRITE_PROMPT = (
 
 _MAX_HISTORY = 10
 
+_CHAT_FALLBACK_REPLY = (
+    "Xin lỗi, mình đang gặp một chút sự cố không trả lời được ngay. "
+    "Bạn vui lòng thử lại nhé! / Sorry, I'm having trouble right now — please try again!"
+)
+
 _SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
@@ -184,11 +189,22 @@ class Chat(BaseNode[RAGState, Deps, None]):
             name="chat_agent",
             capabilities=[ReinjectSystemPrompt(replace_existing=True)],
         )
-        result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=ctx.state.history[-_MAX_HISTORY:], usage_limits=_RAG_LIMITS),
-            timeout=120.0,
-        )
-        ctx.state.new_messages = result.new_messages()
+        try:
+            result = await asyncio.wait_for(
+                agent.run(
+                    ctx.state.question,
+                    message_history=ctx.state.history[-_MAX_HISTORY:],
+                    usage_limits=_RAG_LIMITS,
+                ),
+                timeout=120.0,
+            )
+            ctx.state.new_messages = result.new_messages()
+        except Exception:
+            logger.warning("Chat LLM call failed, using fallback reply")
+            ctx.state.new_messages = [
+                ModelRequest(parts=[UserPromptPart(content=ctx.state.question)]),
+                ModelResponse(parts=[TextPart(content=_CHAT_FALLBACK_REPLY)]),
+            ]
         return End(None)
 
 
