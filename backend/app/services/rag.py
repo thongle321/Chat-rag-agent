@@ -173,7 +173,7 @@ class Route(BaseNode[RAGState, Deps]):
 @dataclass
 class Chat(BaseNode[RAGState, Deps, None]):
     async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
-        docs = [d for d in ctx.deps.vector_store.list_documents() if d.get("summary")]
+        docs = [d for d in await asyncio.to_thread(ctx.deps.vector_store.list_documents) if d.get("summary")]
         prompt = settings.chat_prompt.strip()
         if docs:
             listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
@@ -197,8 +197,10 @@ class Answer(BaseNode[RAGState, Deps, None]):
     async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
         messages = ctx.state.history
         query = await _rewrite_question(ctx.state.question, messages, ctx.deps)
-        query_embedding = next(get_embeddings().query_embed(query_prefix() + query))
-        docs = ctx.deps.vector_store.hybrid_query(query, query_embedding, k=8)
+        query_embedding = await asyncio.to_thread(
+            lambda: next(get_embeddings().query_embed(query_prefix() + query))
+        )
+        docs = await asyncio.to_thread(ctx.deps.vector_store.hybrid_query, query, query_embedding, 8)
         context = _format_context(docs)
         full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
         agent = Agent(
@@ -243,7 +245,14 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         history = await load_messages(sid)
         state = RAGState(question=question, history=history)
         deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
-        await get_graph().run(state=state, deps=deps)
+        try:
+            await asyncio.wait_for(get_graph().run(state=state, deps=deps), timeout=120.0)
+        except TimeoutError:
+            logger.warning("Graph run timed out (120s) for session %s", session_id)
+            raise HTTPException(
+                status_code=504,
+                detail="Request took too long. Please try again.",
+            ) from None
         await save_messages(sid, history + state.new_messages)
         return ChatResponse(
             answer_id=str(uuid.uuid4()),
@@ -251,6 +260,8 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
             model=model_name,
             session_id=sid,
         )
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Chat failed for session %s", session_id)
         raise HTTPException(

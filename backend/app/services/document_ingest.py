@@ -55,12 +55,12 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
 
     try:
         if suffix == ".pdf":
-            pages = _CHEAP_PARSER.is_complex(file_path)
+            pages = await asyncio.to_thread(_CHEAP_PARSER.is_complex, file_path)
             parser = _OCR_PARSER if any(p.needs_ocr for p in pages) else _CHEAP_PARSER
-            result = parser.parse(file_path)
+            result = await asyncio.to_thread(parser.parse, file_path)
             text = result.text
         elif suffix in IMAGE_EXTENSIONS:
-            result = _OCR_PARSER.parse(file_path)
+            result = await asyncio.to_thread(_OCR_PARSER.parse, file_path)
             text = result.text
         elif suffix in TEXT_EXTENSIONS:
             text = file_path.read_text(encoding="utf-8")
@@ -99,14 +99,19 @@ async def index_file(file_path: Path) -> int:
         chunk_texts.append(chunk.text)
         chunk_metadatas.append({**base_metadata, "chunk": i})
 
-    embeddings_list = list(get_embeddings().embed([passage_prefix() + c for c in chunk_texts]))
+    embeddings_list = list(
+        await asyncio.to_thread(
+            lambda: get_embeddings().embed([passage_prefix() + c for c in chunk_texts])
+        )
+    )
 
     store = get_vector_store()
     for i in range(0, len(chunks), BATCH_SIZE):
         batch_texts = chunk_texts[i : i + BATCH_SIZE]
         batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
         batch_metadatas = chunk_metadatas[i : i + BATCH_SIZE]
-        store.add(
+        await asyncio.to_thread(
+            store.add,
             ids=[str(uuid.uuid4()) for _ in batch_texts],
             embeddings=batch_embeddings,
             documents=batch_texts,
@@ -127,7 +132,7 @@ async def save_and_queue_indexing(
     saved_path = upload_folder / filename
     if saved_path.exists():
         saved_path.unlink()
-        get_vector_store().delete_document(filename)
+        await asyncio.to_thread(get_vector_store().delete_document, filename)
 
     saved_path.write_bytes(file_bytes)
     return f"File '{filename}' queued for indexing.", saved_path

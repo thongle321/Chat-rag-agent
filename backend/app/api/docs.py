@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 
@@ -44,13 +45,13 @@ async def upload_files(
 
 @router.get("", response_model=DocumentListResponse)
 async def list_all_documents(user: User = current_active_user):
-    docs = documents.list_documents()
+    docs = await asyncio.to_thread(documents.list_documents)
     return DocumentListResponse(documents=[DocumentInfo.model_validate(d) for d in docs])
 
 
 @router.delete("/{title}")
 async def delete_document_by_title(title: str, user: User = current_active_user):
-    deleted = documents.delete_document(title)
+    deleted = await asyncio.to_thread(documents.delete_document, title)
     return {"status": "deleted", "chunks_deleted": deleted}
 
 
@@ -69,10 +70,15 @@ def _build_status_results(titles: list[str]) -> dict:
     return results
 
 
+async def _build_status_results_async(titles: list[str]) -> dict:
+    return await asyncio.to_thread(_build_status_results, titles)
+
+
 @router.get("/upload/status")
 async def poll_upload_status(titles: str = Query(...), user: User = current_active_user):
     """Return indexing status; the frontend polls this every few seconds."""
     title_list = [t.strip() for t in titles.split(",") if t.strip()]
     if not title_list:
         raise HTTPException(status_code=400, detail="No titles provided")
-    return {"results": _build_status_results(title_list)}
+    results = await _build_status_results_async(title_list)
+    return {"results": results}

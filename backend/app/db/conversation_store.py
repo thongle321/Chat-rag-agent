@@ -8,6 +8,9 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ponytail: keeps stored blob from growing unbounded per session (~10 turns, matches rag._MAX_HISTORY)
+_MAX_STORED_MESSAGES = 20
+
 _conn: aiosqlite.Connection | None = None
 
 
@@ -40,6 +43,7 @@ async def load_messages(session_id: str) -> list[ModelMessage]:
 
 async def save_messages(session_id: str, messages: list[ModelMessage]) -> None:
     conn = await _get_conn()
+    messages = messages[-_MAX_STORED_MESSAGES:]
     data = ModelMessagesTypeAdapter.dump_json(messages).decode()
     await conn.execute(
         "INSERT INTO conversations (session_id, messages) VALUES (?, ?) "

@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  timeout: 120000,
+  timeout: 180000,
 })
 
 export function getErrorMessage(err: unknown): string {
