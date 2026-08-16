@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.139.0",
     "httpx>=0.28.0",
-    "liteparse>=2.9.0; sys_platform == 'linux'",
+    "liteparse>=2.13.0; sys_platform == 'linux'",
     "liteparse>=2.9.0,<2.13.0; sys_platform == 'win32'",
     "chromadb>=1.5,<2",
     "pydantic>=2.13.4",
@@ -50,4 +50,10 @@ extend-immutable-calls = [
     "fastapi.Body",
     "fastapi.Form",
     "fastapi.Cookie",
+]
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
