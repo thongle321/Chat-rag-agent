@@ -54,7 +54,7 @@ def _format_context(docs: list[dict]) -> str:
     parts = []
     for d in docs:
         meta = d["metadata"]
-        title = meta.get("title", "unknown")
+        title = meta.get("clean_title") or "document"
         page = meta.get("page")
         page_str = f", p.{page + 1}" if page is not None else ""
         parts.append(f"[Source: {title}{page_str}]\n{d['content']}")
@@ -65,7 +65,7 @@ def _format_sources(docs: list[dict]) -> list[str]:
     pages_by_title: dict[str, set[int]] = {}
     for d in docs:
         meta = d["metadata"]
-        title = meta.get("title", "?")
+        title = meta.get("clean_title") or "document"
         page = meta.get("page")
         if title not in pages_by_title:
             pages_by_title[title] = set()
@@ -212,7 +212,9 @@ class Chat(BaseNode[RAGState, Deps, None]):
         docs = [d for d in await asyncio.to_thread(ctx.deps.vector_store.list_documents) if d.get("summary")]
         prompt = settings.chat_prompt.strip()
         if docs:
-            listing = "\n".join(f"- {d['title']}: {d['summary']}" for d in docs)
+            listing = "\n".join(
+                f"- {d.get('clean_title') or 'Document'}: {d['summary']}" for d in docs
+            )
             prompt += f"\n\nAvailable documents:\n{listing}"
         agent = Agent(
             ctx.deps.model,

@@ -175,7 +175,7 @@ class ChromaVectorStore:
         return self._collection.count()
 
     def list_documents(self) -> list[dict]:
-        """List unique documents grouped by title."""
+        """List unique documents with clean_title when available."""
         result = self._collection.get(include=["metadatas"])
         if not result["ids"]:
             return []
@@ -183,13 +183,16 @@ class ChromaVectorStore:
         upload_dir = Path(settings.upload_dir)
         seen: dict[str, dict[str, Any]] = {}
         for doc_id, meta in zip(result["ids"], result["metadatas"], strict=True):
-            title = meta.get("title", doc_id)
+            # Prefer clean_title for display; fall back to title (filename) for identity ops
+            title = meta.get("clean_title") or meta.get("title") or doc_id
             if title not in seen:
-                file_path = upload_dir / title
+                # Only use title as file path if it looks like a stored filename
+                file_path = upload_dir / title if title and title != "document" and "/" not in title and "." in title else upload_dir / doc_id
                 size = file_path.stat().st_size if file_path.exists() else 0
                 seen[title] = {
                     "document_id": doc_id,
                     "title": title,
+                    "clean_title": meta.get("clean_title"),
                     "summary": meta.get("summary", ""),
                     "chunks": 0,
                     "size": size,
