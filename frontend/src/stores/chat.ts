@@ -128,7 +128,10 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteConversation(id: string) {
     try {
       await api.delete(`/chat/sessions/${id}`)
-    } catch { /* ignore */ }
+    } catch (err)
+    {
+      console.error('Failed to delete session on backend:', err)
+    }
     conversations.value = conversations.value.filter(c => c.id !== id)
     if (activeId.value === id) {
       activeId.value = conversations.value[0]?.id ?? ''
