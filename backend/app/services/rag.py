@@ -136,6 +136,18 @@ _CHAT_FALLBACK_REPLY = (
     "Bạn vui lòng thử lại nhé! / Sorry, I'm having trouble right now — please try again!"
 )
 
+
+def _model_error_reason(e: ModelAPIError) -> str | None:
+    """Extract the human-readable provider message from a model API error."""
+    body = getattr(e, "body", None)
+    if isinstance(body, dict):
+        inner = body.get("error")
+        if isinstance(inner, dict) and inner.get("message"):
+            return str(inner["message"])
+        if body.get("message"):
+            return str(body["message"])
+    return None
+
 _SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
@@ -304,15 +316,17 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
     except HTTPException:
         raise
     except ModelAPIError as e:
+        reason = _model_error_reason(e)
+        logger.warning("Model API error for session %s: %s", session_id, e)
+        if reason:
+            raise HTTPException(status_code=502, detail=reason[:300]) from None
         status = getattr(e, "status_code", None)
-        logger.warning("Model API error%s for session %s: %s", f" HTTP {status}" if status else "", session_id, e)
         raise HTTPException(
             status_code=502,
             detail=(
                 f"AI model '{e.model_name}' returned an error"
                 + (f" (HTTP {status})" if status else "")
                 + ". Check your AI provider settings or subscription."
-                + f" {str(e)[:160]}"
             ),
         ) from None
     except Exception:

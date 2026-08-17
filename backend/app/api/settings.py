@@ -161,7 +161,7 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
     return TestConnectionResponse(ok=False, message=f"Unknown provider '{provider}'.")
 
 
-@router.get("/models", response_model=ListModelsResponse)
+@router.post("/models", response_model=ListModelsResponse)
 async def list_models(body: ListModelsRequest | None = None, user: User = current_active_user):
     provider = (body.provider if body else None) or settings.ai_provider
     ollama_base_url = (body.ollama_base_url if body else None) or settings.ollama_base_url or "http://localhost:11434"
