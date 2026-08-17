@@ -57,26 +57,39 @@ def _format_context(docs: list[dict]) -> str:
         title = meta.get("clean_title") or "document"
         page = meta.get("page")
         page_str = f", p.{page + 1}" if page is not None else ""
-        parts.append(f"[Source: {title}{page_str}]\n{d['content']}")
+        ref = meta.get("reference")
+        ref_str = f" (Ref: {ref})" if ref else ""
+        parts.append(f"[Source: {title}{ref_str}{page_str}]\n{d['content']}")
     return "\n\n".join(parts)
 
 
 def _format_sources(docs: list[dict]) -> list[str]:
     pages_by_title: dict[str, set[int]] = {}
+    refs_by_title: dict[str, str | None] = {}
     for d in docs:
         meta = d["metadata"]
         title = meta.get("clean_title") or "document"
+        reference = meta.get("reference")
         page = meta.get("page")
         if title not in pages_by_title:
             pages_by_title[title] = set()
+            refs_by_title[title] = reference
+        else:
+            refs_by_title[title] = refs_by_title[title] or reference
         if page is not None:
             pages_by_title[title].add(page + 1)
     sources = []
-    for title, pages in sorted(pages_by_title.items()):
+    for title in sorted(pages_by_title.keys()):
+        pages = pages_by_title[title]
+        reference = refs_by_title[title]
         if pages:
-            sources.append(f"{title} (p{', p'.join(str(p) for p in sorted(pages))})")
+            ref = reference or ""
+            if ref:
+                sources.append(f"{title} (Ref: {ref}) (p{', p'.join(str(p) for p in sorted(pages))})")
+            else:
+                sources.append(f"{title} (p{', p'.join(str(p) for p in sorted(pages))})")
         else:
-            sources.append(title)
+            sources.append(title if not ref else f"{title} (Ref: {ref})")
     return sources
 
 
@@ -213,7 +226,10 @@ class Chat(BaseNode[RAGState, Deps, None]):
         prompt = settings.chat_prompt.strip()
         if docs:
             listing = "\n".join(
-                f"- {d.get('clean_title') or 'Document'}: {d['summary']}" for d in docs
+                f"- {d.get('clean_title') or 'Document'} "
+                f": {d['summary']}"
+                + (f" (Ref: {d.get('reference')})" if d.get('reference') else "")
+                for d in docs
             )
             prompt += f"\n\nAvailable documents:\n{listing}"
         agent = Agent(

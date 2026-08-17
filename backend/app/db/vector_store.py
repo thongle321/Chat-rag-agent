@@ -175,7 +175,7 @@ class ChromaVectorStore:
         return self._collection.count()
 
     def list_documents(self) -> list[dict]:
-        """List unique documents with clean_title when available."""
+        """List unique documents with clean_title and reference when available."""
         result = self._collection.get(include=["metadatas"])
         if not result["ids"]:
             return []
@@ -194,6 +194,7 @@ class ChromaVectorStore:
                     "title": title,
                     "clean_title": meta.get("clean_title"),
                     "summary": meta.get("summary", ""),
+                    "reference": meta.get("reference"),
                     "chunks": 0,
                     "size": size,
                 }

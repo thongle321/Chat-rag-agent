@@ -32,15 +32,17 @@ chunker = RecursiveChunker(
 
 
 SUMMARY_PROMPT = (
-    "Return exactly two lines:\n"
-    "Title: <short natural title, e.g. 'Nghị định 135/2026/NĐ-CP'>\n"
-    "Summary: <1-2 sentences describing the main topics it covers.>"
+    "Return exactly two or three lines:\n"
+    "Title: <short natural title, e.g. 'Decree 135/2026' or 'Annual Report 2023'>\n"
+    "Summary: <1-2 sentences describing the main topics it covers.>\n"
+    "Reference: <optional: document reference number, year, or code, if present. "
+    "e.g. '135/2026/NĐ-CP' or 'Quyết định số 45/2024/QĐ-TTg' or 'FY2023'>"
 )
 
 _SUMMARY_LIMITS = UsageLimits(request_limit=3)
 
 
-async def _summarize(text: str) -> tuple[str, str]:
+async def _summarize(text: str) -> tuple[str, str, str]:
     try:
         model, _ = get_llm()
         agent = Agent(model, system_prompt=SUMMARY_PROMPT)
@@ -48,21 +50,25 @@ async def _summarize(text: str) -> tuple[str, str]:
         output = result.output.strip()
         title = ""
         summary = ""
+        reference = ""
         for line in output.splitlines():
             line = line.strip()
             if line.startswith("Title:"):
                 title = line[len("Title:"):].strip()
             elif line.startswith("Summary:"):
                 summary = line[len("Summary:"):].strip()
+            elif line.startswith("Reference:"):
+                reference = line[len("Reference:"):].strip()
         if not title:
-            # fallback: humanized filename from the text path context will be applied by caller
             title = ""
         if not summary:
             summary = ""
-        return title, summary
+        if not reference:
+            reference = ""
+        return title, summary, reference
     except Exception:
         logger.exception("Summary generation failed")
-        return "", ""
+        return "", "", ""
 
 
 async def _load_file(file_path: Path) -> tuple[str, dict] | None:
@@ -82,7 +88,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
         else:
             return None
 
-        summary, title = _summarize(text)
+        summary, title, reference = _summarize(text)
 
         base_metadata = {
             "title": file_path.name,
@@ -90,6 +96,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
             "source": file_path.name,
             "type": suffix.lstrip("."),
             "summary": summary,
+            "reference": reference,
         }
     except Exception:
         logger.exception("Failed to load %s", file_path)
