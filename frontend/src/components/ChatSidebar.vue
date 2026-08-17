@@ -47,9 +47,7 @@ function getItems(c: Conversation) {
   return [
     [
       { label: c.pinned ? 'Bỏ ghim' : 'Ghim', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },
-      { label: 'Đổi tên', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) }
-    ],
-    [
+      { label: 'Đổi tên', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) },
       { label: 'Xoá', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => handleDelete(c.id) }
     ]
   ]
