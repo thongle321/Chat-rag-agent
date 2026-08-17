@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
+from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
@@ -302,6 +303,18 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         )
     except HTTPException:
         raise
+    except ModelAPIError as e:
+        status = getattr(e, "status_code", None)
+        logger.warning("Model API error%s for session %s: %s", f" HTTP {status}" if status else "", session_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"AI model '{e.model_name}' returned an error"
+                + (f" (HTTP {status})" if status else "")
+                + ". Check your AI provider settings or subscription."
+                + f" {str(e)[:160]}"
+            ),
+        ) from None
     except Exception:
         logger.exception("Chat failed for session %s", session_id)
         raise HTTPException(

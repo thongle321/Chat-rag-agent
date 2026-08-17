@@ -39,24 +39,27 @@ const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
 ]
 
-watch(
-  () => state.ai_provider,
-  () => {
-    settingsStore.models = []
-  },
-)
-
 onMounted(async () => {
   try {
     await settingsStore.fetchSettings()
     Object.assign(state, settingsStore.settings)
-    if (settingsStore.models.length === 0) {
-      await refreshModels()
-    }
+    await ensureModels()
   } catch {
     error.value = settingsStore.error || 'Failed to load settings'
   }
 })
+
+async function onProviderChange() {
+  settingsStore.models = []
+  await ensureModels()
+}
+
+async function ensureModels() {
+  await settingsStore.useCachedModels(
+    state.ai_provider ?? 'ollama',
+    state.ollama_base_url ?? '',
+  )
+}
 
 async function testConnection() {
   testing.value = true
@@ -142,7 +145,7 @@ async function save(event: FormSubmitEvent<Schema>) {
           </template>
 
           <UFormField name="ai_provider" label="Provider">
-            <USelect v-model="state.ai_provider" :items="providerOptions" :disabled="saving" class="w-full" />
+            <USelect v-model="state.ai_provider" :items="providerOptions" :disabled="saving" class="w-full" @update:model-value="onProviderChange" />
           </UFormField>
         </UCard>
 

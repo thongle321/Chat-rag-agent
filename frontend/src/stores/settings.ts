@@ -28,7 +28,12 @@ export const useSettingsStore = defineStore('settings', () => {
   const loading = ref(false)
   const error = ref('')
   const models = ref<string[]>([])
+  const modelsCache = ref<Record<string, string[]>>({})
   const modelLoading = ref(false)
+
+  function modelsKey(provider: string, baseUrl: string = '') {
+    return `${provider}|${baseUrl}`
+  }
 
   async function fetchSettings() {
     loading.value = true
@@ -67,11 +72,13 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function fetchModels(opts?: { provider?: string; ollama_base_url?: string; ollama_api_key?: string; openai_api_key?: string }) {
+    if (modelLoading.value) return
     modelLoading.value = true
     error.value = ''
     try {
       const { data } = await api.get('/settings/models', { params: opts })
       models.value = data.models
+      modelsCache.value[modelsKey(opts?.provider ?? '', opts?.ollama_base_url ?? '')] = data.models
     } catch (err: any) {
       models.value = []
     } finally {
@@ -79,5 +86,14 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  return { settings, loading, error, models, modelLoading, fetchSettings, updateSettings, testConnection, fetchModels }
+  async function useCachedModels(provider: string, baseUrl: string = '') {
+    const key = modelsKey(provider, baseUrl)
+    if (modelsCache.value[key]) {
+      models.value = modelsCache.value[key]
+      return
+    }
+    await fetchModels({ provider, ollama_base_url: baseUrl })
+  }
+
+  return { settings, loading, error, models, modelLoading, fetchSettings, updateSettings, testConnection, fetchModels, useCachedModels }
 })
