@@ -7,7 +7,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
-    app_name: str = "Chat RAG Agent"
+    app_name: str = "VeilAi Rag"
     version: str = "0.1.0"
     environment: str = "development"
     ai_provider: str = "ollama"

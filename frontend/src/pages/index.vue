@@ -96,7 +96,7 @@ async function handleSend(question: string) {
                 <UAvatar icon="i-lucide-bot" size="md" class="bg-primary/10 text-primary shrink-0" />
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-2 text-xs text-muted">
-                    <span class="font-semibold text-default">Chat RAG</span>
+                    <span class="font-semibold text-default">VeilAi</span>
                   </div>
 
                   <Suspense>

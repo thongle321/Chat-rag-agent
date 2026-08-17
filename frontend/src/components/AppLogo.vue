@@ -10,7 +10,7 @@ defineProps<{
       <UIcon name="i-lucide-bot" class="size-4.5 text-primary" />
     </div>
     <span v-if="!collapsed" class="font-[var(--font-display)] font-bold text-sm text-highlighted truncate">
-      Chat RAG
+      VeilAi Rag
     </span>
   </RouterLink>
 </template>

@@ -69,7 +69,7 @@ function toggleColorMode() {
         <UIcon name="i-lucide-bot" class="size-5 text-primary" />
       </div>
       <div class="min-w-0 flex-1">
-        <div class="font-semibold text-sm tracking-tight text-default">Chat RAG</div>
+        <div class="font-semibold text-sm tracking-tight text-default">VeilAi Rag</div>
         <div class="text-[11px] text-muted">Tra cứu thông minh</div>
       </div>
     </div>

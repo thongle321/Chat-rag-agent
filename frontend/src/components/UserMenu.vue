@@ -17,7 +17,7 @@ async function handleLogout() {
 
 const items = computed<DropdownMenuItem[][]>(() => ([[{
   type: 'label',
-  label: 'Chat RAG Agent',
+  label: 'VeilAi Rag',
   icon: 'i-lucide-bot'
 }], [{
   label: 'Appearance',
