@@ -12,19 +12,27 @@ const showOpenaiKey = ref(false)
 const showOllamaKey = ref(false)
 const testing = ref(false)
 
-const schema = z.object({
-  ai_provider: z.string(),
-  ollama_base_url: z.string().default(''),
-  ollama_model: z.string().default(''),
-  ollama_api_key: z.string().default(''),
-  openai_api_key: z.string().default(''),
-  openai_model: z.string().default(''),
-}).refine(
-  data => data.ai_provider !== 'ollama' || (data.ollama_base_url ?? '').trim().length > 0,
-  { message: 'Base URL is required', path: ['ollama_base_url'] }
-)
+const schema = computed(() => {
+  const base: Record<string, z.ZodType> = {
+    ai_provider: z.string(),
+    ollama_base_url: z.string().default(''),
+    ollama_model: z.string().default(''),
+    ollama_api_key: z.string().default(''),
+    openai_api_key: z.string().default(''),
+    openai_model: z.string().default(''),
+  }
+  if (state.ai_provider === 'ollama') {
+    base.ollama_base_url = z.string().trim().min(1)
+    base.ollama_model = z.string().trim().min(1)
+    // ollama_api_key optional — keep as-is
+  } else {
+    base.openai_api_key = z.string().trim().min(1)
+    base.openai_model = z.string().trim().min(1)
+  }
+  return z.object(base)
+})
 
-type Schema = z.output<typeof schema>
+type Schema = z.output<typeof schema.value>
 const state = reactive<Partial<Schema>>({
   ai_provider: 'ollama',
   ollama_base_url: '',
