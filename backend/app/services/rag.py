@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
-from pydantic_ai.exceptions import ModelAPIError
+from pydantic_ai.exceptions import ModelAPIError, UserError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
@@ -292,8 +292,8 @@ def get_graph():
 
 
 async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
-    model, model_name = get_llm()
     try:
+        model, model_name = get_llm()
         sid = session_id or str(uuid.uuid4())
         history = await load_messages(sid)
         state = RAGState(question=question, history=history, conversation_id=sid)
@@ -315,6 +315,12 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
         )
     except HTTPException:
         raise
+    except UserError:
+        logger.warning("AI provider misconfigured for session %s", session_id)
+        raise HTTPException(
+            status_code=502,
+            detail="AI provider is not configured correctly. Add the API key for your provider in Settings.",
+        ) from None
     except ModelAPIError as e:
         reason = _model_error_reason(e)
         logger.warning("Model API error for session %s: %s", session_id, e)

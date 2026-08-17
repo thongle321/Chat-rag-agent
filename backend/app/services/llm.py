@@ -3,6 +3,7 @@ import logging
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.core.config import settings
 
@@ -36,7 +37,15 @@ def get_llm():
         )
         _instance_name = f"ollama/{settings.ollama_model}"
     elif provider == "openai":
-        _instance = OpenAIChatModel(settings.openai_model)
+        openai_key = (
+            settings.openai_api_key.get_secret_value()
+            if hasattr(settings.openai_api_key, "get_secret_value")
+            else settings.openai_api_key
+        )
+        _instance = OpenAIChatModel(
+            settings.openai_model,
+            provider=OpenAIProvider(api_key=openai_key or None),
+        )
         _instance_name = f"openai/{settings.openai_model}"
     else:
         raise ValueError("No LLM configured")
