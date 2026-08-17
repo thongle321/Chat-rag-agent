@@ -88,7 +88,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
         else:
             return None
 
-        summary, title, reference = _summarize(text)
+        summary, title, reference = await _summarize(text)
 
         base_metadata = {
             "title": file_path.name,
