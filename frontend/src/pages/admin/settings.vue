@@ -12,6 +12,12 @@ const showOpenaiKey = ref(false)
 const showOllamaKey = ref(false)
 const testing = ref(false)
 
+const required = (label: string) =>
+  z.preprocess(
+    (v: unknown) => (v ?? ''),
+    z.string().trim().min(1, { message: `${label} is required` }),
+  )
+
 const schema = computed(() => {
   const base: Record<string, z.ZodType> = {
     ai_provider: z.string(),
@@ -22,12 +28,12 @@ const schema = computed(() => {
     openai_model: z.string().default(''),
   }
   if (state.ai_provider === 'ollama') {
-    base.ollama_base_url = z.string().trim().min(1)
-    base.ollama_model = z.string().trim().min(1)
+    base.ollama_base_url = required('Base URL')
+    base.ollama_model = required('Model Name')
     // ollama_api_key optional — keep as-is
   } else {
-    base.openai_api_key = z.string().trim().min(1)
-    base.openai_model = z.string().trim().min(1)
+    base.openai_api_key = required('API Key')
+    base.openai_model = required('Model Name')
   }
   return z.object(base)
 })
