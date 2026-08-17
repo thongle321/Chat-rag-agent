@@ -141,8 +141,8 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
                 return TestConnectionResponse(ok=True, message=f"Connected to Ollama at {ollama_base_url}")
         except httpx.ConnectError:
             return TestConnectionResponse(ok=False, message=f"Cannot connect to Ollama at {ollama_base_url}")
-        except Exception as e:
-            return TestConnectionResponse(ok=False, message=f"Ollama error: {e}")
+        except Exception:
+            return TestConnectionResponse(ok=False, message="Ollama error: connection failed.")
 
     if provider == "openai":
         if not openai_key:
@@ -155,8 +155,12 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
                 )
                 resp.raise_for_status()
                 return TestConnectionResponse(ok=True, message="Connected to OpenAI.")
-        except Exception as e:
-            return TestConnectionResponse(ok=False, message=f"OpenAI error: {e}")
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            msg = "Invalid or expired OpenAI API key (401)." if code == 401 else f"OpenAI returned HTTP {code}."
+            return TestConnectionResponse(ok=False, message=msg)
+        except Exception:
+            return TestConnectionResponse(ok=False, message="OpenAI error: connection failed.")
 
     return TestConnectionResponse(ok=False, message=f"Unknown provider '{provider}'.")
 
