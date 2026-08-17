@@ -7,7 +7,7 @@ from typing import Any, Literal
 from fastapi import HTTPException
 from pydantic import BaseModel
 from pydantic_ai import Agent
-from pydantic_ai.capabilities import ReinjectSystemPrompt
+from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
@@ -40,6 +40,7 @@ class RAGState:
     question: str
     history: list[ModelMessage] = field(default_factory=list)
     new_messages: list[ModelMessage] = field(default_factory=list)
+    conversation_id: str | None = None
 
 
 # ponytail: three-node graph (route -> chat|answer) — add re-rank, self-verify nodes when multistep logic lands
@@ -120,6 +121,15 @@ REWRITE_PROMPT = (
 
 _MAX_HISTORY = 10
 
+
+def _keep_recent(messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Keep only the last _MAX_HISTORY messages, ensuring history opens with a user turn."""
+    recent = messages[-_MAX_HISTORY:]
+    while recent and isinstance(recent[0], ModelResponse):
+        recent = recent[1:]
+    return recent
+
+
 _CHAT_FALLBACK_REPLY = (
     "Xin lỗi, mình đang gặp một chút sự cố không trả lời được ngay. "
     "Bạn vui lòng thử lại nhé! / Sorry, I'm having trouble right now — please try again!"
@@ -129,17 +139,24 @@ _SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
 
-async def _rewrite_question(question: str, messages: list[ModelMessage], deps: Deps) -> str:
+async def _rewrite_question(
+    question: str, messages: list[ModelMessage], deps: Deps, conversation_id: str | None = None
+) -> str:
     if not messages:
         return question
     agent = Agent(
         deps.model,
         system_prompt=REWRITE_PROMPT,
         name="rewrite",
-        capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+        capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
     result = await asyncio.wait_for(
-        agent.run(question, message_history=messages[-_MAX_HISTORY:], usage_limits=_SINGLE_SHOT_LIMITS),
+        agent.run(
+            question,
+            message_history=messages,
+            conversation_id=conversation_id,
+            usage_limits=_SINGLE_SHOT_LIMITS,
+        ),
         timeout=30.0,
     )
     first_line = str(result.output or "").strip().split("\n", 1)[0].strip()
@@ -162,12 +179,13 @@ class Route(BaseNode[RAGState, Deps]):
             output_type=RouteResult,
             system_prompt=ROUTER_PROMPT,
             name="router",
-            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
             router.run(
                 ctx.state.question,
-                message_history=ctx.state.history[-_MAX_HISTORY:],
+                message_history=ctx.state.history,
+                conversation_id=ctx.state.conversation_id,
                 usage_limits=_SINGLE_SHOT_LIMITS,
             ),
             timeout=30.0,
@@ -187,13 +205,14 @@ class Chat(BaseNode[RAGState, Deps, None]):
             ctx.deps.model,
             system_prompt=prompt,
             name="chat_agent",
-            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
         try:
             result = await asyncio.wait_for(
                 agent.run(
                     ctx.state.question,
-                    message_history=ctx.state.history[-_MAX_HISTORY:],
+                    message_history=ctx.state.history,
+                    conversation_id=ctx.state.conversation_id,
                     usage_limits=_RAG_LIMITS,
                 ),
                 timeout=120.0,
@@ -212,7 +231,7 @@ class Chat(BaseNode[RAGState, Deps, None]):
 class Answer(BaseNode[RAGState, Deps, None]):
     async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
         messages = ctx.state.history
-        query = await _rewrite_question(ctx.state.question, messages, ctx.deps)
+        query = await _rewrite_question(ctx.state.question, messages, ctx.deps, ctx.state.conversation_id)
         query_embedding = await asyncio.to_thread(
             lambda: next(get_embeddings().query_embed(query_prefix() + query))
         )
@@ -223,10 +242,15 @@ class Answer(BaseNode[RAGState, Deps, None]):
             ctx.deps.model,
             system_prompt=full_prompt,
             name="rag_agent",
-            capabilities=[ReinjectSystemPrompt(replace_existing=True)],
+            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
         result = await asyncio.wait_for(
-            agent.run(ctx.state.question, message_history=messages[-_MAX_HISTORY:], usage_limits=_RAG_LIMITS),
+            agent.run(
+                ctx.state.question,
+                message_history=messages,
+                conversation_id=ctx.state.conversation_id,
+                usage_limits=_RAG_LIMITS,
+            ),
             timeout=180.0,
         )
         ctx.state.new_messages = result.new_messages()
@@ -259,7 +283,7 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
     try:
         sid = session_id or str(uuid.uuid4())
         history = await load_messages(sid)
-        state = RAGState(question=question, history=history)
+        state = RAGState(question=question, history=history, conversation_id=sid)
         deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
         try:
             await asyncio.wait_for(get_graph().run(state=state, deps=deps), timeout=120.0)
