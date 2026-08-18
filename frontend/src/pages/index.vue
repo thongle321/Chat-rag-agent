@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, onMounted } from 'vue'
+import { nextTick, ref, onMounted, watch } from 'vue'
 import { Comark } from '@comark/vue'
 import { useClipboard } from '@vueuse/core'
 import { useChatStore } from '../stores/chat'
@@ -16,6 +16,14 @@ onMounted(() => {
   if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
     sidebarOpen.value = true
   }
+})
+
+watch(() => chatStore.streamingText, () => {
+  nextTick(() => {
+    if (chatWindow.value) {
+      chatWindow.value.scrollTop = chatWindow.value.scrollHeight
+    }
+  })
 })
 
 function closeSidebarOnMobile() {
@@ -69,7 +77,7 @@ async function handleSend(question: string) {
             @click="sidebarOpen = true"
           />
           <div class="flex items-center gap-2 text-muted text-xs min-w-0">
-            <span class="hidden md:inline">Tra cứu thông tin từ tài liệu</span>
+            <span class="hidden md:inline">Search information from documents</span>
           </div>
         </div>
       </header>
@@ -111,14 +119,14 @@ async function handleSend(question: string) {
                       :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
                       @click="copy(msg.text)"
                     >
-                      {{ copied ? 'Đã sao chép' : 'Sao chép' }}
+                      {{ copied ? 'Copied' : 'Copy' }}
                     </UButton>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div v-if="chatStore.loading" class="flex gap-3.5 mb-3.5">
+            <div v-if="chatStore.loading && !chatStore.streamingText" class="flex gap-3.5 mb-3.5">
               <UAvatar icon="i-lucide-bot" size="md" class="bg-primary/10 text-primary shrink-0" />
               <div class="flex-1 flex flex-col gap-2 py-1">
                 <USkeleton class="h-2.5 rounded" style="width: 92%" />
@@ -149,6 +157,17 @@ async function handleSend(question: string) {
         }"
       >
         <div class="max-w-[820px] mx-auto">
+          <div v-if="chatStore.loading" class="flex justify-center mb-3">
+            <UButton
+              variant="soft"
+              color="neutral"
+              size="sm"
+              icon="i-lucide-square"
+              @click="chatStore.stop()"
+            >
+              Stop
+            </UButton>
+          </div>
           <ChatComposer
             v-model="chatInput"
             :disabled="chatStore.loading"

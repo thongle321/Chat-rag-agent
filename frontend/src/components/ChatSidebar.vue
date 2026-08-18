@@ -46,9 +46,9 @@ function confirmRename() {
 function getItems(c: Conversation) {
   return [
     [
-      { label: c.pinned ? 'Bỏ ghim' : 'Ghim', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },
-      { label: 'Đổi tên', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) },
-      { label: 'Xoá', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => handleDelete(c.id) }
+      { label: c.pinned ? 'Unpin' : 'Pin', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },
+      { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) },
+      { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => handleDelete(c.id) }
     ]
   ]
 }
@@ -68,7 +68,7 @@ function toggleColorMode() {
       </div>
       <div class="min-w-0 flex-1">
         <div class="font-semibold text-sm tracking-tight text-default">VeilAi Rag</div>
-        <div class="text-[11px] text-muted">Tra cứu thông minh</div>
+        <div class="text-[11px] text-muted">Smart search</div>
       </div>
     </div>
 
@@ -81,17 +81,17 @@ function toggleColorMode() {
         :icon="'i-lucide-plus'"
         @click="handleNew"
       >
-        Cuộc hội thoại mới
+        New chat
       </UButton>
     </div>
 
     <div class="px-3.5 pb-3">
-      <UInput v-model="search" icon="i-lucide-search" placeholder="Tìm trong lịch sử..." variant="none" size="sm" class="w-full rounded-sm" />
+      <UInput v-model="search" icon="i-lucide-search" placeholder="Search history..." variant="none" size="sm" class="w-full rounded-sm" />
     </div>
 
     <div class="flex-1 overflow-y-auto px-2 pb-4">
       <div v-if="!groups.length" class="px-3 py-6 text-xs text-muted text-center">
-        Chưa có hội thoại nào.
+        No conversations yet.
       </div>
 
       <template v-for="[label, items] in groups" :key="label">
@@ -127,7 +127,7 @@ function toggleColorMode() {
 
     <div class="px-3.5 py-3 border-t border-default/50 flex items-center gap-2.5">
       <UAvatar icon="i-lucide-user" size="xs" class="bg-muted text-muted" />
-      <div class="flex-1 text-[11px] text-default font-medium">Người dùng</div>
+      <div class="flex-1 text-[11px] text-default font-medium">User</div>
       <UButton
         variant="ghost"
         color="neutral"
@@ -147,12 +147,12 @@ function toggleColorMode() {
     </div>
   </aside>
 
-  <UModal v-model:open="renameModalOpen" title="Đổi tên" description="Nhập tên mới cho cuộc hội thoại." @close="renameModalOpen = false">
+  <UModal v-model:open="renameModalOpen" title="Rename" description="Enter a new name for this conversation." @close="renameModalOpen = false">
     <template #body>
       <form id="rename-form" @submit.prevent="confirmRename">
         <UInput
           v-model="renameTitle"
-          placeholder="Nhập tên mới..."
+          placeholder="Enter a new name..."
           size="sm"
           class="w-full"
         />
@@ -160,8 +160,8 @@ function toggleColorMode() {
     </template>
 
     <template #footer="{ close }">
-      <UButton label="Huỷ" color="neutral" variant="outline" @click="close" />
-      <UButton type="submit" form="rename-form" label="Đổi tên" :disabled="!renameTitle.trim()" />
+      <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
+      <UButton type="submit" form="rename-form" label="Rename" :disabled="!renameTitle.trim()" />
     </template>
   </UModal>
 </template>

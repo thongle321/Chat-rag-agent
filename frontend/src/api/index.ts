@@ -13,4 +13,63 @@ export function getErrorMessage(err: unknown): string {
   return err.message || 'An error occurred'
 }
 
+export interface StreamHandlers {
+  onDelta: (content: string) => void
+  onSources?: (sources: string[]) => void
+  onDone: (data: { session_id: string; model: string }) => void
+  onError: (detail: string) => void
+}
+
+export async function streamChat(
+  question: string,
+  sessionId: string | undefined,
+  handlers: StreamHandlers,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`${api.defaults.baseURL}/chat/query/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, session_id: sessionId }),
+    signal,
+  })
+  if (!response.ok || !response.body) {
+    let detail = `HTTP ${response.status}`
+    try {
+      const body = await response.json()
+      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : getErrorMessage(body)
+    } catch { /* non-JSON body */ }
+    handlers.onError(detail)
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = 'message'
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim()
+        continue
+      }
+      if (!line.startsWith('data: ')) continue
+      const data = JSON.parse(line.slice(6))
+      if (currentEvent === 'sources') {
+        handlers.onSources?.(data.sources ?? [])
+      } else if (currentEvent === 'error') {
+        handlers.onError(data.detail ?? 'Unknown error')
+      } else if (currentEvent === 'done') {
+        handlers.onDone({ session_id: data.session_id, model: data.model })
+      } else {
+        handlers.onDelta(data.content ?? '')
+      }
+    }
+  }
+}
+
 export default api

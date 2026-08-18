@@ -34,7 +34,7 @@ function onKeydown(e: KeyboardEvent) {
       <UTextarea
         v-model="modelValue"
         :disabled="disabled"
-        :placeholder="big ? 'Nhập câu hỏi của bạn...' : 'Nhập câu hỏi...'"
+        :placeholder="big ? 'Type your question...' : 'Type a question...'"
         autoresize
         :maxrows="8"
         variant="none"

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const hour = new Date().getHours()
-const greeting = hour < 11 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối'
+const greeting = hour < 11 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 </script>
 
 <template>
@@ -9,9 +9,9 @@ const greeting = hour < 11 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi ch
       <div class="flex items-center justify-center size-14 rounded-2xl bg-primary/10 mx-auto mb-4">
         <UIcon name="i-lucide-message-square" class="size-7 text-primary" />
       </div>
-      <h1 class="text-2xl font-bold text-default">{{ greeting }}, bạn cần tra cứu gì?</h1>
+      <h1 class="text-2xl font-bold text-default">{{ greeting }}, what would you like to look up?</h1>
       <p class="mt-2 text-muted text-sm">
-        Đặt câu hỏi về nội dung tài liệu để nhận câu trả lời từ trợ lý AI.
+        Ask questions about your document content to get answers from your AI assistant.
       </p>
     </div>
   </div>

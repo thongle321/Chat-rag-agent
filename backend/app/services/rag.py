@@ -42,6 +42,9 @@ class RAGState:
     history: list[ModelMessage] = field(default_factory=list)
     new_messages: list[ModelMessage] = field(default_factory=list)
     conversation_id: str | None = None
+    stream: Any = None
+    sources: list[str] = field(default_factory=list)
+    fallback_reply: str | None = None
 
 
 # ponytail: three-node graph (route -> chat|answer) — add re-rank, self-verify nodes when multistep logic lands
@@ -93,19 +96,6 @@ def _format_sources(docs: list[dict]) -> list[str]:
     return sources
 
 
-def _last_output(messages: list[ModelMessage]) -> str:
-    return next(
-        (
-            p.content
-            for m in reversed(messages)
-            if isinstance(m, ModelResponse)
-            for p in m.parts
-            if isinstance(p, TextPart)
-        ),
-        "",
-    )
-
-
 async def get_messages(session_id: str) -> list[dict]:
     result = []
     for m in await load_messages(session_id):
@@ -145,8 +135,7 @@ def _keep_recent(messages: list[ModelMessage]) -> list[ModelMessage]:
 
 
 _CHAT_FALLBACK_REPLY = (
-    "Xin lỗi, mình đang gặp một chút sự cố không trả lời được ngay. "
-    "Bạn vui lòng thử lại nhé! / Sorry, I'm having trouble right now — please try again!"
+    "Sorry, I'm having trouble right now — please try again!"
 )
 
 
@@ -238,23 +227,13 @@ class Chat(BaseNode[RAGState, Deps, None]):
             name="chat_agent",
             capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
-        try:
-            result = await asyncio.wait_for(
-                agent.run(
-                    ctx.state.question,
-                    message_history=ctx.state.history,
-                    conversation_id=ctx.state.conversation_id,
-                    usage_limits=_RAG_LIMITS,
-                ),
-                timeout=120.0,
-            )
-            ctx.state.new_messages = result.new_messages()
-        except Exception:
-            logger.warning("Chat LLM call failed, using fallback reply")
-            ctx.state.new_messages = [
-                ModelRequest(parts=[UserPromptPart(content=ctx.state.question)]),
-                ModelResponse(parts=[TextPart(content=_CHAT_FALLBACK_REPLY)]),
-            ]
+        ctx.state.fallback_reply = _CHAT_FALLBACK_REPLY
+        ctx.state.stream = agent.run_stream(
+            ctx.state.question,
+            message_history=ctx.state.history,
+            conversation_id=ctx.state.conversation_id,
+            usage_limits=_RAG_LIMITS,
+        )
         return End(None)
 
 
@@ -275,16 +254,13 @@ class Answer(BaseNode[RAGState, Deps, None]):
             name="rag_agent",
             capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
-        result = await asyncio.wait_for(
-            agent.run(
-                ctx.state.question,
-                message_history=messages,
-                conversation_id=ctx.state.conversation_id,
-                usage_limits=_RAG_LIMITS,
-            ),
-            timeout=180.0,
+        ctx.state.sources = _format_sources(docs)
+        ctx.state.stream = agent.run_stream(
+            ctx.state.question,
+            message_history=messages,
+            conversation_id=ctx.state.conversation_id,
+            usage_limits=_RAG_LIMITS,
         )
-        ctx.state.new_messages = result.new_messages()
         return End(None)
 
 
@@ -309,56 +285,96 @@ def get_graph():
     return _graph
 
 
-async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
-    try:
-        model, model_name = get_llm()
-        sid = session_id or str(uuid.uuid4())
-        history = await load_messages(sid)
-        state = RAGState(question=question, history=history, conversation_id=sid)
-        deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
-        try:
-            await asyncio.wait_for(get_graph().run(state=state, deps=deps), timeout=120.0)
-        except TimeoutError:
-            logger.warning("Graph run timed out (120s) for session %s", session_id)
-            raise HTTPException(
-                status_code=504,
-                detail="Request took too long. Please try again.",
-            ) from None
-        await save_messages(sid, history + state.new_messages)
-        return ChatResponse(
-            answer_id=str(uuid.uuid4()),
-            answer=_last_output(state.new_messages),
-            model=model_name,
-            session_id=sid,
-        )
-    except HTTPException:
-        raise
-    except UserError:
-        logger.warning("AI provider misconfigured for session %s", session_id)
-        raise HTTPException(
-            status_code=502,
-            detail="AI provider is not configured correctly. Add the API key for your provider in Settings.",
-        ) from None
-    except ModelAPIError as e:
+def _error_event(e: Exception) -> dict:
+    if isinstance(e, ModelAPIError):
         reason = _model_error_reason(e)
-        logger.warning("Model API error for session %s: %s", session_id, e)
         if reason:
-            raise HTTPException(status_code=502, detail=reason[:300]) from None
+            return {"type": "error", "status_code": 502, "detail": reason[:300]}
         status = getattr(e, "status_code", None)
-        raise HTTPException(
-            status_code=502,
-            detail=(
+        return {
+            "type": "error",
+            "status_code": 502,
+            "detail": (
                 f"AI model '{e.model_name}' returned an error"
                 + (f" (HTTP {status})" if status else "")
                 + ". Check your AI provider settings or subscription."
             ),
-        ) from None
-    except Exception:
-        logger.exception("Chat failed for session %s", session_id)
-        raise HTTPException(
-            status_code=500,
-            detail="I encountered an error while processing your request. Please try again.",
-        ) from None
+        }
+    if isinstance(e, TimeoutError):
+        return {"type": "error", "status_code": 504, "detail": "Request took too long. Please try again."}
+    logger.exception("Chat failed")
+    return {
+        "type": "error",
+        "status_code": 500,
+        "detail": "I encountered an error while processing your request. Please try again.",
+    }
+
+
+async def stream_answer(question: str, session_id: str | None = None):
+    """Core streaming RAG pipeline. Yields event dicts: text_delta, sources, done, error."""
+    try:
+        model, model_name = get_llm()
+    except (UserError, ModelAPIError) as e:
+        yield _error_event(e)
+        return
+
+    sid = session_id or str(uuid.uuid4())
+    history = await load_messages(sid)
+    state = RAGState(question=question, history=history, conversation_id=sid)
+    deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
+    try:
+        await asyncio.wait_for(get_graph().run(state=state, deps=deps), timeout=120.0)
+    except UserError:
+        logger.warning("AI provider misconfigured for session %s", sid)
+        yield {
+            "type": "error",
+            "status_code": 502,
+            "detail": "AI provider is not configured correctly. Add the API key for your provider in Settings.",
+        }
+        return
+    except Exception as e:
+        yield _error_event(e)
+        return
+
+    emitted = False
+    try:
+        async with asyncio.timeout(120):
+            async with state.stream as result:
+                async for delta in result.stream_text():
+                    emitted = True
+                    yield {"type": "text_delta", "content": delta}
+                state.new_messages = result.new_messages()
+    except Exception as e:
+        if state.fallback_reply and not emitted:
+            state.new_messages = [
+                ModelRequest(parts=[UserPromptPart(content=state.question)]),
+                ModelResponse(parts=[TextPart(content=state.fallback_reply)]),
+            ]
+            yield {"type": "text_delta", "content": state.fallback_reply}
+        else:
+            yield _error_event(e)
+            return
+
+    await save_messages(sid, history + state.new_messages)
+    yield {"type": "sources", "sources": state.sources}
+    yield {"type": "done", "session_id": sid, "model": model_name}
+
+
+async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
+    answer = ""
+    async for ev in stream_answer(question, session_id):
+        if ev["type"] == "text_delta":
+            answer += ev["content"]
+        elif ev["type"] == "error":
+            raise HTTPException(status_code=ev["status_code"], detail=ev["detail"])
+        elif ev["type"] == "done":
+            return ChatResponse(
+                answer_id=str(uuid.uuid4()),
+                answer=answer,
+                model=ev["model"],
+                session_id=ev["session_id"],
+            )
+    raise HTTPException(status_code=500, detail="Stream ended without a response.")
 
 
 async def close() -> None:

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { getErrorMessage } from '../api'
+import api, { getErrorMessage, streamChat } from '../api'
 
 const STORAGE_KEY = 'chat_sessions'
 
@@ -9,6 +9,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
   model?: string
+  streaming?: boolean
 }
 
 export interface Conversation {
@@ -26,11 +27,11 @@ export function groupByDate(conversations: Conversation[]): [string, Conversatio
   const groups = new Map<string, Conversation[]>()
   const label = (d: number) => {
     const diff = now - d
-    if (diff < day) return 'Hôm nay'
-    if (diff < 2 * day) return 'Hôm qua'
-    if (diff < 7 * day) return '7 ngày trước'
-    if (diff < 30 * day) return '30 ngày trước'
-    return 'Cũ hơn'
+    if (diff < day) return 'Today'
+    if (diff < 2 * day) return 'Yesterday'
+    if (diff < 7 * day) return '7 days ago'
+    if (diff < 30 * day) return '30 days ago'
+    return 'Older'
   }
   for (const c of conversations) {
     const l = label(c.createdAt)
@@ -46,12 +47,17 @@ export const useChatStore = defineStore('chat', () => {
   const activeId = ref('')
   const loading = ref(false)
   const error = ref('')
+  const controller = ref<AbortController | null>(null)
 
   const activeConversation = computed(() =>
     conversations.value.find(c => c.id === activeId.value) ?? null
   )
 
   const messages = computed(() => activeConversation.value?.messages ?? [])
+
+  const streamingText = computed(() =>
+    activeConversation.value?.messages.find(m => m.streaming)?.text ?? ''
+  )
 
   function saveToStorage() {
     const data = conversations.value.map(c => ({
@@ -107,7 +113,7 @@ export const useChatStore = defineStore('chat', () => {
     const id = String(Date.now())
     conversations.value.unshift({
       id,
-      title: 'Cuộc hội thoại mới',
+      title: 'New chat',
       messages: [],
       pinned: false,
       createdAt: Date.now(),
@@ -118,6 +124,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function setActive(id: string) {
+    stop()
     activeId.value = id
     const conv = conversations.value.find(c => c.id === id)
     if (conv && !conv.messages.length) {
@@ -126,6 +133,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteConversation(id: string) {
+    if (activeId.value === id) stop()
     try {
       await api.delete(`/chat/sessions/${id}`)
     } catch (err)
@@ -171,47 +179,62 @@ export const useChatStore = defineStore('chat', () => {
       conv.title = question.slice(0, 60)
     }
 
+    const streamMsg: ChatMessage = { id: 'streaming', role: 'assistant', text: '', streaming: true }
+    conv.messages.push(streamMsg)
+
     error.value = ''
     loading.value = true
 
+    const ctrl = new AbortController()
+    controller.value = ctrl
     try {
-      const { data } = await api.post('/chat/query', {
+      await streamChat(
         question,
-        session_id: conv.sessionId || undefined,
-      })
-
-      // If first message, session_id is now set — update the id to match server
-      if (!conv.sessionId) {
-        conv.sessionId = data.session_id
-        // Replace client-generated id with server id so sidebar matches
-        const oldId = conv.id
-        conv.id = data.session_id
-        if (activeId.value === oldId) activeId.value = data.session_id
-      }
-
-      conv.messages.push({
-        id: data.answer_id,
-        role: 'assistant',
-        text: data.answer,
-        model: data.model,
-      })
-
-      saveToStorage()
-
-      return data
+        conv.sessionId || undefined,
+        {
+          onDelta: (content) => { streamMsg.text += content },
+          onSources: () => {},
+          onDone: (data) => {
+            // If first message, session_id is now set — update the id to match server
+            if (!conv.sessionId) {
+              conv.sessionId = data.session_id
+              const oldId = conv.id
+              conv.id = data.session_id
+              if (activeId.value === oldId) activeId.value = data.session_id
+            }
+            streamMsg.id = String(Date.now())
+            streamMsg.model = data.model
+            streamMsg.streaming = false
+          },
+          onError: (detail) => { error.value = detail },
+        },
+        ctrl.signal,
+      )
     } catch (err: any) {
-      error.value = getErrorMessage(err)
+      if (err?.name !== 'AbortError') {
+        error.value = getErrorMessage(err)
+      }
     } finally {
       loading.value = false
+      controller.value = null
+      streamMsg.streaming = false
+      if (!streamMsg.text) {
+        conv.messages = conv.messages.filter(m => m !== streamMsg)
+      }
+      saveToStorage()
     }
+  }
+
+  function stop() {
+    controller.value?.abort()
   }
 
   return {
     conversations, activeId, loading, error,
-    activeConversation, messages,
+    activeConversation, messages, streamingText,
     fetchSessions, fetchSessionMessages,
     newConversation, setActive, deleteConversation, togglePin,
     renameConversation,
-    sendMessage,
+    sendMessage, stop,
   }
 })
