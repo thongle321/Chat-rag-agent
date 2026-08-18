@@ -8,6 +8,7 @@ from app.models.schemas import DocumentInfo, DocumentIngestResponse, DocumentLis
 from app.models.user import User
 from app.services import documents
 from app.services.document_ingest import index_file, save_and_queue_indexing
+from app.services.document_status import get_document_statuses, normalize_status
 from app.services.user_manager import current_active_user
 
 logger = logging.getLogger(__name__)
@@ -55,23 +56,20 @@ async def delete_document_by_title(title: str, user: User = current_active_user)
     return {"status": "deleted", "chunks_deleted": deleted}
 
 
-def _build_status_results(titles: list[str]) -> dict:
-    existing = documents.list_documents()
+async def _build_status_results(titles: list[str]) -> dict:
+    existing = await asyncio.to_thread(documents.list_documents)
     existing_map = {d["title"]: d for d in existing}
+    statuses = await get_document_statuses(titles)
     results = {}
     for title in titles:
-        if title in existing_map:
-            doc = existing_map[title]
-            results[title] = {
-                "status": "completed", "chunks": doc["chunks"], "size": doc["size"],
-            }
-        else:
-            results[title] = {"status": "indexed", "chunks": 0, "size": 0}
+        st = statuses.get(title) or {}
+        results[title] = {
+            "status": normalize_status(st.get("status")),
+            "chunks": st.get("chunks", 0),
+            "size": existing_map.get(title, {}).get("size", 0),
+            "error_message": st.get("error_message"),
+        }
     return results
-
-
-async def _build_status_results_async(titles: list[str]) -> dict:
-    return await asyncio.to_thread(_build_status_results, titles)
 
 
 @router.get("/upload/status")
@@ -80,5 +78,5 @@ async def poll_upload_status(titles: str = Query(...), user: User = current_acti
     title_list = [t.strip() for t in titles.split(",") if t.strip()]
     if not title_list:
         raise HTTPException(status_code=400, detail="No titles provided")
-    results = await _build_status_results_async(title_list)
+    results = await _build_status_results(title_list)
     return {"results": results}

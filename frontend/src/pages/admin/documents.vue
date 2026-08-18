@@ -8,7 +8,7 @@ const documentStore = useDocumentStore()
 
 const selectedFiles = ref<File[]>([])
 const uploading = ref(false)
-const uploadResults = ref<{ name: string; status: string; message: string; size: number; chunks: number }[]>([])
+const uploadResults = ref<{ name: string; status: string; message: string; size: number; chunks: number; error_message?: string }[]>([])
 const deleting = ref(false)
 const deleteTarget = ref('')
 const showDeleteModal = ref(false)
@@ -30,10 +30,16 @@ function loadUploadResults() {
   }
 }
 
+const ACTIVELY_PROCESSING = ['pending', 'processing']
+
+function isProcessingStatus(status: string): boolean {
+  return ACTIVELY_PROCESSING.includes(status)
+}
+
 const documentList = computed(() => {
   const storeDocs = documentStore.documents
   const storeNames = new Set(storeDocs.map(d => d.title))
-  const processing = uploadResults.value.filter(r => !storeNames.has(r.name))
+  const processing = uploadResults.value.filter(r => !storeNames.has(r.name) && r.status !== 'completed')
   return [
     ...processing.map(r => ({
       id: r.name,
@@ -41,6 +47,7 @@ const documentList = computed(() => {
       size: r.size,
       chunks: r.chunks,
       status: r.status,
+      error_message: r.error_message,
       isProcessing: true as const,
     })),
     ...storeDocs.map(d => {
@@ -50,7 +57,9 @@ const documentList = computed(() => {
         title: d.title,
         size: d.size,
         chunks: d.chunks,
-        status: uploadResult?.status || null,
+        // present in the vector store => indexing finished
+        status: uploadResult?.status || 'completed',
+        error_message: uploadResult?.error_message,
         isProcessing: false,
       }
     }),
@@ -60,7 +69,7 @@ const documentList = computed(() => {
 onMounted(() => {
   documentStore.fetchDocuments()
   loadUploadResults()
-  const indexed = uploadResults.value.filter(r => r.status === 'indexed')
+  const indexed = uploadResults.value.filter(r => isProcessingStatus(r.status))
   if (indexed.length) {
     pollTimer = setTimeout(() => pollStatus(indexed.map(r => r.name)), 2000)
   }
@@ -69,6 +78,16 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer)
 })
+
+function statusBadge(status: string): { label: string; color: 'warning' | 'info' | 'success' | 'error' } {
+  switch (status) {
+    case 'pending': return { label: 'Pending', color: 'warning' }
+    case 'processing': return { label: 'Processing', color: 'info' }
+    case 'completed': return { label: 'Completed', color: 'success' }
+    case 'failed': return { label: 'Failed', color: 'error' }
+    default: return { label: status, color: 'warning' }
+  }
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -86,16 +105,20 @@ async function pollStatus(titles: string[]) {
     for (const res of uploadResults.value) {
       const status = data.results[res.name]
       if (status) {
-        res.status = status.status
+        res.status = status.status ?? res.status
         res.chunks = status.chunks || 0
         res.size = status.size || res.size
+        if (status.error_message) {
+          res.error_message = status.error_message
+          res.message = status.error_message
+        }
       }
     }
   } catch {
     // ponytail: poll failed, retry
   }
 
-  const pending = uploadResults.value.filter(r => r.status === 'indexed')
+  const pending = uploadResults.value.filter(r => isProcessingStatus(r.status))
   saveUploadResults()
   if (pending.length) {
     pollTimer = setTimeout(() => pollStatus(pending.map(r => r.name)), 2000)
@@ -119,14 +142,14 @@ async function handleUpload() {
     const results = await documentStore.uploadDocuments(selectedFiles.value)
     uploadResults.value = results.map((r, i) => ({
       name: selectedFiles.value[i]?.name || 'Unknown',
-      status: r.status === 'ok' ? 'indexed' : 'failed',
+      status: r.status === 'ok' ? 'pending' : 'failed',
       message: r.message,
       size: selectedFiles.value[i]?.size || 0,
       chunks: 0,
     }))
     selectedFiles.value = []
 
-    const indexed = uploadResults.value.filter(r => r.status === 'indexed')
+    const indexed = uploadResults.value.filter(r => isProcessingStatus(r.status))
     saveUploadResults()
     if (indexed.length) {
       pollTimer = setTimeout(() => pollStatus(indexed.map(r => r.name)), 2000)
@@ -219,19 +242,22 @@ async function deleteDocument() {
             >
               <UIcon name="i-lucide-file-text" class="text-primary shrink-0" />
               <div class="flex-1 min-w-0">
-                <p class="font-medium truncate flex items-center gap-1.5">
+<p class="font-medium truncate flex items-center gap-1.5">
                   {{ item.title }}
 <UBadge
 	                     v-if="item.status"
 	                     size="sm"
 	                     variant="soft"
-	                     :color="item.status === 'indexed' ? 'warning' : item.status === 'completed' ? 'success' : 'error'"
+	                     :color="statusBadge(item.status).color"
 	                   >
-	                     {{ item.status === 'indexed' ? 'Indexed' : item.status === 'completed' ? 'Completed' : 'Failed' }}
+	                     {{ statusBadge(item.status).label }}
 	                   </UBadge>
                 </p>
                 <p class="text-sm text-muted">
                   {{ formatSize(item.size) }}<template v-if="item.chunks"> · {{ item.chunks }} chunk{{ item.chunks === 1 ? '' : 's' }}</template>
+                </p>
+                <p v-if="item.status === 'failed' && item.error_message" class="text-xs text-[var(--ui-color-error)] mt-1">
+                  {{ item.error_message }}
                 </p>
               </div>
               <UButton

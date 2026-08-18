@@ -11,6 +11,8 @@ from pydantic_ai.usage import UsageLimits
 from app.core.config import settings
 from app.db.embeddings import get_embeddings, passage_prefix
 from app.db.vector_store import get_vector_store
+from app.models.document_status import COMPLETED, FAILED, PENDING, PROCESSING
+from app.services.document_status import set_document_status
 from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -105,44 +107,55 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
 
 async def index_file(file_path: Path) -> int:
     if not (file_path.is_file() and file_path.suffix.lower() in TEXT_EXTENSIONS | {".pdf"} | IMAGE_EXTENSIONS):
+        await set_document_status(file_path.name, status=FAILED, error_message="Unsupported file type.")
         return 0
 
-    result = await _load_file(file_path)
-    if result is None:
-        return 0
+    await set_document_status(file_path.name, status=PROCESSING)
 
-    text, base_metadata = result
-    chunks = chunker.chunk(text)
-    if not chunks:
-        return 0
+    try:
+        result = await _load_file(file_path)
+        if result is None:
+            await set_document_status(file_path.name, status=FAILED, error_message="Failed to parse the file.")
+            return 0
 
-    chunk_texts = []
-    chunk_metadatas = []
-    for i, chunk in enumerate(chunks):
-        chunk_texts.append(chunk.text)
-        chunk_metadatas.append({**base_metadata, "chunk": i})
+        text, base_metadata = result
+        chunks = chunker.chunk(text)
+        if not chunks:
+            await set_document_status(file_path.name, status=FAILED, error_message="No text chunks could be generated.")
+            return 0
 
-    embeddings_list = list(
-        await asyncio.to_thread(
-            lambda: get_embeddings().embed([passage_prefix() + c for c in chunk_texts])
-        )
-    )
+        chunk_texts = []
+        chunk_metadatas = []
+        for i, chunk in enumerate(chunks):
+            chunk_texts.append(chunk.text)
+            chunk_metadatas.append({**base_metadata, "chunk": i})
 
-    store = get_vector_store()
-    for i in range(0, len(chunks), BATCH_SIZE):
-        batch_texts = chunk_texts[i : i + BATCH_SIZE]
-        batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
-        batch_metadatas = chunk_metadatas[i : i + BATCH_SIZE]
-        await asyncio.to_thread(
-            store.add,
-            ids=[str(uuid.uuid4()) for _ in batch_texts],
-            embeddings=batch_embeddings,
-            documents=batch_texts,
-            metadatas=batch_metadatas,
+        embeddings_list = list(
+            await asyncio.to_thread(
+                lambda: get_embeddings().embed([passage_prefix() + c for c in chunk_texts])
+            )
         )
 
-    logger.info("Indexed %d chunks from %s", len(chunks), file_path.name)
-    return len(chunks)
+        store = get_vector_store()
+        for i in range(0, len(chunks), BATCH_SIZE):
+            batch_texts = chunk_texts[i : i + BATCH_SIZE]
+            batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
+            batch_metadatas = chunk_metadatas[i : i + BATCH_SIZE]
+            await asyncio.to_thread(
+                store.add,
+                ids=[str(uuid.uuid4()) for _ in batch_texts],
+                embeddings=batch_embeddings,
+                documents=batch_texts,
+                metadatas=batch_metadatas,
+            )
+
+        await set_document_status(file_path.name, status=COMPLETED, chunk_count=len(chunks))
+        logger.info("Indexed %d chunks from %s", len(chunks), file_path.name)
+        return len(chunks)
+    except Exception:
+        await set_document_status(file_path.name, status=FAILED, error_message="Indexing failed unexpectedly.")
+        logger.exception("Indexing failed for %s", file_path.name)
+        return 0
 
 
 async def save_and_queue_indexing(
@@ -158,4 +171,6 @@ async def save_and_queue_indexing(
         await asyncio.to_thread(get_vector_store().delete_document, filename)
 
     saved_path.write_bytes(file_bytes)
+    await set_document_status(filename, status=PENDING)
+    # ponytail: no auto-retry of pending rows on restart — same limit as background task instead of a queue
     return f"File '{filename}' queued for indexing.", saved_path
