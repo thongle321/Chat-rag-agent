@@ -183,8 +183,9 @@ class ChromaVectorStore:
         upload_dir = Path(settings.upload_dir)
         seen: dict[str, dict[str, Any]] = {}
         for doc_id, meta in zip(result["ids"], result["metadatas"], strict=True):
-            # Prefer clean_title for display; fall back to title (filename) for identity ops
-            title = meta.get("clean_title") or meta.get("title") or doc_id
+            # title (filename) is the identity used for status polling, size lookup, and delete;
+            # clean_title is the LLM name shown in chat citations only.
+            title = meta.get("title") or doc_id
             if title not in seen:
                 # Only use title as file path if it looks like a stored filename
                 file_path = upload_dir / title if title and title != "document" and "/" not in title and "." in title else upload_dir / doc_id

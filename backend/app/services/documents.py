@@ -17,7 +17,7 @@ def delete_document(title: str) -> int:
     deleted = get_vector_store().delete_document(title)
     upload_dir = Path(settings.upload_dir)
     for f in upload_dir.iterdir():
-        if f.is_file() and f.stem == title:
+        if f.is_file() and f.name == title:
             f.unlink()
             break
     return deleted

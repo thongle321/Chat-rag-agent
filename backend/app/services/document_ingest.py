@@ -33,10 +33,9 @@ chunker = RecursiveChunker(
 
 SUMMARY_PROMPT = (
     "Return exactly two or three lines:\n"
-    "Title: <short natural title, e.g. 'Decree 135/2026' or 'Annual Report 2023'>\n"
+    "Title: <short natural title>\n"
     "Summary: <1-2 sentences describing the main topics it covers.>\n"
-    "Reference: <optional: document reference number, year, or code, if present. "
-    "e.g. '135/2026/NĐ-CP' or 'Quyết định số 45/2024/QĐ-TTg' or 'FY2023'>"
+    "Reference: <optional: document reference number, year, or code, if present.>"
 )
 
 _SUMMARY_LIMITS = UsageLimits(request_limit=3)
@@ -88,7 +87,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
         else:
             return None
 
-        summary, title, reference = await _summarize(text)
+        title, summary, reference = await _summarize(text)
 
         base_metadata = {
             "title": file_path.name,
@@ -98,6 +97,7 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
             "summary": summary,
             "reference": reference,
         }
+        return text, base_metadata
     except Exception:
         logger.exception("Failed to load %s", file_path)
         return None
