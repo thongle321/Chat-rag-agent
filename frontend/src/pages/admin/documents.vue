@@ -118,12 +118,12 @@ async function pollStatus(titles: string[]) {
     // ponytail: poll failed, retry
   }
 
+  await documentStore.fetchDocuments(true)
   const pending = uploadResults.value.filter(r => isProcessingStatus(r.status))
   saveUploadResults()
   if (pending.length) {
     pollTimer = setTimeout(() => pollStatus(pending.map(r => r.name)), 2000)
   } else {
-    documentStore.fetchDocuments(true)
     uploadResults.value = uploadResults.value.filter(r => {
       const stillInStore = documentStore.documents.some(d => d.title === r.name)
       return !stillInStore

@@ -2,11 +2,10 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import HTTPException
-from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
 from pydantic_ai.exceptions import ModelAPIError, UserError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -21,10 +20,6 @@ from app.models.schemas import ChatResponse
 from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
-
-
-class RouteResult(BaseModel):
-    category: Literal["chat", "answer"]
 
 
 @dataclass
@@ -47,7 +42,8 @@ class RAGState:
     fallback_reply: str | None = None
 
 
-# ponytail: three-node graph (route -> chat|answer) — add re-rank, self-verify nodes when multistep logic lands
+# ponytail: single-node graph kept only to preserve the streaming plumbing; collapse to a
+# plain function if the graph ever stops earning its keep.
 _graph = None
 
 
@@ -66,36 +62,6 @@ def _format_context(docs: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _format_sources(docs: list[dict]) -> list[str]:
-    pages_by_title: dict[str, set[int]] = {}
-    refs_by_title: dict[str, str | None] = {}
-    for d in docs:
-        meta = d["metadata"]
-        title = meta.get("clean_title") or "document"
-        reference = meta.get("reference")
-        page = meta.get("page")
-        if title not in pages_by_title:
-            pages_by_title[title] = set()
-            refs_by_title[title] = reference
-        else:
-            refs_by_title[title] = refs_by_title[title] or reference
-        if page is not None:
-            pages_by_title[title].add(page + 1)
-    sources = []
-    for title in sorted(pages_by_title.keys()):
-        pages = pages_by_title[title]
-        reference = refs_by_title[title]
-        if pages:
-            ref = reference or ""
-            if ref:
-                sources.append(f"{title} (Ref: {ref}) (p{', p'.join(str(p) for p in sorted(pages))})")
-            else:
-                sources.append(f"{title} (p{', p'.join(str(p) for p in sorted(pages))})")
-        else:
-            sources.append(title if not ref else f"{title} (Ref: {ref})")
-    return sources
-
-
 async def get_messages(session_id: str) -> list[dict]:
     result = []
     for m in await load_messages(session_id):
@@ -109,19 +75,6 @@ async def get_messages(session_id: str) -> list[dict]:
                     result.append({"role": "assistant", "content": p.content})
     return result
 
-
-REWRITE_PROMPT = (
-    "Given the conversation history and the latest user message, "
-    "rewrite the latest message into a single standalone question that "
-    "contains all the context needed to answer it on its own. "
-    "Replace pronouns and vague references with specific nouns. "
-    "Fill in any missing subject or object. "
-    "Keep entity names, product codes, and acronyms verbatim. "
-    "If the message is already standalone, return it unchanged. "
-    "If the message is chit-chat with no question, return it unchanged. "
-    "Never add facts that were not in the conversation. "
-    "Reply ONLY with the rewritten question, nothing else."
-)
 
 _MAX_HISTORY = 10
 
@@ -150,81 +103,36 @@ def _model_error_reason(e: ModelAPIError) -> str | None:
             return str(body["message"])
     return None
 
-_SINGLE_SHOT_LIMITS = UsageLimits(request_limit=3)
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
 
-async def _rewrite_question(
-    question: str, messages: list[ModelMessage], deps: Deps, conversation_id: str | None = None
-) -> str:
-    if not messages:
-        return question
-    agent = Agent(
-        deps.model,
-        system_prompt=REWRITE_PROMPT,
-        name="rewrite",
-        capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
-    )
-    result = await asyncio.wait_for(
-        agent.run(
-            question,
-            message_history=messages,
-            conversation_id=conversation_id,
-            usage_limits=_SINGLE_SHOT_LIMITS,
-        ),
-        timeout=30.0,
-    )
-    first_line = str(result.output or "").strip().split("\n", 1)[0].strip()
-    return (first_line[:400] or question) if first_line else question
+async def search_documents(ctx: RunContext[Deps], query: str) -> str:
+    """Search the private knowledge base and return relevant document excerpts.
 
+    Call this when the question may relate to the stored documents, including
+    follow-ups (formulate a standalone query yourself). Do NOT call it for
+    greetings, small talk, or questions about the assistant itself.
 
-ROUTER_PROMPT = (
-    "You route a user message to a RAG system. "
-    "Return 'chat' for greetings, small talk, thanks, or questions about the assistant itself. "
-    "Return 'answer' for anything that asks about information contained in documents. "
-    "Reply ONLY with the category."
-)
+    Args:
+        query: A standalone, self-contained search question.
+    """
+    query_embedding = await asyncio.to_thread(
+        lambda: next(get_embeddings().query_embed(query_prefix() + query))
+    )
+    docs = await asyncio.to_thread(ctx.deps.vector_store.hybrid_query, query, query_embedding, 8)
+    # ponytail: no relevance threshold — RRF scores aren't cosine similarity, so the model
+    # judges relevance from content. Add a dense-only cosine gate if false positives appear.
+    return _format_context(docs)
 
 
 @dataclass
-class Route(BaseNode[RAGState, Deps]):
-    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> "Chat | Answer":
-        router = Agent(
-            ctx.deps.model,
-            output_type=RouteResult,
-            system_prompt=ROUTER_PROMPT,
-            name="router",
-            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
-        )
-        result = await asyncio.wait_for(
-            router.run(
-                ctx.state.question,
-                message_history=ctx.state.history,
-                conversation_id=ctx.state.conversation_id,
-                usage_limits=_SINGLE_SHOT_LIMITS,
-            ),
-            timeout=30.0,
-        )
-        return Chat() if result.output.category == "chat" else Answer()
-
-
-@dataclass
-class Chat(BaseNode[RAGState, Deps, None]):
+class RunAgent(BaseNode[RAGState, Deps, None]):
     async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
-        docs = [d for d in await asyncio.to_thread(ctx.deps.vector_store.list_documents) if d.get("summary")]
-        prompt = settings.chat_prompt.strip()
-        if docs:
-            listing = "\n".join(
-                f"- {d.get('clean_title') or 'Document'} "
-                f": {d['summary']}"
-                + (f" (Ref: {d.get('reference')})" if d.get('reference') else "")
-                for d in docs
-            )
-            prompt += f"\n\nAvailable documents:\n{listing}"
         agent = Agent(
             ctx.deps.model,
-            system_prompt=prompt,
-            name="chat_agent",
+            system_prompt=settings.context_prompt.strip(),
+            name="conversational_rag",
+            tools=[search_documents],
             capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
         )
         ctx.state.fallback_reply = _CHAT_FALLBACK_REPLY
@@ -233,33 +141,7 @@ class Chat(BaseNode[RAGState, Deps, None]):
             message_history=ctx.state.history,
             conversation_id=ctx.state.conversation_id,
             usage_limits=_RAG_LIMITS,
-        )
-        return End(None)
-
-
-@dataclass
-class Answer(BaseNode[RAGState, Deps, None]):
-    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
-        messages = ctx.state.history
-        query = await _rewrite_question(ctx.state.question, messages, ctx.deps, ctx.state.conversation_id)
-        query_embedding = await asyncio.to_thread(
-            lambda: next(get_embeddings().query_embed(query_prefix() + query))
-        )
-        docs = await asyncio.to_thread(ctx.deps.vector_store.hybrid_query, query, query_embedding, 8)
-        context = _format_context(docs)
-        full_prompt = f"{settings.context_prompt.strip()}\n\nRelevant context from the knowledge base:\n\n{context}"
-        agent = Agent(
-            ctx.deps.model,
-            system_prompt=full_prompt,
-            name="rag_agent",
-            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
-        )
-        ctx.state.sources = _format_sources(docs)
-        ctx.state.stream = agent.run_stream(
-            ctx.state.question,
-            message_history=messages,
-            conversation_id=ctx.state.conversation_id,
-            usage_limits=_RAG_LIMITS,
+            deps=ctx.deps,
         )
         return End(None)
 
@@ -272,13 +154,11 @@ def get_graph():
     g = GraphBuilder(state_type=RAGState, deps_type=Deps)
 
     @g.step
-    async def start_step(ctx: StepContext[RAGState, Deps, None]) -> Route:
-        return Route()
+    async def start_step(ctx: StepContext[RAGState, Deps, None]) -> RunAgent:
+        return RunAgent()
 
     g.add(
-        g.node(Route),
-        g.node(Chat),
-        g.node(Answer),
+        g.node(RunAgent),
         g.edge_from(g.start_node).to(start_step),
     )
     _graph = g.build()
@@ -340,7 +220,7 @@ async def stream_answer(question: str, session_id: str | None = None):
     try:
         async with asyncio.timeout(120):
             async with state.stream as result:
-                async for delta in result.stream_text():
+                async for delta in result.stream_text(delta=True):
                     emitted = True
                     yield {"type": "text_delta", "content": delta}
                 state.new_messages = result.new_messages()

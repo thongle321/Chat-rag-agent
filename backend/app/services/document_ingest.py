@@ -34,42 +34,31 @@ chunker = RecursiveChunker(
 
 
 SUMMARY_PROMPT = (
-    "Return exactly two or three lines:\n"
+    "Return exactly two lines:\n"
     "Title: <short natural title>\n"
-    "Summary: <1-2 sentences describing the main topics it covers.>\n"
     "Reference: <optional: document reference number, year, or code, if present.>"
 )
 
 _SUMMARY_LIMITS = UsageLimits(request_limit=3)
 
 
-async def _summarize(text: str) -> tuple[str, str, str]:
+async def _summarize(text: str) -> tuple[str, str]:
     try:
         model, _ = get_llm()
         agent = Agent(model, system_prompt=SUMMARY_PROMPT)
         result = await asyncio.wait_for(agent.run(text[:3000], usage_limits=_SUMMARY_LIMITS), timeout=60.0)
-        output = result.output.strip()
         title = ""
-        summary = ""
         reference = ""
-        for line in output.splitlines():
+        for line in result.output.strip().splitlines():
             line = line.strip()
             if line.startswith("Title:"):
                 title = line[len("Title:"):].strip()
-            elif line.startswith("Summary:"):
-                summary = line[len("Summary:"):].strip()
             elif line.startswith("Reference:"):
                 reference = line[len("Reference:"):].strip()
-        if not title:
-            title = ""
-        if not summary:
-            summary = ""
-        if not reference:
-            reference = ""
-        return title, summary, reference
+        return title, reference
     except Exception:
-        logger.exception("Summary generation failed")
-        return "", "", ""
+        logger.exception("Title generation failed")
+        return "", ""
 
 
 async def _load_file(file_path: Path) -> tuple[str, dict] | None:
@@ -89,14 +78,13 @@ async def _load_file(file_path: Path) -> tuple[str, dict] | None:
         else:
             return None
 
-        title, summary, reference = await _summarize(text)
+        title, reference = await _summarize(text)
 
         base_metadata = {
             "title": file_path.name,
             "clean_title": title or file_path.name,
             "source": file_path.name,
             "type": suffix.lstrip("."),
-            "summary": summary,
             "reference": reference,
         }
         return text, base_metadata
