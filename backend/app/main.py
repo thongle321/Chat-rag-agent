@@ -5,6 +5,7 @@ import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.types import Receive, Scope, Send
 
 from app.api.facebook import close_client
 from app.api.routes import router
@@ -77,9 +78,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+class NoGzipForSSE(GZipMiddleware):
+    """Bypass GZip for the chat SSE stream so tokens stream chunk-by-chunk."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] == "/api/chat/query/stream":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 # Add middleware (last added = first executed)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(NoGzipForSSE, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],

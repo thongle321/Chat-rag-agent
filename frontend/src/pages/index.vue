@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, onMounted, watch } from 'vue'
+import { nextTick, reactive, ref, onMounted, watch } from 'vue'
 import { Comark } from '@comark/vue'
 import { useClipboard } from '@vueuse/core'
 import { useChatStore } from '../stores/chat'
@@ -10,9 +10,11 @@ const { copy, copied } = useClipboard()
 const chatInput = ref('')
 const chatWindow = ref<HTMLElement>()
 const sidebarOpen = ref(false)
+const accOpen = reactive<Record<string, string | undefined>>({})
+const activeCite = reactive(new Map<string, number>())
 
-onMounted(() => {
-  chatStore.fetchSessions()
+onMounted(async () => {
+  await chatStore.fetchSessions()
   if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
     sidebarOpen.value = true
   }
@@ -30,6 +32,10 @@ function closeSidebarOnMobile() {
   if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
     sidebarOpen.value = false
   }
+}
+
+function stripInlineCitations(text: string): string {
+  return text.replace(/\s*\[Source:[^\]]*\]/g, '').replace(/\s*\[(\d+)\]/g, '')
 }
 
 async function handleSend(question: string) {
@@ -105,33 +111,61 @@ async function handleSend(question: string) {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-2 text-xs text-muted">
                     <span class="font-semibold text-default">VeilAi</span>
+                    <span v-if="msg.sources?.length && !msg.streaming">· {{ msg.sources.length }} sources</span>
                   </div>
 
-                  <Suspense>
-                    <Comark :markdown="msg.text" class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
-                  </Suspense>
+                  <template v-if="msg.streaming && !msg.text">
+                    <div class="flex flex-col gap-2 py-1">
+                      <USkeleton class="h-2.5 rounded" style="width: 92%" />
+                      <USkeleton class="h-2.5 rounded" style="width: 78%" />
+                      <USkeleton class="h-2.5 rounded" style="width: 60%" />
+                    </div>
+                  </template>
+                  <template v-else>
+                    <Suspense>
+                      <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+                    </Suspense>
 
-                  <div class="flex items-center gap-1 mt-3">
-                    <UButton
-                      variant="ghost"
-                      color="neutral"
-                      size="xs"
-                      :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
-                      @click="copy(msg.text)"
+                    <UAccordion
+                      v-if="msg.sources?.length && !msg.streaming"
+                      v-model="accOpen[msg.id]"
+                      :items="[{ label: `Sources (${msg.sources.length})`, icon: 'i-lucide-book-open', value: 'sources' }]"
+                      class="mt-3"
+                      :ui="{ trigger: 'text-xs font-medium', body: 'text-xs' }"
                     >
-                      {{ copied ? 'Copied' : 'Copy' }}
-                    </UButton>
-                  </div>
-                </div>
-              </div>
-            </div>
+                      <template #body>
+                        <div class="grid md:grid-cols-2 gap-2">
+                          <div
+                            v-for="s in msg.sources"
+                            :id="`citation-${msg.id}-${s.n}`"
+                            :key="s.n"
+                            class="flex gap-2.5 p-2 rounded-lg border cursor-pointer transition"
+                            :class="(activeCite.get(msg.id) ?? null) === s.n ? 'border-primary bg-primary/10' : 'border-default hover:bg-elevated'"
+                            @click="activeCite.set(msg.id, s.n)"
+                          >
+                            <div class="w-7 h-7 shrink-0 grid place-items-center rounded-md bg-elevated text-xs font-bold tabular-nums">{{ s.n }}</div>
+                            <div class="min-w-0">
+                              <div class="font-semibold text-default truncate">{{ s.title }}</div>
+                              <div v-if="s.reference" class="text-muted mt-0.5 truncate">{{ s.reference }}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                    </UAccordion>
 
-            <div v-if="chatStore.loading && !chatStore.streamingText" class="flex gap-3.5 mb-3.5">
-              <UAvatar icon="i-lucide-bot" size="md" class="bg-primary/10 text-primary shrink-0" />
-              <div class="flex-1 flex flex-col gap-2 py-1">
-                <USkeleton class="h-2.5 rounded" style="width: 92%" />
-                <USkeleton class="h-2.5 rounded" style="width: 78%" />
-                <USkeleton class="h-2.5 rounded" style="width: 60%" />
+                    <div v-if="!msg.streaming" class="flex items-center gap-1 mt-3">
+                      <UButton
+                        variant="ghost"
+                        color="neutral"
+                        size="xs"
+                        :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
+                        @click="copy(msg.text)"
+                      >
+                        {{ copied ? 'Copied' : 'Copy' }}
+                      </UButton>
+                    </div>
+                  </template>
+                </div>
               </div>
             </div>
 
@@ -179,3 +213,4 @@ async function handleSend(question: string) {
     </div>
   </div>
 </template>
+

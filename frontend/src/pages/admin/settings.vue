@@ -95,9 +95,6 @@ async function testConnection() {
       icon: result.ok ? 'i-lucide-check-circle' : 'i-lucide-x-circle',
       timeout: result.ok ? 5000 : 0,
     })
-    if (result.ok) {
-      await refreshModels()
-    }
   } finally {
     testing.value = false
   }
@@ -231,7 +228,7 @@ async function save(event: FormSubmitEvent<Schema>) {
         <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="error" closable @close="error = ''" />
 
         <div class="flex gap-2">
-          <UButton :loading="testing" variant="outline" @click="testConnection">
+          <UButton type="button" :loading="testing" variant="outline" @click="testConnection">
             Test Connection
           </UButton>
           <UButton type="submit" :loading="saving">

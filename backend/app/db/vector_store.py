@@ -32,6 +32,8 @@ class VectorStore(Protocol):
 
     def hybrid_query(self, query_text: str, query_embedding: list[float], k: int = 5) -> list[dict]: ...
 
+    def get_metadata(self, ids: list[str]) -> dict[str, dict]: ...
+
     def count(self) -> int: ...
 
     def list_documents(self) -> list[dict]: ...
@@ -170,6 +172,13 @@ class ChromaVectorStore:
             }
             for doc_id, score in fused
         ]
+
+    def get_metadata(self, ids: list[str]) -> dict[str, dict]:
+        """Return {id: metadata} for the given chunk ids (missing ids are omitted)."""
+        if not ids:
+            return {}
+        res = self._collection.get(ids=ids, include=["metadatas"])
+        return {i: (m or {}) for i, m in zip(res["ids"], res["metadatas"], strict=False)}
 
     def count(self) -> int:
         return self._collection.count()

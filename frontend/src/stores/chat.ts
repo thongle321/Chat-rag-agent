@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api, { getErrorMessage, streamChat } from '../api'
+import api, { getErrorMessage, streamChat, type StreamSource } from '../api'
 
 const STORAGE_KEY = 'chat_sessions'
+const ACTIVE_KEY = 'chat_active_id'
 
 export interface ChatMessage {
   id: string
@@ -10,6 +11,7 @@ export interface ChatMessage {
   text: string
   model?: string
   streaming?: boolean
+  sources?: StreamSource[]
 }
 
 export interface Conversation {
@@ -47,7 +49,9 @@ export const useChatStore = defineStore('chat', () => {
   const activeId = ref('')
   const loading = ref(false)
   const error = ref('')
-  const controller = ref<AbortController | null>(null)
+  // One AbortController per in-flight send, keyed by conversation id, so switching
+  // chats never aborts a running stream — it keeps streaming in the background.
+  const activeControllers = new Map<string, AbortController>()
 
   const activeConversation = computed(() =>
     conversations.value.find(c => c.id === activeId.value) ?? null
@@ -68,6 +72,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionId: c.sessionId,
     }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    localStorage.setItem(ACTIVE_KEY, activeId.value)
   }
 
   function loadFromStorage() {
@@ -85,12 +90,22 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       // corrupted storage
     }
+    // Restore the chat you were viewing; fall back to the first session.
+    const stored = localStorage.getItem(ACTIVE_KEY) || ''
+    if (stored && conversations.value.some(c => c.id === stored)) {
+      activeId.value = stored
+    }
   }
 
-  function fetchSessions() {
+  async function fetchSessions() {
     loadFromStorage()
     if (!activeId.value && conversations.value.length) {
       activeId.value = conversations.value[0].id
+    }
+    // Restore the chat you were in before refresh — messages (and hydrated sources).
+    const conv = conversations.value.find(c => c.id === activeId.value)
+    if (conv && !conv.messages.length) {
+      await fetchSessionMessages(activeId.value)
     }
   }
 
@@ -103,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
         id: String(i),
         role: m.role === 'user' ? 'user' : 'assistant',
         text: m.content,
+        sources: m.sources ?? undefined,
       }))
     } catch {
       // ignore
@@ -124,8 +140,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function setActive(id: string) {
-    stop()
     activeId.value = id
+    saveToStorage()
     const conv = conversations.value.find(c => c.id === id)
     if (conv && !conv.messages.length) {
       await fetchSessionMessages(id)
@@ -133,7 +149,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function deleteConversation(id: string) {
-    if (activeId.value === id) stop()
+    activeControllers.get(id)?.abort()
+    activeControllers.delete(id)
     try {
       await api.delete(`/chat/sessions/${id}`)
     } catch (err)
@@ -179,21 +196,22 @@ export const useChatStore = defineStore('chat', () => {
       conv.title = question.slice(0, 60)
     }
 
-    const streamMsg: ChatMessage = { id: 'streaming', role: 'assistant', text: '', streaming: true }
-    conv.messages.push(streamMsg)
+    conv.messages.push({ id: 'streaming', role: 'assistant', text: '', streaming: true })
+    const streamMsg = conv.messages[conv.messages.length - 1] as ChatMessage
 
     error.value = ''
     loading.value = true
 
     const ctrl = new AbortController()
-    controller.value = ctrl
+    const key = conv.id
+    activeControllers.set(key, ctrl)
     try {
       await streamChat(
         question,
         conv.sessionId || undefined,
         {
           onDelta: (content) => { streamMsg.text += content },
-          onSources: () => {},
+          onSources: (sources) => { streamMsg.sources = sources },
           onDone: (data) => {
             // If first message, session_id is now set — update the id to match server
             if (!conv.sessionId) {
@@ -201,6 +219,11 @@ export const useChatStore = defineStore('chat', () => {
               const oldId = conv.id
               conv.id = data.session_id
               if (activeId.value === oldId) activeId.value = data.session_id
+              const c = activeControllers.get(oldId)
+              if (c) {
+                activeControllers.delete(oldId)
+                activeControllers.set(data.session_id, c)
+              }
             }
             streamMsg.id = String(Date.now())
             streamMsg.model = data.model
@@ -216,7 +239,7 @@ export const useChatStore = defineStore('chat', () => {
       }
     } finally {
       loading.value = false
-      controller.value = null
+      activeControllers.delete(key)
       streamMsg.streaming = false
       if (!streamMsg.text) {
         conv.messages = conv.messages.filter(m => m !== streamMsg)
@@ -226,7 +249,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function stop() {
-    controller.value?.abort()
+    activeControllers.get(activeId.value)?.abort()
   }
 
   return {

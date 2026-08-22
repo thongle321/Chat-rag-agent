@@ -13,9 +13,16 @@ export function getErrorMessage(err: unknown): string {
   return err.message || 'An error occurred'
 }
 
+export interface StreamSource {
+  n: number
+  title: string
+  reference?: string | null
+  pages?: number[]
+}
+
 export interface StreamHandlers {
   onDelta: (content: string) => void
-  onSources?: (sources: string[]) => void
+  onSources?: (sources: StreamSource[]) => void
   onDone: (data: { session_id: string; model: string }) => void
   onError: (detail: string) => void
 }
@@ -52,13 +59,23 @@ export async function streamChat(
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
     buffer = lines.pop() || ''
-    for (const line of lines) {
+    for (const raw of lines) {
+      const line = raw.trimEnd()
+      if (!line) {
+        currentEvent = 'message'
+        continue
+      }
       if (line.startsWith('event: ')) {
         currentEvent = line.slice(7).trim()
         continue
       }
       if (!line.startsWith('data: ')) continue
-      const data = JSON.parse(line.slice(6))
+      let data: any
+      try {
+        data = JSON.parse(line.slice(6))
+      } catch {
+        continue
+      }
       if (currentEvent === 'sources') {
         handlers.onSources?.(data.sources ?? [])
       } else if (currentEvent === 'error') {
@@ -67,6 +84,9 @@ export async function streamChat(
         handlers.onDone({ session_id: data.session_id, model: data.model })
       } else {
         handlers.onDelta(data.content ?? '')
+      }
+      if (currentEvent === 'sources' || currentEvent === 'error' || currentEvent === 'done') {
+        currentEvent = 'message'
       }
     }
   }

@@ -31,9 +31,17 @@ class DocumentListResponse(BaseModel):
     documents: list[DocumentInfo]
 
 
+class SessionSource(BaseModel):
+    n: int
+    title: str
+    reference: str | None = None
+    pages: list[int] = []
+
+
 class SessionMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+    sources: list[SessionSource] | None = None
 
 
 class SessionDetail(BaseModel):

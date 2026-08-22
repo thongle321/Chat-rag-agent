@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,6 +30,7 @@ class Deps:
     model: Any
     model_name: str
     vector_store: VectorStore
+    retrieved: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -47,24 +49,40 @@ class RAGState:
 _graph = None
 
 
-def _format_context(docs: list[dict]) -> str:
+def _format_context(docs: list[dict], nums: list[int]) -> str:
     if not docs:
         return "(No relevant documents found.)"
     parts = []
-    for d in docs:
+    for d, n in zip(docs, nums, strict=True):
         meta = d["metadata"]
         title = meta.get("clean_title") or "document"
         page = meta.get("page")
+        if page is None:
+            page = meta.get("chunk")
         page_str = f", p.{page + 1}" if page is not None else ""
         ref = meta.get("reference")
         ref_str = f" (Ref: {ref})" if ref else ""
-        parts.append(f"[Source: {title}{ref_str}{page_str}]\n{d['content']}")
+        parts.append(f"[{n}] {title}{ref_str}{page_str}\n{d['content']}")
     return "\n\n".join(parts)
 
 
 async def get_messages(session_id: str) -> list[dict]:
+    messages = await load_messages(session_id)
     result = []
-    for m in await load_messages(session_id):
+    # Citation stubs (chunk ids) were persisted on each response's metadata sidecar;
+    # hydrate current titles/refs from the vector DB so renames surface and deleted
+    # documents drop out silently.
+    stubs_by_index: dict[int, list[dict]] = {}
+    all_ids: list[str] = []
+    for i, m in enumerate(messages):
+        if isinstance(m, ModelResponse) and m.metadata and m.metadata.get("sources"):
+            stubs_by_index[i] = m.metadata["sources"]
+            all_ids.extend(s.get("id", "") for s in m.metadata["sources"])
+    meta_by_id: dict[str, dict] = {}
+    if all_ids:
+        meta_by_id = await asyncio.to_thread(get_vector_store().get_metadata, all_ids)
+
+    for i, m in enumerate(messages):
         if isinstance(m, ModelRequest):
             for p in m.parts:
                 if isinstance(p, UserPromptPart):
@@ -72,7 +90,20 @@ async def get_messages(session_id: str) -> list[dict]:
         elif isinstance(m, ModelResponse):
             for p in m.parts:
                 if isinstance(p, TextPart):
-                    result.append({"role": "assistant", "content": p.content})
+                    entry: dict = {"role": "assistant", "content": p.content}
+                    sources = [
+                        {
+                            "n": s["n"],
+                            "title": meta.get("clean_title") or "document",
+                            "reference": meta.get("reference"),
+                            "pages": s.get("pages", []),
+                        }
+                        for s in stubs_by_index.get(i, [])
+                        if (meta := meta_by_id.get(s.get("id", "")))
+                    ]
+                    if sources:
+                        entry["sources"] = sources
+                    result.append(entry)
     return result
 
 
@@ -106,6 +137,36 @@ def _model_error_reason(e: ModelAPIError) -> str | None:
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
 
+def _track_sources(deps: Deps, docs: list[dict]) -> list[int]:
+    """Register deduplicated citation metadata; return the source number per chunk."""
+    nums = []
+    for d in docs:
+        meta = d["metadata"]
+        title = meta.get("clean_title") or "document"
+        ref = meta.get("reference")
+        entry = next(
+            (s for s in deps.retrieved if s["title"] == title and s.get("reference") == ref),
+            None,
+        )
+        if entry is None:
+            entry = {
+                "n": len(deps.retrieved) + 1,
+                "id": d.get("id", ""),
+                "title": title,
+                "reference": ref,
+                "pages": [],
+            }
+            deps.retrieved.append(entry)
+        nums.append(entry["n"])
+        page = meta.get("page")
+        # ponytail: chunk index stands in for page until real page metadata exists at ingest
+        if page is None:
+            page = meta.get("chunk")
+        if page is not None and page + 1 not in entry["pages"]:
+            entry["pages"].append(page + 1)
+    return nums
+
+
 async def search_documents(ctx: RunContext[Deps], query: str) -> str:
     """Search the private knowledge base and return relevant document excerpts.
 
@@ -122,15 +183,40 @@ async def search_documents(ctx: RunContext[Deps], query: str) -> str:
     docs = await asyncio.to_thread(ctx.deps.vector_store.hybrid_query, query, query_embedding, 8)
     # ponytail: no relevance threshold — RRF scores aren't cosine similarity, so the model
     # judges relevance from content. Add a dense-only cosine gate if false positives appear.
-    return _format_context(docs)
+    if not docs:
+        return "(No relevant documents found.)"
+    nums = _track_sources(ctx.deps, docs)
+    return _format_context(docs, nums)
+
+
+def _catalog(docs: list[dict]) -> str:
+    if not docs:
+        return "No documents in the library yet."
+    return "Available documents in the library:\n" + "\n".join(
+        f"- {d.get('clean_title') or d.get('title') or 'Document'}"
+        + (f" (Ref: {d.get('reference')})" if d.get("reference") else "")
+        + f" — {d.get('chunks', 0)} chunks"
+        for d in docs
+    )
 
 
 @dataclass
 class RunAgent(BaseNode[RAGState, Deps, None]):
     async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
+        try:
+            docs = await asyncio.wait_for(
+                asyncio.to_thread(ctx.deps.vector_store.list_documents), timeout=3.0
+            )
+        except Exception:
+            logger.warning("Catalog fetch timed out, using fallback", exc_info=True)
+            catalog = "Available documents in the library: (catalog temporarily unavailable)"
+        else:
+            catalog = _catalog(docs)
+            logger.info("Catalog injected n=%d", len(docs))
+        system_prompt = f"{settings.context_prompt.strip()}\n\n{catalog}"
         agent = Agent(
             ctx.deps.model,
-            system_prompt=settings.context_prompt.strip(),
+            system_prompt=system_prompt,
             name="conversational_rag",
             tools=[search_documents],
             capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
@@ -217,13 +303,16 @@ async def stream_answer(question: str, session_id: str | None = None):
         return
 
     emitted = False
+    answer_parts: list[str] = []
     try:
         async with asyncio.timeout(120):
             async with state.stream as result:
                 async for delta in result.stream_text(delta=True):
                     emitted = True
+                    answer_parts.append(delta)
                     yield {"type": "text_delta", "content": delta}
                 state.new_messages = result.new_messages()
+                logger.info("stream done emitted=%s msgs=%d", emitted, len(state.new_messages))
     except Exception as e:
         if state.fallback_reply and not emitted:
             state.new_messages = [
@@ -235,6 +324,19 @@ async def stream_answer(question: str, session_id: str | None = None):
             yield _error_event(e)
             return
 
+    # Only surface sources the answer actually cited — retrieval hits are not provenance.
+    cited = {int(m) for m in re.findall(r"\[(\d+)\]", "".join(answer_parts))}
+    state.sources = [s for s in deps.retrieved if s["n"] in cited]
+    if state.sources:
+        # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
+        # rides inside the existing messages blob, never sent to the LLM. Titles/refs
+        # hydrate from the vector DB at read time so renames always surface.
+        # Must happen BEFORE save_messages or the stored blob lacks the stubs.
+        stubs = [{"n": s["n"], "id": s["id"], "pages": s["pages"]} for s in state.sources]
+        for m in reversed(state.new_messages):
+            if isinstance(m, ModelResponse) and any(isinstance(p, TextPart) for p in m.parts):
+                m.metadata = {"sources": stubs}
+                break
     await save_messages(sid, history + state.new_messages)
     yield {"type": "sources", "sources": state.sources}
     yield {"type": "done", "session_id": sid, "model": model_name}
