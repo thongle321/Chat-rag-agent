@@ -16,7 +16,15 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_async_sess
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     s = result.scalar_one_or_none()
     if not s:
-        raise HTTPException(status_code=404, detail="Session not found")
+        # Allow Facebook PSID sessions without ChatSession row (facebook_conversation_links)
+        try:
+            raw_check = await get_messages(session_id)
+            if not raw_check:
+                raise HTTPException(status_code=404, detail="Session not found")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail="Session not found") from exc
 
     raw = await get_messages(session_id)
     messages = [SessionMessage.model_validate(m) for m in raw]

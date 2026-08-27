@@ -41,6 +41,7 @@ class Settings(BaseSettings):
         "8) Answer in the same language as the user's question.\n"
     )
     jwt_secret_key: SecretStr
+    encryption_key: SecretStr | None = None
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
     model_config = SettingsConfigDict(

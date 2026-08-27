@@ -68,7 +68,6 @@ function toggleColorMode() {
       </div>
       <div class="min-w-0 flex-1">
         <div class="font-semibold text-sm tracking-tight text-default">VeilAi Rag</div>
-        <div class="text-[11px] text-muted">Smart search</div>
       </div>
     </div>
 

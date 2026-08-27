@@ -21,6 +21,11 @@ const links = [[{
   to: '/admin/integrations',
   onSelect: () => { open.value = false }
 }, {
+  label: 'Messages',
+  icon: 'i-lucide-messages-square',
+  to: '/admin/messages',
+  onSelect: () => { open.value = false }
+}, {
   label: 'Settings',
   to: '/admin/settings',
   icon: 'i-lucide-settings',
