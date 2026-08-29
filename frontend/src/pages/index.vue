@@ -1,55 +1,63 @@
 <script setup lang="ts">
-import { nextTick, reactive, ref, onMounted, watch } from 'vue'
-import { Comark } from '@comark/vue'
-import { useClipboard } from '@vueuse/core'
-import { useChatStore } from '../stores/chat'
+import { Comark } from "@comark/vue";
+import { useClipboard } from "@vueuse/core";
+import { nextTick, onMounted, reactive, ref, watch } from "vue";
+import { useChatStore } from "../stores/chat";
 
-const chatStore = useChatStore()
-const { copy, copied } = useClipboard()
+const chatStore = useChatStore();
+const { copy, copied } = useClipboard();
 
-const chatInput = ref('')
-const chatWindow = ref<HTMLElement>()
-const sidebarOpen = ref(false)
-const accOpen = reactive<Record<string, string | undefined>>({})
-const activeCite = reactive(new Map<string, number>())
+const chatInput = ref("");
+const chatWindow = ref<HTMLElement>();
+const sidebarOpen = ref(false);
+const accOpen = reactive<Record<string, string | undefined>>({});
+const activeCite = reactive(new Map<string, number>());
 
 onMounted(async () => {
-  await chatStore.fetchSessions()
-  if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
-    sidebarOpen.value = true
-  }
-})
+	await chatStore.fetchSessions();
+	if (
+		typeof window !== "undefined" &&
+		window.matchMedia("(min-width: 768px)").matches
+	) {
+		sidebarOpen.value = true;
+	}
+});
 
-watch(() => chatStore.streamingText, () => {
-  nextTick(() => {
-    if (chatWindow.value) {
-      chatWindow.value.scrollTop = chatWindow.value.scrollHeight
-    }
-  })
-})
+watch(
+	() => chatStore.streamingText,
+	() => {
+		nextTick(() => {
+			if (chatWindow.value) {
+				chatWindow.value.scrollTop = chatWindow.value.scrollHeight;
+			}
+		});
+	},
+);
 
 function closeSidebarOnMobile() {
-  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
-    sidebarOpen.value = false
-  }
+	if (
+		typeof window !== "undefined" &&
+		window.matchMedia("(max-width: 767px)").matches
+	) {
+		sidebarOpen.value = false;
+	}
 }
 
 function stripInlineCitations(text: string): string {
-  return text.replace(/\s*\[Source:[^\]]*\]/g, '').replace(/\s*\[(\d+)\]/g, '')
+	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[(\d+)\]/g, "");
 }
 
 async function handleSend(question: string) {
-  try {
-    await chatStore.sendMessage(question)
-  } catch {
-    // error is already displayed via chatStore.error
-  }
-  await nextTick()
-  if (chatWindow.value) {
-    chatWindow.value.scrollTop = chatWindow.value.scrollHeight
-  }
+	try {
+		await chatStore.sendMessage(question);
+	} catch {
+		// error is already displayed via chatStore.error
+	}
+	await nextTick();
+	if (chatWindow.value) {
+		chatWindow.value.scrollTop = chatWindow.value.scrollHeight;
+	}
 }
-
 </script>
 
 <template>

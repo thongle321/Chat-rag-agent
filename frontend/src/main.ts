@@ -1,43 +1,49 @@
-import './assets/css/main.css'
+import "./assets/css/main.css";
 
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
-import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from './stores/auth'
-import { routes as autoRoutes, handleHotUpdate } from 'vue-router/auto-routes'
-import { createHead } from '@unhead/vue/client'
-import ui from '@nuxt/ui/vue-plugin'
-import App from './App.vue'
+import ui from "@nuxt/ui/vue-plugin";
+import { createHead } from "@unhead/vue/client";
+import { createPinia } from "pinia";
+import { createApp } from "vue";
+import { createRouter, createWebHistory } from "vue-router";
+import { routes as autoRoutes, handleHotUpdate } from "vue-router/auto-routes";
+import App from "./App.vue";
+import { useAuthStore } from "./stores/auth.ts";
 
-const app = createApp(App)
-const head = createHead()
+const app = createApp(App);
+const head = createHead();
 const router = createRouter({
-  history: createWebHistory(),
-  routes: autoRoutes
-})
+	history: createWebHistory(),
+	routes: autoRoutes,
+});
 
-app.use(createPinia())
-app.use(head)
-app.use(router)
-app.use(ui)
+app.use(createPinia());
+app.use(head);
+app.use(router);
+app.use(ui);
 
 app.config.errorHandler = (err, _instance, info) => {
-  console.error('[vue]', info, err)
-}
+	console.error("[vue]", info, err);
+};
 
 router.beforeEach(async (to) => {
-  const auth = useAuthStore()
-  if (auth.token && !auth.user) {
-    await auth.fetchUser()
-  }
-  if (to.path.startsWith('/admin') && to.path !== '/admin/login') {
-    if (!auth.isAuthenticated) return '/admin/login'
-  }
-  if (to.path === '/admin/login' && auth.isAuthenticated) return '/admin/'
-})
+	const auth = useAuthStore();
+	if (auth.token && !auth.user) {
+		await auth.fetchUser();
+	}
+	if (
+		to.path.startsWith("/admin") &&
+		to.path !== "/admin/login" &&
+		!auth.isAuthenticated
+	) {
+		return "/admin/login";
+	}
+	if (to.path === "/admin/login" && auth.isAuthenticated) {
+		return "/admin/";
+	}
+});
 
-app.mount('#app')
+app.mount("#app");
 
 if (import.meta.hot) {
-  handleHotUpdate(router)
+	handleHotUpdate(router);
 }

@@ -1,42 +1,44 @@
 <script setup lang="ts">
-import api from '../../../api'
-import { Comark } from '@comark/vue'
-import { useClipboard } from '@vueuse/core'
+import { Comark } from "@comark/vue";
+import { useClipboard } from "@vueuse/core";
+import api from "../../../api";
 
-const route = useRoute()
-const id = computed(() => route.params.id as string)
-const pageId = computed(() => (route.query.page_id as string) || '')
+const route = useRoute();
+const id = computed(() => route.params.id as string);
+const pageId = computed(() => (route.query.page_id as string) || "");
 
-const loading = ref(true)
-const messages = ref<any[]>([])
-const error = ref('')
-const accOpen = reactive<Record<string, string | undefined>>({})
-const activeCite = reactive(new Map<string, number>())
-const { copy, copied } = useClipboard()
+const loading = ref(true);
+const messages = ref<any[]>([]);
+const error = ref("");
+const accOpen = reactive<Record<string, string | undefined>>({});
+const activeCite = reactive(new Map<string, number>());
+const { copy, copied } = useClipboard();
 
 function stripInlineCitations(text: string): string {
-  return text.replace(/\s*\[Source:[^\]]*\]/g, '').replace(/\s*\[(\d+)\]/g, '')
+	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[(\d+)\]/g, "");
 }
 
 async function loadThread() {
-  loading.value = true
-  error.value = ''
-  try {
-    const { data: d } = await api.get(`/chat/sessions/${id.value}`)
-    messages.value = d.messages || []
-  } catch (err: any) {
-    try {
-      const { data: d } = await api.get(`/chat/sessions/${id.value}`)
-      messages.value = d.messages || []
-    } catch (e: any) {
-      error.value = e?.response?.data?.detail || 'Thread not found'
-      messages.value = []
-    }
-  } finally { loading.value = false }
+	loading.value = true;
+	error.value = "";
+	try {
+		const { data: d } = await api.get(`/chat/sessions/${id.value}`);
+		messages.value = d.messages || [];
+	} catch (err: any) {
+		try {
+			const { data: d } = await api.get(`/chat/sessions/${id.value}`);
+			messages.value = d.messages || [];
+		} catch (e: any) {
+			error.value = e?.response?.data?.detail || "Thread not found";
+			messages.value = [];
+		}
+	} finally {
+		loading.value = false;
+	}
 }
 
-onMounted(loadThread)
-watch(() => route.params.id, loadThread)
+onMounted(loadThread);
+watch(() => route.params.id, loadThread);
 </script>
 
 <template>

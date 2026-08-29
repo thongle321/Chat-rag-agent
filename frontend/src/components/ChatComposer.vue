@@ -1,27 +1,27 @@
 <script setup lang="ts">
 const props = defineProps<{
-  disabled?: boolean
-  big?: boolean
-}>()
+	disabled?: boolean;
+	big?: boolean;
+}>();
 
-const modelValue = defineModel<string>({ default: '' })
+const modelValue = defineModel<string>({ default: "" });
 
 const emit = defineEmits<{
-  send: [text: string]
-}>()
+	send: [text: string];
+}>();
 
 function submit() {
-  const t = modelValue.value.trim()
-  if (!t || props.disabled) return
-  emit('send', t)
-  modelValue.value = ''
+	const t = modelValue.value.trim();
+	if (!t || props.disabled) return;
+	emit("send", t);
+	modelValue.value = "";
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    submit()
-  }
+	if (e.key === "Enter" && !e.shiftKey) {
+		e.preventDefault();
+		submit();
+	}
 }
 </script>
 

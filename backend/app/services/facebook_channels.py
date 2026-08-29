@@ -1,32 +1,23 @@
 import logging
-import re
-import unicodedata
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.facebook_channel import FacebookChannelModel
+from app.models.facebook_channel import FacebookChannelModel, slugify
 from app.models.facebook_config import FacebookConfigModel
 from app.services.encryption import decrypt_token, encrypt_token
 
 logger = logging.getLogger(__name__)
 
-
-def slugify(text: str) -> str:
-    """Generate a URL-friendly slug from text."""
-    text = unicodedata.normalize('NFD', text.lower())
-    text = re.sub(r'[\u0300-\u036f]', '', text)
-    text = re.sub(r'[^a-z0-9]+', '-', text)
-    text = text.strip('-')
-    return text[:60] or 'channel'
-
-
+VN_TZ = timezone(timedelta(hours=7))
 async def _ensure_table(session: AsyncSession) -> None:
     # ponytail: create if not exists via Base metadata on startup already, but ensure columns for existing DBs
     try:
-        from app.db.session import engine
         from sqlalchemy import text
+
+        from app.db.session import engine
 
         async with engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: FacebookChannelModel.__table__.create(sync_conn, checkfirst=True))
@@ -38,7 +29,11 @@ async def _ensure_table(session: AsyncSession) -> None:
         pass
     # Backfill missing slugs
     try:
-        rows = (await session.execute(select(FacebookChannelModel).where(FacebookChannelModel.slug.is_(None)))).scalars().all()
+        rows = (
+            (await session.execute(select(FacebookChannelModel).where(FacebookChannelModel.slug.is_(None))))
+            .scalars()
+            .all()
+        )
         for row in rows:
             base = slugify(row.page_name or row.page_id)
             slug = base
@@ -142,6 +137,16 @@ async def get_channel_by_slug(session: AsyncSession, slug: str) -> dict | None:
     return _to_dict(row) if row else None
 
 
+async def get_channel_by_identifier(session: AsyncSession, identifier: str) -> dict | None:
+    await _ensure_table(session)
+    for col in (FacebookChannelModel.id, FacebookChannelModel.slug, FacebookChannelModel.page_id):
+        res = await session.execute(select(FacebookChannelModel).where(col == identifier))
+        row = res.scalar_one_or_none()
+        if row:
+            return _to_dict(row)
+    return None
+
+
 async def create_channel(
     session: AsyncSession,
     page_id: str,
@@ -217,6 +222,34 @@ async def update_channel(
         row.is_active = is_active
     await session.commit()
     await session.refresh(row)
+    return _to_dict(row)
+
+
+async def update_last_sync_status(
+    session: AsyncSession,
+    channel_id: str,
+    status: str,
+) -> dict | None:
+    await _ensure_table(session)
+
+    res = await session.execute(select(FacebookChannelModel).where(FacebookChannelModel.id == channel_id))
+    row = res.scalar_one_or_none()
+
+    if not row:
+        return None
+
+    row.last_sync_status = status
+    row.last_sync_at = datetime.now(VN_TZ).isoformat()
+
+    await session.commit()
+    await session.refresh(row)
+
+    logger.info(
+        "Facebook channel %s sync status updated: %s",
+        channel_id,
+        status,
+    )
+
     return _to_dict(row)
 
 

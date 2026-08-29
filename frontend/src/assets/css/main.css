@@ -2,11 +2,10 @@
 @import "@nuxt/ui";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
 }
 
 :root {
   --ui-radius: 0.5rem;
 }
-

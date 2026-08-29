@@ -223,6 +223,14 @@ class ChromaVectorStore:
         logger.info("Deleted %d chunks for document '%s'", len(result["ids"]), title)
         return len(result["ids"])
 
+    def delete_document_and_file(self, title: str) -> int:
+        deleted = self.delete_document(title)
+        for f in Path(settings.upload_dir).iterdir():
+            if f.is_file() and f.name == title:
+                f.unlink()
+                break
+        return deleted
+
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> VectorStore:

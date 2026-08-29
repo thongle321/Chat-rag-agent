@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     encryption_key: SecretStr | None = None
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
+    retrieval_k: int = 8
+    retrieval_rrf_k: int = 60
+    retrieval_distance_threshold: float | None = None
+    retrieval_bm25_overretrieve: int = 2
     model_config = SettingsConfigDict(
         env_file=_BACKEND_ROOT / ".env", extra="ignore"
     )

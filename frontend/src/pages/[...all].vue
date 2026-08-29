@@ -1,8 +1,8 @@
-<script setup lang="ts">
-import { useRouter } from 'vue-router'
+<script lang="ts" setup>
+import { useRouter } from "vue-router";
 
-const router = useRouter()
-router.replace('/404')
+const router = useRouter();
+router.replace("/404");
 </script>
 
 <template>

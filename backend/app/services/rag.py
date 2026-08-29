@@ -11,13 +11,12 @@ from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
 from pydantic_ai.exceptions import ModelAPIError, UserError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
-from pydantic_graph import BaseNode, End, GraphBuilder, GraphRunContext, StepContext
 
 from app.core.config import settings
 from app.db.conversation_store import load_messages, save_messages
-from app.db.embeddings import get_embeddings, query_prefix
-from app.db.vector_store import VectorStore, get_vector_store
+from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
+from app.retrieval import get_retrieval
 from app.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -29,8 +28,12 @@ class Deps:
 
     model: Any
     model_name: str
-    vector_store: VectorStore
+    retrieval: Any = None
     retrieved: list[dict] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.retrieval is None:
+            self.retrieval = get_retrieval()
 
 
 @dataclass
@@ -44,9 +47,7 @@ class RAGState:
     fallback_reply: str | None = None
 
 
-# ponytail: single-node graph kept only to preserve the streaming plumbing; collapse to a
-# plain function if the graph ever stops earning its keep.
-_graph = None
+
 
 
 def _format_context(docs: list[dict], nums: list[int]) -> str:
@@ -177,12 +178,7 @@ async def search_documents(ctx: RunContext[Deps], query: str) -> str:
     Args:
         query: A standalone, self-contained search question.
     """
-    query_embedding = await asyncio.to_thread(
-        lambda: next(get_embeddings().query_embed(query_prefix() + query))
-    )
-    docs = await asyncio.to_thread(ctx.deps.vector_store.hybrid_query, query, query_embedding, 8)
-    # ponytail: no relevance threshold — RRF scores aren't cosine similarity, so the model
-    # judges relevance from content. Add a dense-only cosine gate if false positives appear.
+    docs = await asyncio.to_thread(ctx.deps.retrieval.search, query, 8)
     if not docs:
         return "(No relevant documents found.)"
     nums = _track_sources(ctx.deps, docs)
@@ -200,55 +196,33 @@ def _catalog(docs: list[dict]) -> str:
     )
 
 
-@dataclass
-class RunAgent(BaseNode[RAGState, Deps, None]):
-    async def run(self, ctx: GraphRunContext[RAGState, Deps]) -> End[None]:
-        try:
-            docs = await asyncio.wait_for(
-                asyncio.to_thread(ctx.deps.vector_store.list_documents), timeout=3.0
-            )
-        except Exception:
-            logger.warning("Catalog fetch timed out, using fallback", exc_info=True)
-            catalog = "Available documents in the library: (catalog temporarily unavailable)"
-        else:
-            catalog = _catalog(docs)
-            logger.info("Catalog injected n=%d", len(docs))
-        system_prompt = f"{settings.context_prompt.strip()}\n\n{catalog}"
-        agent = Agent(
-            ctx.deps.model,
-            system_prompt=system_prompt,
-            name="conversational_rag",
-            tools=[search_documents],
-            capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
+async def _run_agent(state: RAGState, deps: Deps) -> None:
+    try:
+        docs = await asyncio.wait_for(
+            asyncio.to_thread(deps.retrieval.list_documents), timeout=3.0
         )
-        ctx.state.fallback_reply = _CHAT_FALLBACK_REPLY
-        ctx.state.stream = agent.run_stream(
-            ctx.state.question,
-            message_history=ctx.state.history,
-            conversation_id=ctx.state.conversation_id,
-            usage_limits=_RAG_LIMITS,
-            deps=ctx.deps,
-        )
-        return End(None)
-
-
-def get_graph():
-    global _graph
-    if _graph is not None:
-        return _graph
-
-    g = GraphBuilder(state_type=RAGState, deps_type=Deps)
-
-    @g.step
-    async def start_step(ctx: StepContext[RAGState, Deps, None]) -> RunAgent:
-        return RunAgent()
-
-    g.add(
-        g.node(RunAgent),
-        g.edge_from(g.start_node).to(start_step),
+    except Exception:
+        logger.warning("Catalog fetch timed out, using fallback", exc_info=True)
+        catalog = "Available documents in the library: (catalog temporarily unavailable)"
+    else:
+        catalog = _catalog(docs)
+        logger.info("Catalog injected n=%d", len(docs))
+    system_prompt = f"{settings.context_prompt.strip()}\n\n{catalog}"
+    agent = Agent(
+        deps.model,
+        system_prompt=system_prompt,
+        name="conversational_rag",
+        tools=[search_documents],
+        capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
-    _graph = g.build()
-    return _graph
+    state.fallback_reply = _CHAT_FALLBACK_REPLY
+    state.stream = agent.run_stream(
+        state.question,
+        message_history=state.history,
+        conversation_id=state.conversation_id,
+        usage_limits=_RAG_LIMITS,
+        deps=deps,
+    )
 
 
 def _error_event(e: Exception) -> dict:
@@ -287,9 +261,9 @@ async def stream_answer(question: str, session_id: str | None = None):
     sid = session_id or str(uuid.uuid4())
     history = await load_messages(sid)
     state = RAGState(question=question, history=history, conversation_id=sid)
-    deps = Deps(model=model, model_name=model_name, vector_store=get_vector_store())
+    deps = Deps(model=model, model_name=model_name, retrieval=get_retrieval())
     try:
-        await asyncio.wait_for(get_graph().run(state=state, deps=deps), timeout=120.0)
+        await asyncio.wait_for(_run_agent(state, deps), timeout=120.0)
     except UserError:
         logger.warning("AI provider misconfigured for session %s", sid)
         yield {
@@ -361,8 +335,6 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
 
 async def close() -> None:
     """Close the conversation store connection."""
-    global _graph
-    _graph = None
     from app.db import conversation_store
 
     await conversation_store.close()

@@ -4,9 +4,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 
+from app.db.vector_store import get_vector_store
 from app.models.schemas import DocumentInfo, DocumentIngestResponse, DocumentListResponse
 from app.models.user import User
-from app.services import documents
 from app.services.document_ingest import index_file, save_and_queue_indexing
 from app.services.document_status import get_document_statuses, normalize_status
 from app.services.user_manager import current_active_user
@@ -46,18 +46,18 @@ async def upload_files(
 
 @router.get("", response_model=DocumentListResponse)
 async def list_all_documents(user: User = current_active_user):
-    docs = await asyncio.to_thread(documents.list_documents)
+    docs = await asyncio.to_thread(get_vector_store().list_documents)
     return DocumentListResponse(documents=[DocumentInfo.model_validate(d) for d in docs])
 
 
 @router.delete("/{title}")
 async def delete_document_by_title(title: str, user: User = current_active_user):
-    deleted = await asyncio.to_thread(documents.delete_document, title)
+    deleted = await asyncio.to_thread(get_vector_store().delete_document_and_file, title)
     return {"status": "deleted", "chunks_deleted": deleted}
 
 
 async def _build_status_results(titles: list[str]) -> dict:
-    existing = await asyncio.to_thread(documents.list_documents)
+    existing = await asyncio.to_thread(get_vector_store().list_documents)
     existing_map = {d["title"]: d for d in existing}
     statuses = await get_document_statuses(titles)
     results = {}

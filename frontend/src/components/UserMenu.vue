@@ -1,60 +1,76 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
-import { useAuthStore } from '../stores/auth'
+import type { DropdownMenuItem } from "@nuxt/ui";
+import { useAuthStore } from "../stores/auth";
 
 defineProps<{
-  collapsed?: boolean
-}>()
+	collapsed?: boolean;
+}>();
 
-const colorMode = useColorMode()
-const authStore = useAuthStore()
-const router = useRouter()
+const colorMode = useColorMode();
+const authStore = useAuthStore();
+const router = useRouter();
 
 async function handleLogout() {
-  await authStore.logout()
-  router.push('/admin/login')
+	await authStore.logout();
+	router.push("/admin/login");
 }
 
-const items = computed<DropdownMenuItem[][]>(() => ([[{
-  type: 'label',
-  label: 'VeilAi Rag',
-  icon: 'i-lucide-bot'
-}], [{
-  label: 'Appearance',
-  icon: 'i-lucide-sun-moon',
-  children: [{
-    label: 'Light',
-    icon: 'i-lucide-sun',
-    type: 'checkbox',
-    checked: colorMode.value === 'light',
-    onSelect(e: Event) {
-      e.preventDefault()
-      colorMode.value = 'light'
-    }
-  }, {
-    label: 'Dark',
-    icon: 'i-lucide-moon',
-    type: 'checkbox',
-    checked: colorMode.value === 'dark',
-    onUpdateChecked(checked: boolean) {
-      if (checked) {
-        colorMode.value = 'dark'
-      }
-    },
-    onSelect(e: Event) {
-      e.preventDefault()
-    }
-  }]
-}], [{
-  label: 'API Docs',
-  icon: 'i-lucide-file-text',
-  to: 'http://localhost:8000/docs',
-  target: '_blank'
-}], [{
-  label: 'Logout',
-  icon: 'i-lucide-log-out',
-  onSelect: handleLogout
-}]]))
+const items = computed<DropdownMenuItem[][]>(() => [
+	[
+		{
+			type: "label",
+			label: "VeilAi Rag",
+			icon: "i-lucide-bot",
+		},
+	],
+	[
+		{
+			label: "Appearance",
+			icon: "i-lucide-sun-moon",
+			children: [
+				{
+					label: "Light",
+					icon: "i-lucide-sun",
+					type: "checkbox",
+					checked: colorMode.value === "light",
+					onSelect(e: Event) {
+						e.preventDefault();
+						colorMode.value = "light";
+					},
+				},
+				{
+					label: "Dark",
+					icon: "i-lucide-moon",
+					type: "checkbox",
+					checked: colorMode.value === "dark",
+					onUpdateChecked(checked: boolean) {
+						if (checked) {
+							colorMode.value = "dark";
+						}
+					},
+					onSelect(e: Event) {
+						e.preventDefault();
+					},
+				},
+			],
+		},
+	],
+	[
+		{
+			label: "API Docs",
+			icon: "i-lucide-file-text",
+			to: "http://localhost:8000/docs",
+			target: "_blank",
+		},
+	],
+	[
+		{
+			label: "Logout",
+			icon: "i-lucide-log-out",
+			onSelect: handleLogout,
+		},
+	],
+]);
 </script>
 
 <template>

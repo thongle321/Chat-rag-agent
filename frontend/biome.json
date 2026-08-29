@@ -1,0 +1,40 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"css": {
+		"parser": {
+			"cssModules": true,
+			"allowWrongLineComments": true
+		},
+		"formatter": {
+			"enabled": true
+		}
+	},
+	"linter": {
+		"rules": {
+			"style": {
+				"useVueMultiWordComponentNames": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "off",
+				"noUnusedImports": "off"
+			},
+			"complexity": {
+				"noBannedTypes": "off"
+			}
+		}
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!**/*.generated.js",
+			"!!**/dist",
+			"!auto-imports.d.ts",
+			"!components.d.ts",
+			"!src/assets/css/main.css",
+			"!src/pages/admin.vue"
+		]
+	}
+}

@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
+from app.db.vector_store import get_vector_store
 from app.models.schemas import StatsResponse
 from app.models.session import ChatSession
-from app.services import documents
 from app.services.rag import get_messages
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,9 @@ router = APIRouter()
 async def get_stats(db: AsyncSession = Depends(get_async_session)):
     """Aggregate stats for the dashboard."""
     # Documents + chunks
-    docs = await asyncio.to_thread(documents.list_documents)
+    docs = await asyncio.to_thread(get_vector_store().list_documents)
     total_documents = len(docs)
-    total_chunks = await asyncio.to_thread(documents.document_count)
+    total_chunks = await asyncio.to_thread(get_vector_store().count)
 
     # Sessions
     result = await db.execute(select(func.count(ChatSession.id)))

@@ -1,103 +1,128 @@
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import api, { getErrorMessage } from '../api'
+import { defineStore } from "pinia";
+import { ref } from "vue";
+import api, { getErrorMessage } from "../api/index.ts";
 
 export interface AISettings {
-  ai_provider: string
-  ollama_base_url: string
-  ollama_model: string
-  ollama_api_key: string
-  openai_model: string
-  openai_api_key: string
+	ai_provider: string;
+	ollama_api_key: string;
+	ollama_base_url: string;
+	ollama_model: string;
+	openai_api_key: string;
+	openai_model: string;
 }
 
 export interface TestResult {
-  ok: boolean
-  message: string
+	message: string;
+	ok: boolean;
 }
 
-export const useSettingsStore = defineStore('settings', () => {
-  const settings = ref<AISettings>({
-    ai_provider: 'ollama',
-    ollama_base_url: '',
-    ollama_model: '',
-    ollama_api_key: '',
-    openai_model: '',
-    openai_api_key: '',
-  })
-  const loading = ref(false)
-  const error = ref('')
-  const models = ref<string[]>([])
-  const modelsCache = ref<Record<string, string[]>>({})
-  const modelLoading = ref(false)
+export const useSettingsStore = defineStore("settings", () => {
+	const settings = ref<AISettings>({
+		ai_provider: "ollama",
+		ollama_api_key: "",
+		ollama_base_url: "",
+		ollama_model: "",
+		openai_api_key: "",
+		openai_model: "",
+	});
+	const loading = ref(false);
+	const error = ref("");
+	const models = ref<string[]>([]);
+	const modelsCache = ref<Record<string, string[]>>({});
+	const modelLoading = ref(false);
 
-  function modelsKey(provider: string, baseUrl: string = '') {
-    return `${provider}|${baseUrl}`
-  }
+	function modelsKey(provider: string, baseUrl = "") {
+		return `${provider}|${baseUrl}`;
+	}
 
-  async function fetchSettings() {
-    loading.value = true
-    error.value = ''
-    try {
-      const { data } = await api.get('/settings/ai')
-      settings.value = data
-    } catch (err: any) {
-      error.value = getErrorMessage(err)
-    } finally {
-      loading.value = false
-    }
-  }
+	async function fetchSettings() {
+		loading.value = true;
+		error.value = "";
+		try {
+			const { data } = await api.get("/settings/ai");
+			settings.value = data;
+		} catch (err: any) {
+			error.value = getErrorMessage(err);
+		} finally {
+			loading.value = false;
+		}
+	}
 
-  async function updateSettings(payload: Partial<AISettings>) {
-    loading.value = true
-    error.value = ''
-    try {
-      const { data } = await api.put('/settings/ai', payload)
-      settings.value = data
-    } catch (err: any) {
-      error.value = getErrorMessage(err)
-      throw err
-    } finally {
-      loading.value = false
-    }
-  }
+	async function updateSettings(payload: Partial<AISettings>) {
+		loading.value = true;
+		error.value = "";
+		try {
+			const { data } = await api.put("/settings/ai", payload);
+			settings.value = data;
+		} catch (err: any) {
+			error.value = getErrorMessage(err);
+			throw err;
+		} finally {
+			loading.value = false;
+		}
+	}
 
-  async function testConnection(opts?: { provider?: string; ollama_base_url?: string; ollama_api_key?: string; openai_api_key?: string }): Promise<TestResult> {
-    try {
-      const { data } = await api.post('/settings/test', opts ?? {})
-      return data
-    } catch (err: any) {
-      return { ok: false, message: getErrorMessage(err) }
-    }
-  }
+	async function testConnection(opts?: {
+		provider?: string;
+		ollama_base_url?: string;
+		ollama_api_key?: string;
+		openai_api_key?: string;
+	}): Promise<TestResult> {
+		try {
+			const { data } = await api.post("/settings/test", opts ?? {});
+			return data;
+		} catch (err: any) {
+			return { message: getErrorMessage(err), ok: false };
+		}
+	}
 
-  async function fetchModels(opts?: { provider?: string; ollama_base_url?: string; ollama_api_key?: string; openai_api_key?: string }) {
-    if (modelLoading.value) return
-    modelLoading.value = true
-    error.value = ''
-    try {
-      const { data } = await api.post('/settings/models', opts ?? {})
-      models.value = data.models
-      modelsCache.value[modelsKey(opts?.provider ?? '', opts?.ollama_base_url ?? '')] = data.models
-    } catch (err: any) {
-      models.value = []
-    } finally {
-      modelLoading.value = false
-    }
-  }
+	async function fetchModels(opts?: {
+		provider?: string;
+		ollama_base_url?: string;
+		ollama_api_key?: string;
+		openai_api_key?: string;
+	}) {
+		if (modelLoading.value) {
+			return;
+		}
+		modelLoading.value = true;
+		error.value = "";
+		try {
+			const { data } = await api.post("/settings/models", opts ?? {});
+			models.value = data.models;
+			modelsCache.value[
+				modelsKey(opts?.provider ?? "", opts?.ollama_base_url ?? "")
+			] = data.models;
+		} catch {
+			models.value = [];
+		} finally {
+			modelLoading.value = false;
+		}
+	}
 
-  async function useCachedModels(
-    provider: string,
-    baseUrl: string = '',
-    opts?: { ollama_api_key?: string; openai_api_key?: string },
-  ) {
-    const key = modelsKey(provider, baseUrl)
-    if (modelsCache.value[key] !== undefined) {
-      models.value = modelsCache.value[key]
-      return
-    }
-    await fetchModels({ provider, ollama_base_url: baseUrl, ...opts })
-  }
+	async function useCachedModels(
+		provider: string,
+		baseUrl = "",
+		opts?: { ollama_api_key?: string; openai_api_key?: string },
+	) {
+		const key = modelsKey(provider, baseUrl);
+		if (modelsCache.value[key] !== undefined) {
+			models.value = modelsCache.value[key];
+			return;
+		}
+		await fetchModels({ ollama_base_url: baseUrl, provider, ...opts });
+	}
 
-  return { settings, loading, error, models, modelLoading, fetchSettings, updateSettings, testConnection, fetchModels, useCachedModels }
-})
+	return {
+		error,
+		fetchModels,
+		fetchSettings,
+		loading,
+		modelLoading,
+		models,
+		settings,
+		testConnection,
+		updateSettings,
+		useCachedModels,
+	};
+});

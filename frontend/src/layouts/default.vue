@@ -1,36 +1,54 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { NavigationMenuItem } from "@nuxt/ui";
+import { ref } from "vue";
 
-const open = ref(false)
+const open = ref(false);
 
-const links = [[{
-  label: 'Dashboard',
-  icon: 'i-lucide-layout-dashboard',
-  to: '/admin',
-  exact: true,
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Documents',
-  icon: 'i-lucide-file-text',
-  to: '/admin/documents',
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Integrations',
-  icon: 'i-lucide-plug',
-  to: '/admin/integrations',
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Messages',
-  icon: 'i-lucide-messages-square',
-  to: '/admin/messages',
-  onSelect: () => { open.value = false }
-}, {
-  label: 'Settings',
-  to: '/admin/settings',
-  icon: 'i-lucide-settings',
-  onSelect: () => { open.value = false }
-}]] satisfies NavigationMenuItem[][]
+const links = [
+	[
+		{
+			label: "Dashboard",
+			icon: "i-lucide-layout-dashboard",
+			to: "/admin",
+			exact: true,
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
+			label: "Documents",
+			icon: "i-lucide-file-text",
+			to: "/admin/documents",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
+			label: "Integrations",
+			icon: "i-lucide-plug",
+			to: "/admin/integrations",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
+			label: "Messages",
+			icon: "i-lucide-messages-square",
+			to: "/admin/messages",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
+			label: "Settings",
+			to: "/admin/settings",
+			icon: "i-lucide-settings",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+	],
+] satisfies NavigationMenuItem[][];
 </script>
 
 <template>

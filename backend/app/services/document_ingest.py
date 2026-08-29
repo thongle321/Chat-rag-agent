@@ -9,9 +9,8 @@ from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
 from app.core.config import settings
-from app.db.embeddings import get_embeddings, passage_prefix
-from app.db.vector_store import get_vector_store
 from app.models.document_status import COMPLETED, FAILED, PENDING, PROCESSING
+from app.retrieval import get_retrieval
 from app.services.document_status import set_document_status
 from app.services.llm import get_llm
 
@@ -52,9 +51,9 @@ async def _summarize(text: str) -> tuple[str, str]:
         for line in result.output.strip().splitlines():
             line = line.strip()
             if line.startswith("Title:"):
-                title = line[len("Title:"):].strip()
+                title = line[len("Title:") :].strip()
             elif line.startswith("Reference:"):
-                reference = line[len("Reference:"):].strip()
+                reference = line[len("Reference:") :].strip()
         return title, reference
     except Exception:
         logger.exception("Title generation failed")
@@ -118,13 +117,9 @@ async def index_file(file_path: Path) -> int:
             chunk_texts.append(chunk.text)
             chunk_metadatas.append({**base_metadata, "chunk": i})
 
-        embeddings_list = list(
-            await asyncio.to_thread(
-                lambda: get_embeddings().embed([passage_prefix() + c for c in chunk_texts])
-            )
-        )
+        embeddings_list = await asyncio.to_thread(get_retrieval().ingest_embed, chunk_texts)
 
-        store = get_vector_store()
+        store = get_retrieval()
         for i in range(0, len(chunks), BATCH_SIZE):
             batch_texts = chunk_texts[i : i + BATCH_SIZE]
             batch_embeddings = embeddings_list[i : i + BATCH_SIZE]
@@ -156,7 +151,7 @@ async def save_and_queue_indexing(
     saved_path = upload_folder / filename
     if saved_path.exists():
         saved_path.unlink()
-        await asyncio.to_thread(get_vector_store().delete_document, filename)
+        await asyncio.to_thread(get_retrieval().delete_document, filename)
 
     saved_path.write_bytes(file_bytes)
     await set_document_status(filename, status=PENDING)

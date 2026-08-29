@@ -1,34 +1,59 @@
 <script setup lang="ts">
-import api from '../../api'
+import api from "../../api";
 
-const dashStats = ref({ total_documents: 0, total_chunks: 0, total_sessions: 0, total_queries: 0 })
+const dashStats = ref({
+	total_documents: 0,
+	total_chunks: 0,
+	total_sessions: 0,
+	total_queries: 0,
+});
 
 const stats = computed(() => [
-  { label: 'Documents', value: dashStats.value.total_documents, icon: 'i-lucide-file-text', color: 'primary' as const },
-  { label: 'Chunks', value: dashStats.value.total_chunks, icon: 'i-lucide-layers', color: 'info' as const },
-  { label: 'Sessions', value: dashStats.value.total_sessions, icon: 'i-lucide-message-square', color: 'success' as const },
-  { label: 'Queries', value: dashStats.value.total_queries, icon: 'i-lucide-search', color: 'warning' as const },
-])
+	{
+		label: "Documents",
+		value: dashStats.value.total_documents,
+		icon: "i-lucide-file-text",
+		color: "primary" as const,
+	},
+	{
+		label: "Chunks",
+		value: dashStats.value.total_chunks,
+		icon: "i-lucide-layers",
+		color: "info" as const,
+	},
+	{
+		label: "Sessions",
+		value: dashStats.value.total_sessions,
+		icon: "i-lucide-message-square",
+		color: "success" as const,
+	},
+	{
+		label: "Queries",
+		value: dashStats.value.total_queries,
+		icon: "i-lucide-search",
+		color: "warning" as const,
+	},
+]);
 
-const health = ref({ api: false, vector_store: false })
+const health = ref({ api: false, vector_store: false });
 
 onMounted(async () => {
-  try {
-    const { data } = await api.get('/stats')
-    dashStats.value = data
-  } catch {
-    // keep defaults
-  }
-  try {
-    const { data } = await api.get('/health/detailed')
-    health.value = {
-      api: data.status === 'ok',
-      vector_store: data.components?.vector_store === 'ok',
-    }
-  } catch {
-    health.value = { api: false, vector_store: false }
-  }
-})
+	try {
+		const { data } = await api.get("/stats");
+		dashStats.value = data;
+	} catch {
+		// keep defaults
+	}
+	try {
+		const { data } = await api.get("/health/detailed");
+		health.value = {
+			api: data.status === "ok",
+			vector_store: data.components?.vector_store === "ok",
+		};
+	} catch {
+		health.value = { api: false, vector_store: false };
+	}
+});
 </script>
 
 <template>

@@ -1,62 +1,77 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useChatStore, groupByDate, type Conversation } from '../stores/chat'
+import { computed, ref } from "vue";
+import { type Conversation, groupByDate, useChatStore } from "../stores/chat";
 
 defineProps<{
-  onCollapse?: () => void
-  onNavigate?: () => void
-}>()
+	onCollapse?: () => void;
+	onNavigate?: () => void;
+}>();
 
-const chatStore = useChatStore()
-const search = ref('')
+const chatStore = useChatStore();
+const search = ref("");
 const filtered = computed(() => {
-  const s = search.value.trim().toLowerCase()
-  if (!s) return chatStore.conversations
-  return chatStore.conversations.filter(c => c.title.toLowerCase().includes(s))
-})
+	const s = search.value.trim().toLowerCase();
+	if (!s) return chatStore.conversations;
+	return chatStore.conversations.filter((c) =>
+		c.title.toLowerCase().includes(s),
+	);
+});
 
-const groups = computed(() => groupByDate(filtered.value))
+const groups = computed(() => groupByDate(filtered.value));
 
 function handleNew() {
-  chatStore.newConversation()
+	chatStore.newConversation();
 }
 
 function handleDelete(id: string) {
-  chatStore.deleteConversation(id)
+	chatStore.deleteConversation(id);
 }
 
-const renameModalOpen = ref(false)
-const renameId = ref<string | null>(null)
-const renameTitle = ref('')
+const renameModalOpen = ref(false);
+const renameId = ref<string | null>(null);
+const renameTitle = ref("");
 
 function handleRename(id: string) {
-  const conv = chatStore.conversations.find(c => c.id === id)
-  renameId.value = id
-  renameTitle.value = conv?.title ?? ''
-  renameModalOpen.value = true
+	const conv = chatStore.conversations.find((c) => c.id === id);
+	renameId.value = id;
+	renameTitle.value = conv?.title ?? "";
+	renameModalOpen.value = true;
 }
 
 function confirmRename() {
-  if (renameId.value && renameTitle.value.trim()) {
-    chatStore.renameConversation(renameId.value, renameTitle.value.trim())
-  }
-  renameModalOpen.value = false
+	if (renameId.value && renameTitle.value.trim()) {
+		chatStore.renameConversation(renameId.value, renameTitle.value.trim());
+	}
+	renameModalOpen.value = false;
 }
 
 function getItems(c: Conversation) {
-  return [
-    [
-      { label: c.pinned ? 'Unpin' : 'Pin', icon: c.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin', onSelect: () => chatStore.togglePin(c.id) },
-      { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => handleRename(c.id) },
-      { label: 'Delete', icon: 'i-lucide-trash-2', color: 'error' as const, onSelect: () => handleDelete(c.id) }
-    ]
-  ]
+	return [
+		[
+			{
+				label: c.pinned ? "Unpin" : "Pin",
+				icon: c.pinned ? "i-lucide-pin-off" : "i-lucide-pin",
+				onSelect: () => chatStore.togglePin(c.id),
+			},
+			{
+				label: "Rename",
+				icon: "i-lucide-pencil",
+				onSelect: () => handleRename(c.id),
+			},
+			{
+				label: "Delete",
+				icon: "i-lucide-trash-2",
+				color: "error" as const,
+				onSelect: () => handleDelete(c.id),
+			},
+		],
+	];
 }
 
-const colorMode = useColorMode()
+const colorMode = useColorMode();
 
 function toggleColorMode() {
-  colorMode.value = colorMode.value === 'dark' ? 'light' : 'dark'
+	colorMode.value = colorMode.value === "dark" ? "light" : "dark";
 }
 </script>
 

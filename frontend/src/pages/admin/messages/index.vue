@@ -1,65 +1,75 @@
 <script setup lang="ts">
-import api from '../../../api'
+import api from "../../../api";
 
-const loading = ref(true)
-const channels = ref<any[]>([])
-const selectedPageId = ref<string>('')
-const users = ref<any[]>([])
+const loading = ref(true);
+const channels = ref<any[]>([]);
+const selectedPageId = ref<string>("");
+const users = ref<any[]>([]);
 
 function formatDateTime(v: string | null) {
-  if (!v) return '—'
-  const iso = v.includes('T') ? v : v.replace(' ', 'T') + 'Z'
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return v
-  return d.toLocaleString()
+	if (!v) return "—";
+	const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return v;
+	return d.toLocaleString();
 }
 
 async function loadChannels() {
-  try {
-    const { data } = await api.get('/facebook/channels')
-    channels.value = Array.isArray(data) ? data : []
-    if (channels.value.length && !selectedPageId.value) selectedPageId.value = channels.value[0].page_id
-  } catch { channels.value = [] }
+	try {
+		const { data } = await api.get("/facebook/channels");
+		channels.value = Array.isArray(data) ? data : [];
+		if (channels.value.length && !selectedPageId.value)
+			selectedPageId.value = channels.value[0].page_id;
+	} catch {
+		channels.value = [];
+	}
 }
 
-const currentPage = ref(1)
-const perPage = 10
+const currentPage = ref(1);
+const perPage = 10;
 const pagedUsers = computed(() => {
-  const start = (currentPage.value - 1) * perPage
-  return users.value.slice(start, start + perPage)
-})
-const totalPages = computed(() => Math.ceil(users.value.length / perPage))
+	const start = (currentPage.value - 1) * perPage;
+	return users.value.slice(start, start + perPage);
+});
+const totalPages = computed(() => Math.ceil(users.value.length / perPage));
 
 async function loadUsers() {
-  if (!selectedPageId.value) { users.value = []; return }
-  loading.value = true
-  try {
-    const { data } = await api.get(`/facebook/channels/by-page/${selectedPageId.value}/conversations`, { params: { limit: 50 } })
-    const list = data.conversations || []
-    users.value = list.map((c: any) => ({
-      session_id: c.session_id,
-      username: c.username || 'Facebook User',
-      displayName: c.username || 'Facebook User',
-      channel_type: 'facebook',
-      message_count: c.message_count ?? 0,
-      updated_at: c.updated_at,
-      page_id: selectedPageId.value,
-    }))
-  } catch { users.value = [] }
-  finally { loading.value = false }
+	if (!selectedPageId.value) {
+		users.value = [];
+		return;
+	}
+	loading.value = true;
+	try {
+		const { data } = await api.get(
+			`/facebook/channels/${selectedPageId.value}/conversations`,
+			{ params: { limit: 50 } },
+		);
+		const list = data.conversations || [];
+		users.value = list.map((c: any) => ({
+			session_id: c.session_id,
+			username: c.username || "Facebook User",
+			displayName: c.username || "Facebook User",
+			channel_type: "facebook",
+			message_count: c.message_count ?? 0,
+			updated_at: c.updated_at,
+			page_id: selectedPageId.value,
+		}));
+	} catch {
+		users.value = [];
+	} finally {
+		loading.value = false;
+	}
 }
 
-watch(currentPage, () => {})
-
 watch(selectedPageId, () => {
-  currentPage.value = 1
-  loadUsers()
-})
+	currentPage.value = 1;
+	loadUsers();
+});
 
 onMounted(async () => {
-  await loadChannels()
-  await loadUsers()
-})
+	await loadChannels();
+	await loadUsers();
+});
 </script>
 
 <template>
