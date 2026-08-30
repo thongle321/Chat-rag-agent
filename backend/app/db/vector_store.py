@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import bm25s
 import chromadb
@@ -17,28 +17,7 @@ persist_dir = Path(settings.vector_store_dir)
 persist_dir.mkdir(parents=True, exist_ok=True)
 
 
-class VectorStore(Protocol):
-    """Boundary for vector similarity storage. Swap ChromaDB for another backend here."""
 
-    def add(
-        self,
-        ids: list[str],
-        embeddings: list[list[float]],
-        documents: list[str],
-        metadatas: list[dict],
-    ) -> None: ...
-
-    def query(self, query_embedding: list[float], k: int = 5) -> list[dict]: ...
-
-    def hybrid_query(self, query_text: str, query_embedding: list[float], k: int = 5) -> list[dict]: ...
-
-    def get_metadata(self, ids: list[str]) -> dict[str, dict]: ...
-
-    def count(self) -> int: ...
-
-    def list_documents(self) -> list[dict]: ...
-
-    def delete_document(self, title: str) -> int: ...
 
 
 # ported from MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC — hand-curated Vietnamese stopwords.
@@ -225,13 +204,10 @@ class ChromaVectorStore:
 
     def delete_document_and_file(self, title: str) -> int:
         deleted = self.delete_document(title)
-        for f in Path(settings.upload_dir).iterdir():
-            if f.is_file() and f.name == title:
-                f.unlink()
-                break
+        (Path(settings.upload_dir) / title).unlink(missing_ok=True)
         return deleted
 
 
 @lru_cache(maxsize=1)
-def get_vector_store() -> VectorStore:
+def get_vector_store() -> ChromaVectorStore:
     return ChromaVectorStore()

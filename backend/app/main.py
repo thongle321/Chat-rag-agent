@@ -7,11 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.types import Receive, Scope, Send
 
+from fastapi_users.password import PasswordHelper
+from sqlalchemy import select
+
 from app.api.facebook import close_client
 from app.api.routes import router
 from app.core.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory, create_db_and_tables, engine
+from app.models.user import User
+from app.services.ai_settings import get_ai_settings
 from app.services.rag import close
 
 
@@ -33,7 +38,6 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
 
     async with async_session_factory() as session:
-        from app.services.ai_settings import get_ai_settings
         db = await get_ai_settings(session)
         if db:
             settings.ai_provider = db["ai_provider"]
@@ -42,10 +46,6 @@ async def lifespan(app: FastAPI):
             settings.ollama_api_key = db["ollama_api_key"]
             settings.openai_model = db["openai_model"]
             settings.openai_api_key = db["openai_api_key"]
-        from fastapi_users.password import PasswordHelper
-        from sqlalchemy import select
-
-        from app.models.user import User
         result = await session.execute(select(User).where(User.email == "admin@example.com"))
         if not result.scalar_one_or_none():
             hashed = PasswordHelper().hash("admin123")

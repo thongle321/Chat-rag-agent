@@ -13,6 +13,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, Text
 from pydantic_ai.usage import UsageLimits
 
 from app.core.config import settings
+from app.db import conversation_store
 from app.db.conversation_store import load_messages, save_messages
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
@@ -335,6 +336,4 @@ async def answer_question(question: str, session_id: str | None = None) -> ChatR
 
 async def close() -> None:
     """Close the conversation store connection."""
-    from app.db import conversation_store
-
     await conversation_store.close()

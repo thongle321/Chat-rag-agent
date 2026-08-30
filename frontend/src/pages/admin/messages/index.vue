@@ -42,7 +42,6 @@ async function loadUsers() {
 	try {
 		const { data } = await api.get(
 			`/facebook/channels/${selectedPageId.value}/conversations`,
-			{ params: { limit: 50 } },
 		);
 		const list = data.conversations || [];
 		users.value = list.map((c: any) => ({

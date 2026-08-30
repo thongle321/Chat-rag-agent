@@ -14,212 +14,194 @@ const healthChecking = ref(false);
 const syncing = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
-const purging = ref(false);
 const editDialog = ref(false);
 const confirmDelete = ref(false);
-const confirmPurge = ref(false);
 const syncLogs = ref<any[]>([]);
 
 const editForm = reactive({ name: "", is_active: true, sync_interval: 15 });
 const syncIntervalOptions = [
-	{ label: "Every 1 minute", value: 1 },
-	{ label: "Every 5 minutes", value: 5 },
-	{ label: "Every 10 minutes", value: 10 },
-	{ label: "Every 15 minutes (default)", value: 15 },
-	{ label: "Every 30 minutes", value: 30 },
-	{ label: "Every 1 hour", value: 60 },
-	{ label: "Every 6 hours", value: 360 },
-	{ label: "Every day", value: 1440 },
+    { label: "Every 1 minute", value: 1 },
+    { label: "Every 5 minutes", value: 5 },
+    { label: "Every 10 minutes", value: 10 },
+    { label: "Every 15 minutes (default)", value: 15 },
+    { label: "Every 30 minutes", value: 30 },
+    { label: "Every 1 hour", value: 60 },
+    { label: "Every 6 hours", value: 360 },
+    { label: "Every day", value: 1440 },
 ];
 
 function formatDateTime(v: string | null) {
-	if (!v) return "—";
-	const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return v;
-	const dd = String(d.getDate()).padStart(2, "0");
-	const mm = String(d.getMonth() + 1).padStart(2, "0");
-	const hh = String(d.getHours()).padStart(2, "0");
-	const mi = String(d.getMinutes()).padStart(2, "0");
-	return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
+    if (!v) return "—";
+    const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return v;
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
 }
 
 function formatSyncInterval(v: number) {
-	if (!v) return "5 minutes";
-	if (v < 60) return `${v} min`;
-	if (v < 1440) return `${v / 60} h`;
-	return `${v / 1440} day`;
+    if (!v) return "5 minutes";
+    if (v < 60) return `${v} min`;
+    if (v < 1440) return `${v / 60} h`;
+    return `${v / 1440} day`;
 }
 
 async function loadSyncHistory(pageId: string) {
-	try {
-		const { data } = await api.get(
-			`/facebook/channels/${pageId}/sync-history`,
-			{ params: { limit: 10 } },
-		);
-		syncLogs.value = data.logs || [];
-	} catch {
-		syncLogs.value = [];
-	}
+    try {
+        const { data } = await api.get(
+            `/facebook/channels/${pageId}/sync-history`,
+            { params: { limit: 10 } },
+        );
+        syncLogs.value = data.logs || [];
+    } catch {
+        syncLogs.value = [];
+    }
 }
 
 async function refreshSyncState() {
-	const param = id.value;
-	try {
-		const { data: found } = await api.get(`/facebook/channels/${param}`);
-		if (found) {
-			Object.assign(config.value, {
-				last_sync_at: found.last_sync_at,
-				last_sync_status: found.last_sync_status,
-				total_conversations: found.total_conversations,
-				sync_interval: found.sync_interval,
-				is_active: found.is_active,
-				has_token: found.has_token,
-			});
-			await loadSyncHistory(found.page_id);
-		}
-	} catch {}
+    const param = id.value;
+    try {
+        const { data: found } = await api.get(`/facebook/channels/${param}`);
+        if (found) {
+            Object.assign(config.value, {
+                last_sync_at: found.last_sync_at,
+                last_sync_status: found.last_sync_status,
+                total_conversations: found.total_conversations,
+                sync_interval: found.sync_interval,
+                is_active: found.is_active,
+                has_token: found.has_token,
+            });
+            await loadSyncHistory(found.page_id);
+        }
+    } catch {}
 }
 
 async function load() {
-	loading.value = true;
-	const param = id.value;
-	let found: any = null;
-	try {
-		const { data } = await api.get(`/facebook/channels/${param}`);
-		found = data;
-	} catch {
-		found = null;
-	}
-	config.value = found;
-	if (found) {
-		try {
-			const { data: h } = await api.get(`/facebook/channels/${param}/health`);
-			health.value = { ok: !!h.ok, error: h.error };
-		} catch {
-			health.value = { ok: null };
-		}
-		await loadSyncHistory(found.page_id);
-	} else health.value = { ok: null };
-	loading.value = false;
-	if (found) {
-		editForm.name = found.page_name;
-		editForm.is_active = found.is_active ?? true;
-		editForm.sync_interval = found.sync_interval ?? 15;
-	}
+    loading.value = true;
+    const param = id.value;
+    let found: any = null;
+    try {
+        const { data } = await api.get(`/facebook/channels/${param}`);
+        found = data;
+    } catch {
+        found = null;
+    }
+    config.value = found;
+    if (found) {
+        try {
+            const { data: h } = await api.get(
+                `/facebook/channels/${param}/health`,
+            );
+            health.value = { ok: !!h.ok, error: h.error };
+        } catch {
+            health.value = { ok: null };
+        }
+        await loadSyncHistory(found.page_id);
+    } else health.value = { ok: null };
+    loading.value = false;
+    if (found) {
+        editForm.name = found.page_name;
+        editForm.is_active = found.is_active ?? true;
+        editForm.sync_interval = found.sync_interval ?? 15;
+    }
 }
 
 watch(editDialog, (v) => {
-	if (v && config.value) {
-		editForm.name = config.value.page_name;
-		editForm.is_active = config.value.is_active ?? true;
-		editForm.sync_interval = config.value.sync_interval ?? 15;
-	}
+    if (v && config.value) {
+        editForm.name = config.value.page_name;
+        editForm.is_active = config.value.is_active ?? true;
+        editForm.sync_interval = config.value.sync_interval ?? 15;
+    }
 });
 
 async function doTest() {
-	if (!config.value) return;
-	healthChecking.value = true;
-	try {
-		const { data } = await api.get(`/facebook/channels/${id.value}/health`);
-		toast.add({
-			title: data.ok ? "Connection successful" : "Connection failed",
-			description: data.ok ? undefined : data.error,
-			color: data.ok ? "success" : "error",
-		});
-		// refresh health badge without full reload
-		try {
-			health.value = { ok: !!data.ok, error: data.error };
-		} catch {}
-	} catch (err: any) {
-		toast.add({
-			title: "Connection failed",
-			description: getErrorMessage(err),
-			color: "error",
-		});
-	} finally {
-		healthChecking.value = false;
-	}
+    if (!config.value) return;
+    healthChecking.value = true;
+    try {
+        const { data } = await api.get(`/facebook/channels/${id.value}/health`);
+        toast.add({
+            title: data.ok ? "Connection successful" : "Connection failed",
+            description: data.ok ? undefined : data.error,
+            color: data.ok ? "success" : "error",
+        });
+        // refresh health badge without full reload
+        try {
+            health.value = { ok: !!data.ok, error: data.error };
+        } catch {}
+    } catch (err: any) {
+        toast.add({
+            title: "Connection failed",
+            description: getErrorMessage(err),
+            color: "error",
+        });
+    } finally {
+        healthChecking.value = false;
+    }
 }
 
 async function doSync() {
-	if (!config.value) return;
-	syncing.value = true;
-	try {
-		const { data } = await api.post(`/facebook/channels/${id.value}/sync`);
-		toast.add({
-			title: data.status === "success" ? "Synced" : "Sync error",
-			description: data.detail || data.health?.error,
-			color: data.status === "success" ? "success" : "error",
-		});
-		await refreshSyncState();
-	} catch (err: any) {
-		toast.add({
-			title: "Sync failed",
-			description: getErrorMessage(err),
-			color: "error",
-		});
-	} finally {
-		syncing.value = false;
-	}
+    if (!config.value) return;
+    syncing.value = true;
+    try {
+        const { data } = await api.post(`/facebook/channels/${id.value}/sync`);
+        toast.add({
+            title: data.status === "success" ? "Synced" : "Sync error",
+            description: data.detail || data.health?.error,
+            color: data.status === "success" ? "success" : "error",
+        });
+        await refreshSyncState();
+    } catch (err: any) {
+        toast.add({
+            title: "Sync failed",
+            description: getErrorMessage(err),
+            color: "error",
+        });
+    } finally {
+        syncing.value = false;
+    }
 }
 
 async function saveEdit() {
-	if (!config.value) return;
-	saving.value = true;
-	try {
-		await api.put(`/facebook/channels/${config.value.id}`, {
-			page_name: editForm.name,
-			is_active: editForm.is_active,
-			sync_interval: editForm.sync_interval,
-		});
-		editDialog.value = false;
-		toast.add({ title: "Saved", color: "success" });
-		await load();
-	} catch (err: any) {
-		toast.add({
-			title: "Save failed",
-			description: getErrorMessage(err),
-			color: "error",
-		});
-	} finally {
-		saving.value = false;
-	}
-}
-
-async function doPurge() {
-	purging.value = true;
-	try {
-		await api.post(`/facebook/channels/${id.value}/purge`);
-		confirmPurge.value = false;
-		toast.add({ title: "Chats purged", color: "success" });
-		await refreshSyncState();
-	} catch (err: any) {
-		toast.add({
-			title: "Purge failed",
-			description: getErrorMessage(err),
-			color: "error",
-		});
-	} finally {
-		purging.value = false;
-	}
+    if (!config.value) return;
+    saving.value = true;
+    try {
+        await api.put(`/facebook/channels/${config.value.id}`, {
+            page_name: editForm.name,
+            is_active: editForm.is_active,
+            sync_interval: editForm.sync_interval,
+        });
+        editDialog.value = false;
+        toast.add({ title: "Saved", color: "success" });
+        await load();
+    } catch (err: any) {
+        toast.add({
+            title: "Save failed",
+            description: getErrorMessage(err),
+            color: "error",
+        });
+    } finally {
+        saving.value = false;
+    }
 }
 
 async function doDelete() {
-	if (!config.value) return;
-	deleting.value = true;
-	try {
-		await api.delete(`/facebook/channels/${config.value.id}`);
-		router.push("/admin/integrations");
-	} catch (err: any) {
-		toast.add({
-			title: "Delete failed",
-			description: getErrorMessage(err),
-			color: "error",
-		});
-	} finally {
-		deleting.value = false;
-	}
+    if (!config.value) return;
+    deleting.value = true;
+    try {
+        await api.delete(`/facebook/channels/${config.value.id}`);
+        router.push("/admin/integrations");
+    } catch (err: any) {
+        toast.add({
+            title: "Delete failed",
+            description: getErrorMessage(err),
+            color: "error",
+        });
+    } finally {
+        deleting.value = false;
+    }
 }
 
 onMounted(load);
@@ -229,7 +211,11 @@ watch(() => route.params.id, load);
 <template>
     <UDashboardPanel id="integration-detail">
         <template #header>
-            <UDashboardNavbar :title="config ? `Channel ${config.page_name}` : 'Channel detail'">
+            <UDashboardNavbar
+                :title="
+                    config ? `Channel ${config.page_name}` : 'Channel detail'
+                "
+            >
                 <template #leading>
                     <UDashboardSidebarCollapse />
                     <UButton
@@ -290,14 +276,6 @@ watch(() => route.params.id, load);
                             >Test connection</UButton
                         >
                         <UButton
-                            color="warning"
-                            variant="outline"
-                            size="sm"
-                            icon="i-lucide-trash-2"
-                            @click="confirmPurge = true"
-                            >Purge chats</UButton
-                        >
-                        <UButton
                             color="error"
                             variant="outline"
                             size="sm"
@@ -320,7 +298,7 @@ watch(() => route.params.id, load);
                                     variant="soft"
                                     size="md"
                                     >{{
-                                        config.is_active ? "Active" : "Paused"
+                                        config.is_active ? "Active" : "Inactive"
                                     }}</UBadge
                                 >
                             </div>
@@ -445,14 +423,23 @@ watch(() => route.params.id, load);
                                             }}
                                         </td>
                                         <td class="py-2 px-2">
-                                            <span
-                                                v-if="log.status === 'error'"
-                                                class="text-xs font-medium text-error"
-                                                >error</span
-                                            ><span
-                                                v-else
-                                                class="text-xs text-muted"
-                                                >{{ log.status }}</span
+                                            <UBadge
+                                                :color="
+                                                    log.status === 'success'
+                                                        ? 'success'
+                                                        : log.status === 'error'
+                                                          ? 'error'
+                                                          : 'neutral'
+                                                "
+                                                variant="soft"
+                                                size="md"
+                                                >{{
+                                                    log.status === "success"
+                                                        ? "Success"
+                                                        : log.status === "error"
+                                                          ? "Error"
+                                                          : log.status
+                                                }}</UBadge
                                             >
                                         </td>
                                         <td
@@ -505,31 +492,6 @@ watch(() => route.params.id, load);
                                     :loading="saving"
                                     @click="saveEdit"
                                     >Save</UButton
-                                >
-                            </div>
-                        </template>
-                    </UModal>
-
-                    <UModal v-model:open="confirmPurge" title="Purge chats">
-                        <template #body>
-                            <p class="text-sm">
-                                Purge all chats for channel
-                                <b>{{ config.page_id }}</b
-                                >. You can sync again afterwards.
-                            </p>
-                        </template>
-                        <template #footer>
-                            <div class="flex justify-end gap-2 w-full">
-                                <UButton
-                                    variant="ghost"
-                                    @click="confirmPurge = false"
-                                    >Cancel</UButton
-                                >
-                                <UButton
-                                    color="warning"
-                                    :loading="purging"
-                                    @click="doPurge"
-                                    >Purge chats</UButton
                                 >
                             </div>
                         </template>

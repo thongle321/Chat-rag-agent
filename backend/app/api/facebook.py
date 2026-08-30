@@ -8,9 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.conversation_store import (
     add_sync_log,
+    cleanup_placeholder_sessions,
+    count_sessions_by_page,
+    delete_sync_logs_by_page,
     link_page_to_session,
     list_sessions_with_meta,
-    purge_conversations_by_page,
+    list_sync_logs,
+    load_messages,
+    save_messages as save_conv_messages,
 )
 from app.db.session import get_async_session
 from app.models.user import User
@@ -20,9 +25,11 @@ from app.services.facebook_channels import (
     get_channel_by_identifier,
     list_channels,
     update_channel,
+    update_last_sync_status,
 )
-from app.services.rag import answer_question
+from app.services.rag import answer_question, get_messages
 from app.services.user_manager import current_active_user
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 logger = logging.getLogger(__name__)
 
@@ -113,21 +120,28 @@ async def _health_check(page_id: str, page_token: str) -> dict:
     return {"ok": False, "error": "Health check failed"}
 
 
-async def _sync_fetch_conversations(page_id: str, page_token: str, limit: int = 20) -> tuple[int, int, str | None]:
+async def _sync_fetch_conversations(page_id: str, page_token: str, limit: int | None = None) -> tuple[int, int, str | None]:
     try:
-        resp = await _get_client().get(
-            f"{FB_GRAPH_API}/{page_id}/conversations",
-            params={
-                "fields": "id,updated_time,participants",
-                "limit": min(limit, 50),
-                "access_token": page_token,
-            },
-        )
-        data = resp.json()
-        if resp.status_code != 200 or "error" in data:
-            err = data.get("error", {}).get("message", resp.text[:200]) if isinstance(data, dict) else resp.text[:200]
-            return 0, 0, err
-        convs = data.get("data", []) if isinstance(data.get("data"), list) else []
+        # ponytail: paginate all conversations (no time window, sync all)
+        convs: list[dict] = []
+        conv_url: str | None = f"{FB_GRAPH_API}/{page_id}/conversations"
+        conv_params: dict | None = {
+            "fields": "id,updated_time,participants",
+            "limit": 50,
+            "access_token": page_token,
+        }
+        while conv_url:
+            resp = await _get_client().get(conv_url, params=conv_params)
+            data = resp.json()
+            if resp.status_code != 200 or "error" in data:
+                err = data.get("error", {}).get("message", resp.text[:200]) if isinstance(data, dict) else resp.text[:200]
+                return len(convs), 0, err
+            page = data.get("data", []) if isinstance(data.get("data"), list) else []
+            convs.extend(page)
+            conv_url = data.get("paging", {}).get("next")
+            conv_params = None
+        if not convs:
+            return 0, 0, None
         msg_count = 0
         for c in convs:
             # Extract real customer PSID from participants (skip page self)
@@ -172,38 +186,22 @@ async def _sync_fetch_conversations(page_id: str, page_token: str, limit: int = 
                 if all_msgs:
                     msgs = list(reversed(all_msgs))  # oldest -> newest
                     msg_count += len(msgs)
-                    from app.db.conversation_store import load_messages
-
-                    existing = await load_messages(customer_id)
-                    if not existing:
-                        from pydantic_ai.messages import (
-                            ModelRequest,
-                            ModelResponse,
-                            TextPart,
-                            UserPromptPart,
-                        )
-
-                        conv_msgs = []
-                        for m in msgs:
-                            txt = m.get("message") or ""
-                            if not txt:
-                                continue
-                            frm = m.get("from", {}).get("id")
-                            if frm == page_id:
-                                conv_msgs.append(ModelResponse(parts=[TextPart(content=txt)]))
-                            else:
-                                conv_msgs.append(ModelRequest(parts=[UserPromptPart(content=txt)]))
-                        if conv_msgs:
-                            from app.db.conversation_store import (
-                                save_messages as save_conv_messages,
-                            )
-
-                            await save_conv_messages(customer_id, conv_msgs)
+                    # ponytail: sync all history (18 Jul -> now), overwrite full thread each sync
+                    conv_msgs = []
+                    for m in msgs:
+                        txt = m.get("message") or ""
+                        if not txt:
+                            continue
+                        frm = m.get("from", {}).get("id")
+                        if frm == page_id:
+                            conv_msgs.append(ModelResponse(parts=[TextPart(content=txt)]))
+                        else:
+                            conv_msgs.append(ModelRequest(parts=[UserPromptPart(content=txt)]))
+                    if conv_msgs:
+                        await save_conv_messages(customer_id, conv_msgs)
             except Exception:
                 continue
         try:
-            from app.db.conversation_store import cleanup_placeholder_sessions
-
             await cleanup_placeholder_sessions(page_id)
         except Exception:
             pass
@@ -273,8 +271,6 @@ router = APIRouter()
 async def list_facebook_channels(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
     channels = await list_channels(db)
     try:
-        from app.db.conversation_store import count_sessions_by_page
-
         for c in channels:
             try:
                 c["total_conversations"] = await count_sessions_by_page(c["page_id"])
@@ -301,8 +297,6 @@ async def create_facebook_channel(
         False,
     )
     try:
-        from app.db.conversation_store import count_sessions_by_page
-
         ch["total_conversations"] = await count_sessions_by_page(ch["page_id"])
     except Exception:
         pass
@@ -317,8 +311,6 @@ async def get_facebook_channel(
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        from app.db.conversation_store import count_sessions_by_page
-
         ch["total_conversations"] = await count_sessions_by_page(ch["page_id"])
     except Exception:
         pass
@@ -350,8 +342,6 @@ async def update_facebook_channel(
     if not updated:
         raise HTTPException(status_code=404, detail="Channel not found")
     try:
-        from app.db.conversation_store import count_sessions_by_page
-
         updated["total_conversations"] = await count_sessions_by_page(updated["page_id"])
     except Exception:
         pass
@@ -370,8 +360,6 @@ async def delete_facebook_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
     # Delete anything related but NOT conversations: clear sync logs
     try:
-        from app.db.conversation_store import delete_sync_logs_by_page
-
         await delete_sync_logs_by_page(ch["page_id"])
     except Exception:
         pass
@@ -401,12 +389,10 @@ async def channel_sync(
     status = "success" if result.get("ok") else "error"
     detail = ""
     if result.get("ok"):
-        convs, msgs, err = await _sync_fetch_conversations(ch["page_id"], ch["page_token"], limit=20)
-        detail = f"Synced {convs} conversations, sample {msgs}" if not err else f"Fetched {convs} convs; {err[:100]}"
+        convs, msgs, err = await _sync_fetch_conversations(ch["page_id"], ch["page_token"])
+        detail = f"Synced {convs} conversations, {msgs} messages" if not err else f"Fetched {convs} convs; {err[:100]}"
     try:
-        from app.db.conversation_store import update_last_sync_status
-
-        await update_last_sync_status(ch["id"], status)
+        await update_last_sync_status(db, ch["id"], status)
     except Exception:
         pass
     try:
@@ -421,25 +407,10 @@ async def channel_sync(
     return {"status": status, "health": result, "detail": detail}
 
 
-@router.post("/channels/{identifier}/purge")
-async def channel_purge(
-    identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
-):
-    ch = await get_channel_by_identifier(db, identifier)
-    if not ch:
-        raise HTTPException(status_code=404, detail="Channel not found")
-    deleted = await purge_conversations_by_page(ch["page_id"])
-    try:
-        await add_sync_log(ch["page_id"], "purged", f"Purged {deleted} conversations", None)
-    except Exception:
-        pass
-    return {"status": "purged", "deleted": deleted}
-
-
 @router.get("/channels/{identifier}/conversations")
 async def list_channel_conversations(
     identifier: str,
-    limit: int = 10,
+    limit: int | None = None,
     offset: int = 0,
     user: User = current_active_user,
     db: AsyncSession = Depends(get_async_session),
@@ -448,8 +419,6 @@ async def list_channel_conversations(
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
     metas = await list_sessions_with_meta(ch["page_id"], limit=limit, offset=offset)
-    from app.services.rag import get_messages
-
     out = []
     for m in metas:
         sid = m["session_id"]
@@ -484,15 +453,9 @@ async def channel_sync_history(
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    logs = await _list_sync_logs_for(ch["page_id"], limit=limit, offset=offset)
+    logs = await list_sync_logs(ch["page_id"], limit=limit, offset=offset)
 
     return {"logs": logs}
-
-
-async def _list_sync_logs_for(page_id: str, limit: int = 10, offset: int = 0) -> list[dict]:
-    from app.db.conversation_store import list_sync_logs
-
-    return await list_sync_logs(page_id, limit=limit, offset=offset)
 
 
 # ---------------------------------------------------------------------------

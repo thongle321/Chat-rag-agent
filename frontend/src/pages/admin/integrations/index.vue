@@ -382,7 +382,7 @@ onMounted(() => {
                             variant="ghost"
                             @click.stop="confirmDisconnect(ch)"
                         >
-                            Disconnect
+                            Delete
                         </UButton>
                     </div>
                 </UCard>

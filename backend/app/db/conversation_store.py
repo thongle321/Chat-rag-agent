@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 
 import aiosqlite
@@ -9,25 +10,18 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ponytail: keeps stored blob from growing unbounded per session (~10 turns, matches rag._MAX_HISTORY)
-_MAX_STORED_MESSAGES = 20
+# ponytail: uncapped for full history sync 18 Jul -> now; cap at 1000 if storage grows
+_MAX_STORED_MESSAGES = 1000
 
 _conn: aiosqlite.Connection | None = None
-_lock: asyncio.Lock | None = None
-
-
-def _get_lock() -> asyncio.Lock:
-    global _lock
-    if _lock is None:
-        _lock = asyncio.Lock()
-    return _lock
+_lock = asyncio.Lock()
 
 
 async def _get_conn() -> aiosqlite.Connection:
     global _conn
     if _conn is not None:
         return _conn
-    async with _get_lock():
+    async with _lock:
         if _conn is None:
             db_path = Path(settings.upload_dir).resolve().parent / "conversations.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -76,12 +70,18 @@ async def list_sessions_by_page(page_id: str, limit: int = 20, offset: int = 0) 
     return [r[0] for r in rows]
 
 
-async def list_sessions_with_meta(page_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
+async def list_sessions_with_meta(page_id: str, limit: int | None = None, offset: int = 0) -> list[dict]:
     conn = await _get_conn()
-    cur = await conn.execute(
-        "SELECT session_id, username, updated_at FROM facebook_conversation_links WHERE page_id=? AND session_id NOT LIKE 'fbconv_%' ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-        (page_id, limit, offset),
-    )
+    if limit is None:
+        cur = await conn.execute(
+            "SELECT session_id, username, updated_at FROM facebook_conversation_links WHERE page_id=? AND session_id NOT LIKE 'fbconv_%' ORDER BY updated_at DESC",
+            (page_id,),
+        )
+    else:
+        cur = await conn.execute(
+            "SELECT session_id, username, updated_at FROM facebook_conversation_links WHERE page_id=? AND session_id NOT LIKE 'fbconv_%' ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (page_id, limit, offset),
+        )
     rows = await cur.fetchall()
     await cur.close()
     return [{"session_id": r[0], "username": r[1], "updated_at": r[2]} for r in rows]
@@ -110,24 +110,7 @@ async def cleanup_placeholder_sessions(page_id: str | None = None) -> int:
     return cur.rowcount if cur else 0
 
 
-async def purge_conversations_by_page(page_id: str) -> int:
-    conn = await _get_conn()
-    cur = await conn.execute("SELECT session_id FROM facebook_conversation_links WHERE page_id=?", (page_id,))
-    rows = await cur.fetchall()
-    await cur.close()
-    count = 0
-    for r in rows:
-        sid = r[0]
-        await conn.execute("DELETE FROM conversations WHERE session_id=?", (sid,))
-        count += 1
-    await conn.execute("DELETE FROM facebook_conversation_links WHERE page_id=?", (page_id,))
-    await conn.commit()
-    return count
-
-
 async def add_sync_log(page_id: str, status: str, detail: str = "", error_message: str | None = None) -> None:
-    import uuid
-
     conn = await _get_conn()
     await conn.execute(
         "INSERT INTO facebook_sync_logs (id, page_id, status, detail, error_message, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",

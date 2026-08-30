@@ -1,46 +1,20 @@
 import logging
 from functools import lru_cache
-from typing import Protocol
+
+import bm25s
 
 from app.core.config import settings
+from app.db.embeddings import get_embeddings
+from app.db.embeddings import passage_prefix as _passage_prefix
+from app.db.embeddings import query_prefix as _query_prefix
+from app.db.vector_store import _STOPWORDS, get_vector_store
+from app.db.vector_store import rrf as _rrf
 
 logger = logging.getLogger(__name__)
 
 
-class Retrieval(Protocol):
-    def search(self, query: str, k: int | None = None) -> list[dict]: ...
-    def ingest_embed(self, texts: list[str]) -> list[list[float]]: ...
-    def list_documents(self) -> list[dict]: ...
-    def count(self) -> int: ...
-    def delete_document(self, title: str) -> int: ...
-    def delete_document_and_file(self, title: str) -> int: ...
-    def get_metadata(self, ids: list[str]) -> dict[str, dict]: ...
-    def add(self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict]) -> None: ...
-
-
-def _query_prefix() -> str:
-    return "query: " if "e5" in settings.embedding_model.lower() else ""
-
-
-def _passage_prefix() -> str:
-    return "passage: " if "e5" in settings.embedding_model.lower() else ""
-
-
-def _rrf(ranked: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
-    from collections import defaultdict
-
-    scores: dict[str, float] = defaultdict(float)
-    for lst in ranked:
-        for rank, doc_id in enumerate(lst):
-            scores[doc_id] += 1.0 / (k + rank + 1)
-    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-
 class ChromaRetrieval:
     def search(self, query: str, k: int | None = None) -> list[dict]:
-        from app.db.embeddings import get_embeddings
-        from app.db.vector_store import get_vector_store
-
         k = k or settings.retrieval_k
         if not query.strip():
             q_emb = next(get_embeddings().query_embed(_query_prefix() + query))
@@ -59,10 +33,6 @@ class ChromaRetrieval:
             fused = [(h["id"], 1.0 / (settings.retrieval_rrf_k + i + 1)) for i, h in enumerate(vec_hits)]
             fused = fused[: k * 2]
         else:
-            import bm25s
-
-            from app.db.vector_store import _STOPWORDS
-
             hits, _ = store._bm25.retrieve(
                 bm25s.tokenize(query, stopwords=_STOPWORDS, show_progress=False),
                 k=k * over,
@@ -96,41 +66,27 @@ class ChromaRetrieval:
         return out
 
     def ingest_embed(self, texts: list[str]) -> list[list[float]]:
-        from app.db.embeddings import get_embeddings
-
         return list(get_embeddings().embed([_passage_prefix() + t for t in texts]))
 
     def list_documents(self) -> list[dict]:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().list_documents()
 
     def count(self) -> int:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().count()
 
     def delete_document(self, title: str) -> int:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().delete_document(title)
 
     def delete_document_and_file(self, title: str) -> int:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().delete_document_and_file(title)
 
     def get_metadata(self, ids: list[str]) -> dict[str, dict]:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().get_metadata(ids)
 
     def add(self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict]) -> None:
-        from app.db.vector_store import get_vector_store
-
         return get_vector_store().add(ids, embeddings, documents, metadatas)
 
 
 @lru_cache(maxsize=1)
-def get_retrieval() -> Retrieval:
-    return ChromaRetrieval()  # type: ignore[return-value]
+def get_retrieval() -> ChromaRetrieval:
+    return ChromaRetrieval()

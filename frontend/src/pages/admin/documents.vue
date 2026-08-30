@@ -9,14 +9,14 @@ const documentStore = useDocumentStore();
 const selectedFiles = ref<File[]>([]);
 const uploading = ref(false);
 const uploadResults = ref<
-	{
-		name: string;
-		status: string;
-		message: string;
-		size: number;
-		chunks: number;
-		error_message?: string;
-	}[]
+    {
+        name: string;
+        status: string;
+        message: string;
+        size: number;
+        chunks: number;
+        error_message?: string;
+    }[]
 >([]);
 const deleting = ref(false);
 const deleteTarget = ref("");
@@ -25,213 +25,225 @@ const showDeleteModal = ref(false);
 const STORAGE_KEY = "upload-results";
 
 function saveUploadResults() {
-	sessionStorage.setItem(STORAGE_KEY, JSON.stringify(uploadResults.value));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(uploadResults.value));
 }
 
 function loadUploadResults() {
-	const stored = sessionStorage.getItem(STORAGE_KEY);
-	if (stored) {
-		try {
-			uploadResults.value = JSON.parse(stored);
-		} catch {
-			uploadResults.value = [];
-		}
-	}
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+        try {
+            uploadResults.value = JSON.parse(stored);
+        } catch {
+            uploadResults.value = [];
+        }
+    }
 }
 
 const ACTIVELY_PROCESSING = ["pending", "processing"];
 
 function isProcessingStatus(status: string): boolean {
-	return ACTIVELY_PROCESSING.includes(status);
+    return ACTIVELY_PROCESSING.includes(status);
 }
 
 const documentList = computed(() => {
-	const storeDocs = documentStore.documents;
-	const storeNames = new Set(storeDocs.map((d) => d.title));
-	const processing = uploadResults.value.filter(
-		(r) => !storeNames.has(r.name) && r.status !== "completed",
-	);
-	return [
-		...processing.map((r) => ({
-			chunks: r.chunks,
-			error_message: r.error_message,
-			id: r.name,
-			isProcessing: true as const,
-			size: r.size,
-			status: r.status,
-			title: r.name,
-		})),
-		...storeDocs.map((d) => {
-			const uploadResult = uploadResults.value.find((r) => r.name === d.title);
-			return {
-				chunks: d.chunks,
-				error_message: uploadResult?.error_message,
-				id: d.document_id,
-				isProcessing: false,
-				size: d.size,
-				// present in the vector store => indexing finished
-				status: uploadResult?.status || "completed",
-				title: d.title,
-			};
-		}),
-	];
+    const storeDocs = documentStore.documents;
+    const storeNames = new Set(storeDocs.map((d) => d.title));
+    const processing = uploadResults.value.filter(
+        (r) => !storeNames.has(r.name) && r.status !== "completed",
+    );
+    return [
+        ...processing.map((r) => ({
+            chunks: r.chunks,
+            error_message: r.error_message,
+            id: r.name,
+            isProcessing: true as const,
+            size: r.size,
+            status: r.status,
+            title: r.name,
+        })),
+        ...storeDocs.map((d) => {
+            const uploadResult = uploadResults.value.find(
+                (r) => r.name === d.title,
+            );
+            return {
+                chunks: d.chunks,
+                error_message: uploadResult?.error_message,
+                id: d.document_id,
+                isProcessing: false,
+                size: d.size,
+                // present in the vector store => indexing finished
+                status: uploadResult?.status || "completed",
+                title: d.title,
+            };
+        }),
+    ];
 });
 
 onMounted(() => {
-	documentStore.fetchDocuments();
-	loadUploadResults();
-	const indexed = uploadResults.value.filter((r) =>
-		isProcessingStatus(r.status),
-	);
-	if (indexed.length) {
-		pollTimer = setTimeout(() => pollStatus(indexed.map((r) => r.name)), 2000);
-	}
+    documentStore.fetchDocuments();
+    loadUploadResults();
+    const indexed = uploadResults.value.filter((r) =>
+        isProcessingStatus(r.status),
+    );
+    if (indexed.length) {
+        pollTimer = setTimeout(
+            () => pollStatus(indexed.map((r) => r.name)),
+            2000,
+        );
+    }
 });
 
 onUnmounted(() => {
-	if (pollTimer) {
-		clearTimeout(pollTimer);
-	}
+    if (pollTimer) {
+        clearTimeout(pollTimer);
+    }
 });
 
 function statusBadge(status: string): {
-	label: string;
-	color: "warning" | "info" | "success" | "error";
+    label: string;
+    color: "warning" | "info" | "success" | "error";
 } {
-	switch (status) {
-		case "pending":
-			return { color: "warning", label: "Pending" };
-		case "processing":
-			return { color: "info", label: "Processing" };
-		case "completed":
-			return { color: "success", label: "Completed" };
-		case "failed":
-			return { color: "error", label: "Failed" };
-		default:
-			return { color: "warning", label: status };
-	}
+    switch (status) {
+        case "pending":
+            return { color: "warning", label: "Pending" };
+        case "processing":
+            return { color: "info", label: "Processing" };
+        case "completed":
+            return { color: "success", label: "Completed" };
+        case "failed":
+            return { color: "error", label: "Failed" };
+        default:
+            return { color: "warning", label: status };
+    }
 }
 
 function formatSize(bytes: number): string {
-	if (bytes < 1024) {
-		return `${bytes} B`;
-	}
-	if (bytes < 1024 * 1024) {
-		return `${(bytes / 1024).toFixed(1)} KB`;
-	}
-	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function pollStatus(titles: string[]) {
-	if (!titles.length) {
-		return;
-	}
+    if (!titles.length) {
+        return;
+    }
 
-	try {
-		const { data } = await api.get("/documents/upload/status", {
-			params: { titles: titles.join(",") },
-		});
-		for (const res of uploadResults.value) {
-			const status = data.results[res.name];
-			if (status) {
-				res.status = status.status ?? res.status;
-				res.chunks = status.chunks || 0;
-				res.size = status.size || res.size;
-				if (status.error_message) {
-					res.error_message = status.error_message;
-					res.message = status.error_message;
-				}
-			}
-		}
-	} catch {
-		// ponytail: poll failed, retry
-	}
+    try {
+        const { data } = await api.get("/documents/upload/status", {
+            params: { titles: titles.join(",") },
+        });
+        for (const res of uploadResults.value) {
+            const status = data.results[res.name];
+            if (status) {
+                res.status = status.status ?? res.status;
+                res.chunks = status.chunks || 0;
+                res.size = status.size || res.size;
+                if (status.error_message) {
+                    res.error_message = status.error_message;
+                    res.message = status.error_message;
+                }
+            }
+        }
+    } catch {
+        // ponytail: poll failed, retry
+    }
 
-	await documentStore.fetchDocuments(true);
-	const pending = uploadResults.value.filter((r) =>
-		isProcessingStatus(r.status),
-	);
-	saveUploadResults();
-	if (pending.length) {
-		pollTimer = setTimeout(() => pollStatus(pending.map((r) => r.name)), 2000);
-	} else {
-		uploadResults.value = uploadResults.value.filter((r) => {
-			const stillInStore = documentStore.documents.some(
-				(d) => d.title === r.name,
-			);
-			return !stillInStore;
-		});
-		saveUploadResults();
-	}
+    await documentStore.fetchDocuments(true);
+    const pending = uploadResults.value.filter((r) =>
+        isProcessingStatus(r.status),
+    );
+    saveUploadResults();
+    if (pending.length) {
+        pollTimer = setTimeout(
+            () => pollStatus(pending.map((r) => r.name)),
+            2000,
+        );
+    } else {
+        uploadResults.value = uploadResults.value.filter((r) => {
+            const stillInStore = documentStore.documents.some(
+                (d) => d.title === r.name,
+            );
+            return !stillInStore;
+        });
+        saveUploadResults();
+    }
 }
 
 async function handleUpload() {
-	if (!selectedFiles.value.length) {
-		return;
-	}
+    if (!selectedFiles.value.length) {
+        return;
+    }
 
-	uploading.value = true;
-	uploadResults.value = [];
+    uploading.value = true;
+    uploadResults.value = [];
 
-	try {
-		const results = await documentStore.uploadDocuments(selectedFiles.value);
-		uploadResults.value = results.map((r, i) => ({
-			chunks: 0,
-			message: r.message,
-			name: selectedFiles.value[i]?.name || "Unknown",
-			size: selectedFiles.value[i]?.size || 0,
-			status: r.status === "ok" ? "pending" : "failed",
-		}));
-		selectedFiles.value = [];
+    try {
+        const results = await documentStore.uploadDocuments(
+            selectedFiles.value,
+        );
+        uploadResults.value = results.map((r, i) => ({
+            chunks: 0,
+            message: r.message,
+            name: selectedFiles.value[i]?.name || "Unknown",
+            size: selectedFiles.value[i]?.size || 0,
+            status: r.status === "ok" ? "pending" : "failed",
+        }));
+        selectedFiles.value = [];
 
-		const indexed = uploadResults.value.filter((r) =>
-			isProcessingStatus(r.status),
-		);
-		saveUploadResults();
-		if (indexed.length) {
-			pollTimer = setTimeout(
-				() => pollStatus(indexed.map((r) => r.name)),
-				2000,
-			);
-		}
-	} catch {
-		uploadResults.value = [
-			{
-				chunks: 0,
-				message: documentStore.error || "Upload failed",
-				name: "Upload",
-				size: 0,
-				status: "failed",
-			},
-		];
-	} finally {
-		uploading.value = false;
-	}
+        const indexed = uploadResults.value.filter((r) =>
+            isProcessingStatus(r.status),
+        );
+        saveUploadResults();
+        if (indexed.length) {
+            pollTimer = setTimeout(
+                () => pollStatus(indexed.map((r) => r.name)),
+                2000,
+            );
+        }
+    } catch {
+        uploadResults.value = [
+            {
+                chunks: 0,
+                message: documentStore.error || "Upload failed",
+                name: "Upload",
+                size: 0,
+                status: "failed",
+            },
+        ];
+    } finally {
+        uploading.value = false;
+    }
 }
 
 function handleTrashClick(item: ReturnType<typeof documentList.value>[number]) {
-	if (item.isProcessing) {
-		uploadResults.value = uploadResults.value.filter((r) => r.name !== item.id);
-		saveUploadResults();
-	} else {
-		confirmDelete(item.title);
-	}
+    if (item.isProcessing) {
+        uploadResults.value = uploadResults.value.filter(
+            (r) => r.name !== item.id,
+        );
+        saveUploadResults();
+    } else {
+        confirmDelete(item.title);
+    }
 }
 
 function confirmDelete(title: string) {
-	deleteTarget.value = title;
-	showDeleteModal.value = true;
+    deleteTarget.value = title;
+    showDeleteModal.value = true;
 }
 
 async function deleteDocument() {
-	const title = deleteTarget.value;
-	showDeleteModal.value = false;
-	deleting.value = true;
-	try {
-		await documentStore.deleteDocument(title);
-	} finally {
-		deleting.value = false;
-	}
+    const title = deleteTarget.value;
+    showDeleteModal.value = false;
+    deleting.value = true;
+    try {
+        await documentStore.deleteDocument(title);
+    } finally {
+        deleting.value = false;
+    }
 }
 </script>
 

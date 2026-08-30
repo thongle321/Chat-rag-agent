@@ -2,11 +2,12 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import engine
 from app.models.facebook_channel import FacebookChannelModel, slugify
-from app.models.facebook_config import FacebookConfigModel
 from app.services.encryption import decrypt_token, encrypt_token
 
 logger = logging.getLogger(__name__)
@@ -15,10 +16,6 @@ VN_TZ = timezone(timedelta(hours=7))
 async def _ensure_table(session: AsyncSession) -> None:
     # ponytail: create if not exists via Base metadata on startup already, but ensure columns for existing DBs
     try:
-        from sqlalchemy import text
-
-        from app.db.session import engine
-
         async with engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: FacebookChannelModel.__table__.create(sync_conn, checkfirst=True))
             try:
@@ -52,35 +49,7 @@ async def _ensure_table(session: AsyncSession) -> None:
             await session.rollback()
         except Exception:
             pass
-    # Migrate from old facebook_config id=1 if channels empty
-    try:
-        res = await session.execute(select(FacebookChannelModel).limit(1))
-        if res.scalars().first() is None:
-            old = await session.execute(select(FacebookConfigModel).where(FacebookConfigModel.id == 1))
-            row = old.scalar_one_or_none()
-            if row:
-                ch = FacebookChannelModel(
-                    id=str(uuid.uuid4()),
-                    page_id=row.page_id,
-                    page_name=getattr(row, "page_name", "Facebook Page"),
-                    page_token=row.page_token,
-                    verify_token=getattr(row, "verify_token", ""),
-                    sync_interval=getattr(row, "sync_interval", 15) or 15,
-                    sync_files=bool(getattr(row, "sync_files", False)),
-                    last_sync_status=getattr(row, "last_sync_status", None),
-                    last_sync_at=getattr(row, "last_sync_at", None),
-                    created_at=getattr(row, "created_at", None),
-                    is_active=True,
-                )
-                session.add(ch)
-                await session.commit()
-                logger.info("Migrated facebook_config id=1 to channels id=%s", ch.id)
-    except Exception:
-        logger.exception("Channel migration check failed")
-        try:
-            await session.rollback()
-        except Exception:
-            pass
+
 
 
 def _to_dict(row: FacebookChannelModel) -> dict:
@@ -160,8 +129,6 @@ async def create_channel(
     # Unique page_id check
     existing = await session.execute(select(FacebookChannelModel).where(FacebookChannelModel.page_id == page_id))
     if existing.scalar_one_or_none():
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=409, detail=f"Page {page_id} already connected")
 
     # Generate unique slug
