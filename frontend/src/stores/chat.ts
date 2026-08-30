@@ -170,10 +170,14 @@ export const useChatStore = defineStore("chat", () => {
 	async function deleteConversation(id: string) {
 		activeControllers.get(id)?.abort();
 		activeControllers.delete(id);
-		try {
-			await api.delete(`/chat/sessions/${id}`);
-		} catch (err) {
-			console.error("Failed to delete session on backend:", err);
+		const conv = conversations.value.find((c) => c.id === id);
+		const serverId = conv?.sessionId;
+		if (serverId) {
+			try {
+				await api.delete(`/chat/sessions/${serverId}`);
+			} catch {
+				// idempotent delete — ignore 404/race
+			}
 		}
 		conversations.value = conversations.value.filter((c) => c.id !== id);
 		if (activeId.value === id) {

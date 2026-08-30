@@ -33,11 +33,6 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_async_sess
 
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(session_id: str, db: AsyncSession = Depends(get_async_session)):
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Session not found")
-
     await db.execute(delete(ChatSession).where(ChatSession.id == session_id))
     await db.commit()
-
     await delete_conversation(session_id)
