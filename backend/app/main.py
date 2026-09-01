@@ -5,10 +5,9 @@ import logfire
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.types import Receive, Scope, Send
-
 from fastapi_users.password import PasswordHelper
 from sqlalchemy import select
+from starlette.types import Receive, Scope, Send
 
 from app.api.facebook import close_client
 from app.api.routes import router
@@ -26,7 +25,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("JWT_SECRET_KEY must be set via env var in production")
 
     logfire.configure(
-        service_name='chat-rag-agent',
+        service_name="chat-rag-agent",
         token=settings.logfire_token.get_secret_value() if settings.logfire_token else None,
     )
     logfire.instrument_pydantic_ai()
@@ -77,6 +76,7 @@ app = FastAPI(
     version=settings.version,
     lifespan=lifespan,
 )
+
 
 class NoGzipForSSE(GZipMiddleware):
     """Bypass GZip for the chat SSE stream so tokens stream chunk-by-chunk."""

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import api from "../../../api";
 
+const activeTab = ref<"facebook" | "zalo">("facebook");
 const loading = ref(true);
 const channels = ref<any[]>([]);
+const zaloChannels = ref<any[]>([]);
 const selectedPageId = ref<string>("");
+const selectedZaloId = ref<string>("");
 const users = ref<any[]>([]);
 
 function formatDateTime(v: string | null) {
@@ -24,6 +27,14 @@ async function loadChannels() {
 		channels.value = [];
 	}
 }
+async function loadZaloChannels() {
+	try {
+		const { data } = await api.get("/zalo/channels");
+		zaloChannels.value = Array.isArray(data) ? data : [];
+		if (zaloChannels.value.length && !selectedZaloId.value)
+			selectedZaloId.value = zaloChannels.value[0].bot_id;
+	} catch { zaloChannels.value = []; }
+}
 
 const currentPage = ref(1);
 const perPage = 10;
@@ -34,39 +45,48 @@ const pagedUsers = computed(() => {
 const totalPages = computed(() => Math.ceil(users.value.length / perPage));
 
 async function loadUsers() {
-	if (!selectedPageId.value) {
-		users.value = [];
-		return;
-	}
 	loading.value = true;
 	try {
-		const { data } = await api.get(
-			`/facebook/channels/${selectedPageId.value}/conversations`,
-		);
-		const list = data.conversations || [];
-		users.value = list.map((c: any) => ({
-			session_id: c.session_id,
-			username: c.username || "Facebook User",
-			displayName: c.username || "Facebook User",
-			channel_type: "facebook",
-			message_count: c.message_count ?? 0,
-			updated_at: c.updated_at,
-			page_id: selectedPageId.value,
-		}));
-	} catch {
-		users.value = [];
-	} finally {
-		loading.value = false;
-	}
+		if (activeTab.value === "facebook") {
+			if (!selectedPageId.value) { users.value = []; return; }
+			const { data } = await api.get(`/facebook/channels/${selectedPageId.value}/conversations`);
+			const list = data.conversations || [];
+			users.value = list.map((c: any) => ({
+				session_id: c.session_id,
+				username: c.username || "Facebook User",
+				displayName: c.username || "Facebook User",
+				channel_type: "facebook",
+				message_count: c.message_count ?? 0,
+				updated_at: c.updated_at,
+				page_id: selectedPageId.value,
+			}));
+		} else {
+			if (!selectedZaloId.value) { users.value = []; return; }
+			const { data } = await api.get(`/zalo/channels/${selectedZaloId.value}/conversations`);
+			const list = data.conversations || [];
+			users.value = list.map((c: any) => ({
+				session_id: c.session_id,
+				username: c.username || "Zalo User",
+				displayName: c.username || "Zalo User",
+				channel_type: "zalo",
+				message_count: c.message_count ?? 0,
+				updated_at: c.updated_at,
+				page_id: selectedZaloId.value,
+			}));
+		}
+	} catch { users.value = []; } finally { loading.value = false; }
 }
 
 watch(selectedPageId, () => {
-	currentPage.value = 1;
-	loadUsers();
+	if (activeTab.value === "facebook") { currentPage.value = 1; loadUsers(); }
 });
+watch(selectedZaloId, () => {
+	if (activeTab.value === "zalo") { currentPage.value = 1; loadUsers(); }
+});
+watch(activeTab, () => { currentPage.value = 1; loadUsers(); });
 
 onMounted(async () => {
-	await loadChannels();
+	await Promise.all([loadChannels(), loadZaloChannels()]);
 	await loadUsers();
 });
 </script>
@@ -77,16 +97,23 @@ onMounted(async () => {
       <UDashboardNavbar title="Messages">
         <template #leading><UDashboardSidebarCollapse /></template>
         <template #right>
-          <USelect v-if="channels.length" v-model="selectedPageId" :items="channels.map(c => ({ label: `${c.page_name} (${c.page_id})`, value: c.page_id }))" size="sm" class="min-w-64" />
+          <USelect v-if="activeTab === 'facebook' && channels.length" v-model="selectedPageId" :items="channels.map(c => ({ label: `${c.page_name} (${c.page_id})`, value: c.page_id }))" size="sm" class="min-w-64" />
+          <USelect v-if="activeTab === 'zalo' && zaloChannels.length" v-model="selectedZaloId" :items="zaloChannels.map(c => ({ label: `${c.bot_username || c.bot_id} (${c.bot_id})`, value: c.bot_id }))" size="sm" class="min-w-64" />
         </template>
       </UDashboardNavbar>
     </template>
 
     <template #body>
+      <UTabs v-model="activeTab" :items="[{ label: 'Facebook', icon: 'i-lucide-facebook', value: 'facebook' }, { label: 'Zalo', icon: 'i-lucide-bot', value: 'zalo' }]" class="mb-4" />
       <div v-if="loading" class="flex justify-center py-12"><ULoader /></div>
-      <div v-else-if="!channels.length" class="flex flex-col items-center py-16">
+      <div v-else-if="activeTab === 'facebook' && !channels.length" class="flex flex-col items-center py-16">
         <UIcon name="i-lucide-messages-square" class="size-12 text-muted mb-3" />
         <p class="text-muted">No Facebook channels — connect one in Integrations first.</p>
+        <UButton to="/admin/integrations" class="mt-4">Go to integrations</UButton>
+      </div>
+      <div v-else-if="activeTab === 'zalo' && !zaloChannels.length" class="flex flex-col items-center py-16">
+        <UIcon name="i-lucide-bot" class="size-12 text-muted mb-3" />
+        <p class="text-muted">No Zalo bots — connect one in Integrations first.</p>
         <UButton to="/admin/integrations" class="mt-4">Go to integrations</UButton>
       </div>
       <div v-else-if="!users.length" class="flex flex-col items-center py-16">
@@ -121,7 +148,7 @@ onMounted(async () => {
                       <span class="font-medium truncate">{{ u.displayName }}</span>
                     </div>
                   </td>
-                  <td class="py-3 px-3"><UBadge color="primary" variant="soft" size="xs">facebook</UBadge></td>
+                  <td class="py-3 px-3"><UBadge :color="u.channel_type === 'zalo' ? 'success' : 'primary'" variant="soft" size="xs">{{ u.channel_type }}</UBadge></td>
                   <td class="py-3 px-3 text-xs text-muted">{{ u.message_count }}</td>
                   <td class="py-3 px-3 text-xs text-muted whitespace-nowrap">{{ formatDateTime(u.updated_at) }}</td>
                   <td class="py-3 px-3"><UIcon name="i-lucide-chevron-right" class="text-muted" /></td>

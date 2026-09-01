@@ -21,6 +21,7 @@ dependencies = [
     "logfire[fastapi,httpx,sqlalchemy]",
     "cryptography>=49.0.0",
     "bm25s>=0.3.10",
+    "python-zalo-bot>=0.1.9",
 ]
 
 [tool.setuptools.packages.find]
