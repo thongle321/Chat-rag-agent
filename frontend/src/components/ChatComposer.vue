@@ -44,7 +44,7 @@ function onKeydown(e: KeyboardEvent) {
       />
 
       <UButton
-        icon="i-lucide-send"
+        icon="i-lucide-arrow-up"
         color="primary"
         size="sm"
         :square="true"
