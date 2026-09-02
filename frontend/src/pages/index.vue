@@ -175,7 +175,7 @@ async function handleSend(question: string) {
         <template v-else>
           <div class="max-w-[820px] mx-auto px-3 md:px-7 py-6 pb-32">
             <div v-for="(msg, i) in chatStore.messages" :key="msg.id">
-              <div v-if="msg.role === 'user'" class="group/user flex flex-col items-end mb-7 gap-1">
+              <div v-if="msg.role === 'user'" class="group flex flex-col items-end mb-7 gap-1">
                 <div v-if="editingId !== msg.id" class="max-w-[85%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-br-sm text-inverted text-sm leading-relaxed break-words bg-primary">
                   {{ msg.text }}
                 </div>
@@ -186,7 +186,7 @@ async function handleSend(question: string) {
                     <UButton size="xs" color="primary" label="Save" :disabled="!editingText.trim()" @click="saveEdit(msg)" />
                   </div>
                 </div>
-                <div v-if="editingId !== msg.id" class="flex justify-end w-full max-w-[85%] md:max-w-[78%] opacity-0 group-hover/user:opacity-100 transition">
+                <div v-if="editingId !== msg.id" class="flex justify-end w-full max-w-[85%] md:max-w-[78%] opacity-0 group-hover:opacity-100 transition">
                   <UButton icon="i-lucide-pencil" color="neutral" variant="ghost" size="xs" aria-label="Edit" @click="startEdit(msg)" />
                 </div>
               </div>
