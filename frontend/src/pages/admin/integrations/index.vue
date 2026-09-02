@@ -2,6 +2,7 @@
 import type { FormSubmitEvent } from "@nuxt/ui";
 import { z } from "zod";
 import api, { getErrorMessage } from "../../../api";
+import { useSettingsStore } from "../../../stores/settings";
 
 const activeTab = ref("facebook");
 
@@ -19,6 +20,8 @@ const zaloEditError = ref("");
 const zaloDisconnectConfirmOpen = ref(false);
 const zaloDisconnecting = ref(false);
 const zaloDisconnectTarget = ref<any | null>(null);
+
+const settingsStore = useSettingsStore();
 
 const connectModalOpen = ref(false);
 const connectSaving = ref(false);
@@ -76,12 +79,9 @@ const editState = reactive<Partial<EditSchema>>({
 const zaloConnectSchema = z.object({
     bot_token: z.string().min(1, "Bot token is required"),
     bot_username: z.string().optional(),
-    webhook_url: z
-        .string()
-        .url("Must be a valid URL")
-        .optional()
-        .or(z.literal("")),
     verify_token: z.string().min(8, "Verify token 8..256 chars").max(256),
+    // webhook_url moved to global Settings → Integration (auto-managed, no manual input)
+    webhook_url: z.string().optional().or(z.literal("")),
 });
 type ZaloConnectSchema = z.output<typeof zaloConnectSchema>;
 const zaloConnectState = reactive<Partial<ZaloConnectSchema>>({
@@ -128,13 +128,17 @@ watch(editModalOpen, (open) => {
         editError.value = "";
     }
 });
-watch(zaloConnectModalOpen, (open) => {
+watch(zaloConnectModalOpen, async (open) => {
     if (open) {
         zaloConnectState.bot_token = "";
         zaloConnectState.bot_username = "";
         zaloConnectState.webhook_url = "";
         zaloConnectState.verify_token = "";
         zaloConnectError.value = "";
+        // Ensure global verify_token is loaded so we can auto-fill on submit
+        if (!settingsStore.settings.zalo_verify_token && !settingsStore.settings.zalo_api_key) {
+            try { await settingsStore.fetchSettings(); } catch {}
+        }
     }
 });
 watch(zaloEditModalOpen, (open) => {
@@ -247,10 +251,16 @@ async function handleZaloConnect(event: FormSubmitEvent<ZaloConnectSchema>) {
     zaloConnectSaving.value = true;
     zaloConnectError.value = "";
     try {
+        // Webhook URL is now global in Settings → Integration, not per-channel
+        const globalWebhook = settingsStore.settings.zalo_webhook_url;
+        if (!globalWebhook) {
+            zaloConnectError.value = "No global Webhook URL set. Go to Settings → Integration and set it first.";
+            return;
+        }
         const { data: created } = await api.post("/zalo/channels", {
             bot_token: event.data.bot_token,
             bot_username: event.data.bot_username || undefined,
-            webhook_url: event.data.webhook_url || undefined,
+            webhook_url: globalWebhook || undefined,
             verify_token: event.data.verify_token,
         });
         zaloConnectModalOpen.value = false;
@@ -396,6 +406,7 @@ function _formatSyncInterval(v: number) {
 onMounted(() => {
     loadChannels();
     loadZaloChannels();
+    settingsStore.fetchSettings().catch(() => {});
 });
 </script>
 
@@ -898,16 +909,6 @@ onMounted(() => {
                         v-model="zaloConnectState.bot_token"
                         placeholder="123456:abc-xyz"
                 /></UFormField>
-                <UFormField
-                    label="Webhook URL"
-                    name="webhook_url"
-                    hint="https://your-host/api/zalo/webhook"
-                    ><UInput
-                        class="w-full"
-                        size="sm"
-                        v-model="zaloConnectState.webhook_url"
-                        placeholder="https://example.com/api/zalo/webhook"
-                /></UFormField>
                 <UFormField label="Verify Token" name="verify_token" required
                     ><UInput
                         class="w-full"
@@ -915,6 +916,17 @@ onMounted(() => {
                         v-model="zaloConnectState.verify_token"
                         placeholder="my_verify_token"
                 /></UFormField>
+                <UAlert
+                    color="neutral"
+                    variant="soft"
+                    icon="i-lucide-settings"
+                    title="Webhook URL — auto-filled from Settings"
+                    description="Moved to Settings → Integration. No manual input — the global URL is used automatically."
+                >
+                    <template #actions>
+                        <UButton size="xs" variant="outline" icon="i-lucide-external-link" to="/admin/settings">Go to Settings</UButton>
+                    </template>
+                </UAlert>
                 <p class="text-xs text-muted">
                     Bot name will be auto-filled from Zalo
                 </p>
@@ -967,12 +979,14 @@ onMounted(() => {
                         size="sm"
                         v-model="zaloEditState.verify_token"
                 /></UFormField>
-                <UFormField label="Webhook URL" name="webhook_url"
-                    ><UInput
-                        class="w-full"
-                        size="sm"
-                        v-model="zaloEditState.webhook_url"
-                /></UFormField>
+                <UAlert
+                    color="neutral"
+                    variant="soft"
+                    icon="i-lucide-settings"
+                    title="Webhook URL is global"
+                    description="Managed in Settings → Integration, not per-bot."
+                    class="mb-1"
+                />
                 <p class="text-xs text-muted">
                     Bot name is always synced from Zalo account_name.
                 </p>

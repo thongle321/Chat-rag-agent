@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -251,8 +253,16 @@ def _error_event(e: Exception) -> dict:
     }
 
 
-async def stream_answer(question: str, session_id: str | None = None):
+async def stream_answer(
+    question: str,
+    session_id: str | None = None,
+    *,
+    user_id: str | None = None,
+    user_email: str | None = None,
+    ip_address: str | None = None,
+):
     """Core streaming RAG pipeline. Yields event dicts: text_delta, sources, done, error."""
+    t0 = time.perf_counter()
     try:
         model, model_name = get_llm()
     except (UserError, ModelAPIError) as e:
@@ -279,6 +289,8 @@ async def stream_answer(question: str, session_id: str | None = None):
 
     emitted = False
     answer_parts: list[str] = []
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
     try:
         async with asyncio.timeout(120):
             async with state.stream as result:
@@ -287,7 +299,19 @@ async def stream_answer(question: str, session_id: str | None = None):
                     answer_parts.append(delta)
                     yield {"type": "text_delta", "content": delta}
                 state.new_messages = result.new_messages()
-                logger.info("stream done emitted=%s msgs=%d", emitted, len(state.new_messages))
+                # Capture token usage like CQA ai_usage_logs (input/output)
+                try:
+                    usage = result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+                    if usage is not None:
+                        # Usage object has input_tokens/output_tokens (alias request/response)
+                        prompt_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "request_tokens", None)
+                        completion_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "response_tokens", None)
+                        # Some providers nest details; ensure int or None
+                        prompt_tokens = int(prompt_tokens) if prompt_tokens else None
+                        completion_tokens = int(completion_tokens) if completion_tokens else None
+                except Exception:
+                    logger.debug("usage extraction failed", exc_info=True)
+                logger.info("stream done emitted=%s msgs=%d usage=%s/%s", emitted, len(state.new_messages), prompt_tokens, completion_tokens)
     except Exception as e:
         if state.fallback_reply and not emitted:
             state.new_messages = [
@@ -313,13 +337,60 @@ async def stream_answer(question: str, session_id: str | None = None):
                 m.metadata = {"sources": stubs}
                 break
     await save_messages(sid, history + state.new_messages)
+    # --- Durable per-message logs to app.db (like CQA messages + ai_usage_logs) ---
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+    try:
+        from app.services.chat_logging import log_activity, log_chat_message
+
+        answer_text = "".join(answer_parts)
+        # user turn
+        await log_chat_message(
+            session_id=sid,
+            role="user",
+            content=question,
+            user_id=user_id,
+            user_email=user_email,
+            ip_address=ip_address,
+        )
+        # assistant turn — keep forever, no TTL (mirrors CQA messages + ai_usage_logs)
+        await log_chat_message(
+            session_id=sid,
+            role="assistant",
+            content=answer_text,
+            user_id=user_id,
+            user_email=user_email,
+            model=model_name,
+            sources=state.sources,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            ip_address=ip_address,
+        )
+        await log_activity(
+            action="chat.query",
+            user_id=user_id,
+            user_email=user_email,
+            resource_type="session",
+            resource_id=sid,
+            detail=json.dumps({"model": model_name, "sources_n": len(state.sources), "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}, ensure_ascii=False),
+            ip_address=ip_address,
+        )
+    except Exception:
+        logger.exception("chat logging failed sid=%s", sid)
     yield {"type": "sources", "sources": state.sources}
     yield {"type": "done", "session_id": sid, "model": model_name}
 
 
-async def answer_question(question: str, session_id: str | None = None) -> ChatResponse:
+async def answer_question(
+    question: str,
+    session_id: str | None = None,
+    *,
+    user_id: str | None = None,
+    user_email: str | None = None,
+    ip_address: str | None = None,
+) -> ChatResponse:
     answer = ""
-    async for ev in stream_answer(question, session_id):
+    async for ev in stream_answer(question, session_id, user_id=user_id, user_email=user_email, ip_address=ip_address):
         if ev["type"] == "text_delta":
             answer += ev["content"]
         elif ev["type"] == "error":

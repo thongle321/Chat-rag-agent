@@ -25,20 +25,36 @@ app.config.errorHandler = (err, _instance, info) => {
 	console.error("[vue]", info, err);
 };
 
+function isAdminUser(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
+
 router.beforeEach(async (to) => {
 	const auth = useAuthStore();
 	if (auth.token && !auth.user) {
 		await auth.fetchUser();
 	}
-	if (
-		to.path.startsWith("/admin") &&
-		to.path !== "/admin/login" &&
-		!auth.isAuthenticated
-	) {
-		return "/admin/login";
+	const isAuthed = auth.isAuthenticated;
+	const isAdmin = isAdminUser(auth.user);
+
+	// Admin area — only admin role
+	if (to.path.startsWith("/admin")) {
+		if (to.path === "/admin/login") {
+			if (isAuthed) return isAdmin ? "/admin/" : "/login";
+			return;
+		}
+		if (!isAuthed) return "/admin/login";
+		if (!isAdmin) return "/login"; // user cannot access admin
+		return;
 	}
-	if (to.path === "/admin/login" && auth.isAuthenticated) {
-		return "/admin/";
+
+	// User area — only non-admin role (strict separation, cannot be logged as both)
+	if (to.path === "/login") {
+		if (isAuthed) return isAdmin ? "/admin/" : "/";
+		return;
+	}
+	if (to.path === "/") {
+		if (!isAuthed) return "/login";
+		if (isAdmin) return "/admin/"; // admin must use admin login/feature
+		return;
 	}
 });
 

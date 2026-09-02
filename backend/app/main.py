@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory, create_db_and_tables, engine
 from app.models.user import User
+# Import so Base.metadata includes new log tables for create_db_and_tables()
+import app.models.chat_logging  # noqa: F401
 from app.services.ai_settings import get_ai_settings
 from app.services.rag import close
 
@@ -45,6 +47,17 @@ async def lifespan(app: FastAPI):
             settings.ollama_api_key = db["ollama_api_key"]
             settings.openai_model = db["openai_model"]
             settings.openai_api_key = db["openai_api_key"]
+            if db.get("zalo_api_key"):
+                from pydantic import SecretStr as _SecretStr
+                settings.zalo_api_key = _SecretStr(db["zalo_api_key"])
+            if db.get("zalo_verify_token"):
+                from pydantic import SecretStr as _SecretStr2
+                settings.zalo_verify_token = _SecretStr2(db["zalo_verify_token"])
+            elif db.get("zalo_api_key"):
+                from pydantic import SecretStr as _SecretStr3
+                settings.zalo_verify_token = _SecretStr3(db["zalo_api_key"])
+            if db.get("zalo_webhook_url"):
+                settings.zalo_webhook_url = db["zalo_webhook_url"]
         result = await session.execute(select(User).where(User.email == "admin@example.com"))
         if not result.scalar_one_or_none():
             hashed = PasswordHelper().hash("admin123")

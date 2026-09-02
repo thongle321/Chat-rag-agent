@@ -1,3 +1,4 @@
+import secrets
 from typing import Literal
 
 import httpx
@@ -19,6 +20,9 @@ class AISettingsResponse(BaseModel):
     ollama_api_key: str = ""
     openai_model: str
     openai_api_key: str = ""
+    zalo_api_key: str = ""
+    zalo_verify_token: str = ""
+    zalo_webhook_url: str = ""
 
 
 class AISettingsUpdate(BaseModel):
@@ -28,6 +32,10 @@ class AISettingsUpdate(BaseModel):
     ollama_api_key: str | None = None
     openai_api_key: str | None = None
     openai_model: str | None = None
+    zalo_api_key: str | None = None
+    zalo_verify_token: str | None = None
+    zalo_webhook_url: str | None = None
+    zalo_regenerate: bool | None = None
 
 
 class TestConnectionRequest(BaseModel):
@@ -58,6 +66,9 @@ router = APIRouter()
 
 @router.get("/ai", response_model=AISettingsResponse)
 async def get_ai_settings(user: User = current_active_user):
+    zalo_key = _get_secret_value(getattr(settings, "zalo_api_key", SecretStr("")))
+    zalo_verify = _get_secret_value(getattr(settings, "zalo_verify_token", SecretStr("")))
+    zalo_webhook = getattr(settings, "zalo_webhook_url", "")
     return AISettingsResponse(
         ai_provider=settings.ai_provider,
         ollama_base_url=settings.ollama_base_url,
@@ -65,6 +76,9 @@ async def get_ai_settings(user: User = current_active_user):
         ollama_api_key=_get_secret_value(settings.ollama_api_key),
         openai_model=settings.openai_model,
         openai_api_key=_get_secret_value(settings.openai_api_key),
+        zalo_api_key=zalo_key,
+        zalo_verify_token=zalo_verify,
+        zalo_webhook_url=zalo_webhook,
     )
 
 
@@ -99,6 +113,36 @@ async def update_ai_settings(
     if body.openai_model is not None:
         settings.openai_model = body.openai_model
 
+    # Zalo global key — one of the 3 integration inputs moved here so it never needs manual input per-bot.
+    # We store verify_token (secret for webhook) globally; bot_token stays per-channel.
+    zalo_key_val = _get_secret_value(getattr(settings, "zalo_api_key", SecretStr("")))
+    zalo_verify_val = _get_secret_value(getattr(settings, "zalo_verify_token", SecretStr("")))
+    zalo_webhook_val = getattr(settings, "zalo_webhook_url", "")
+    if body.zalo_regenerate:
+        zalo_verify_val = secrets.token_urlsafe(32)
+        settings.zalo_verify_token = SecretStr(zalo_verify_val)
+        zalo_key_val = zalo_verify_val  # keep legacy alias in sync
+        settings.zalo_api_key = SecretStr(zalo_key_val)
+    else:
+        if body.zalo_verify_token is not None:
+            zalo_verify_val = body.zalo_verify_token
+            settings.zalo_verify_token = SecretStr(zalo_verify_val)
+            zalo_key_val = zalo_verify_val
+            settings.zalo_api_key = SecretStr(zalo_key_val)
+        elif body.zalo_api_key is not None:
+            zalo_verify_val = body.zalo_api_key
+            zalo_key_val = body.zalo_api_key
+            settings.zalo_verify_token = SecretStr(zalo_verify_val)
+            settings.zalo_api_key = SecretStr(zalo_key_val)
+        elif not zalo_verify_val:
+            zalo_verify_val = secrets.token_urlsafe(32)
+            settings.zalo_verify_token = SecretStr(zalo_verify_val)
+            zalo_key_val = zalo_verify_val
+            settings.zalo_api_key = SecretStr(zalo_key_val)
+    if body.zalo_webhook_url is not None:
+        zalo_webhook_val = body.zalo_webhook_url
+        settings.zalo_webhook_url = zalo_webhook_val
+
     await save_ai_settings(session, {
         "ai_provider": settings.ai_provider,
         "ollama_base_url": settings.ollama_base_url,
@@ -106,6 +150,9 @@ async def update_ai_settings(
         "ollama_api_key": _get_secret_value(settings.ollama_api_key),
         "openai_model": settings.openai_model,
         "openai_api_key": _get_secret_value(settings.openai_api_key),
+        "zalo_api_key": zalo_key_val,
+        "zalo_verify_token": zalo_verify_val,
+        "zalo_webhook_url": zalo_webhook_val,
     })
 
     return AISettingsResponse(
@@ -115,6 +162,9 @@ async def update_ai_settings(
         ollama_api_key=_get_secret_value(settings.ollama_api_key),
         openai_model=settings.openai_model,
         openai_api_key=_get_secret_value(settings.openai_api_key),
+        zalo_api_key=zalo_key_val,
+        zalo_verify_token=zalo_verify_val,
+        zalo_webhook_url=zalo_webhook_val,
     )
 
 

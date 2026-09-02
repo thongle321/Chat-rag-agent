@@ -5,6 +5,16 @@ const api = axios.create({
 	timeout: 180_000,
 });
 
+// Always attach JWT from localStorage — survives hard refresh / HMR where
+// api.defaults.headers.common may have been reset even though token is stored
+api.interceptors.request.use((config) => {
+	const t = localStorage.getItem("auth_token");
+	if (t && !config.headers.Authorization) {
+		config.headers.Authorization = `Bearer ${t}`;
+	}
+	return config;
+});
+
 export function getErrorMessage(err: unknown): string {
 	if (!axios.isAxiosError(err)) {
 		return err instanceof Error ? err.message : "An error occurred";
@@ -42,9 +52,13 @@ export async function streamChat(
 	handlers: StreamHandlers,
 	signal: AbortSignal,
 ): Promise<void> {
+	const headers: Record<string, string> = { "Content-Type": "application/json" };
+	// Forward JWT so backend can fill user_id/user_email like CQA activity_logs (axios does this automatically, fetch does not)
+	const token = localStorage.getItem("auth_token");
+	if (token) headers.Authorization = `Bearer ${token}`;
 	const response = await fetch(`${api.defaults.baseURL}/chat/query/stream`, {
 		body: JSON.stringify({ question, session_id: sessionId }),
-		headers: { "Content-Type": "application/json" },
+		headers,
 		method: "POST",
 		signal,
 	});

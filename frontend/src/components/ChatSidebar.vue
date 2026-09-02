@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { type Conversation, groupByDate, useChatStore } from "../stores/chat";
+import { useAuthStore } from "../stores/auth";
 
 defineProps<{
 	onCollapse?: () => void;
@@ -8,6 +9,9 @@ defineProps<{
 }>();
 
 const chatStore = useChatStore();
+const authStore = useAuthStore();
+const router = useRouter();
+async function handleLogout() { await authStore.logout(); router.push("/login"); }
 const search = ref("");
 const filtered = computed(() => {
 	const s = search.value.trim().toLowerCase();
@@ -70,9 +74,40 @@ function getItems(c: Conversation) {
 
 const colorMode = useColorMode();
 
-function toggleColorMode() {
-	colorMode.value = colorMode.value === "dark" ? "light" : "dark";
-}
+const userMenuItems = computed(() => [
+	[{ label: authStore.user?.email ?? "User", type: "label" as const, icon: "i-lucide-user" }],
+	[
+		{
+			label: "Appearance",
+			icon: "i-lucide-sun-moon",
+			children: [
+				{
+					label: "Light",
+					icon: "i-lucide-sun",
+					type: "checkbox" as const,
+					checked: colorMode.value === "light",
+					onSelect(e: Event) {
+						e.preventDefault();
+						colorMode.value = "light";
+					},
+				},
+				{
+					label: "Dark",
+					icon: "i-lucide-moon",
+					type: "checkbox" as const,
+					checked: colorMode.value === "dark",
+					onUpdateChecked(checked: boolean) {
+						if (checked) colorMode.value = "dark";
+					},
+					onSelect(e: Event) {
+						e.preventDefault();
+					},
+				},
+			],
+		},
+	],
+	[{ label: "Logout", icon: "i-lucide-log-out", onSelect: handleLogout }],
+]);
 </script>
 
 <template>
@@ -139,17 +174,22 @@ function toggleColorMode() {
       </template>
     </div>
 
-    <div class="px-3.5 py-3 border-t border-default/50 flex items-center gap-2.5">
-      <UAvatar icon="i-lucide-user" size="xs" class="bg-muted text-muted" />
-      <div class="flex-1 text-[11px] text-default font-medium">User</div>
-      <UButton
-        variant="ghost"
-        color="neutral"
-        size="xs"
-        :square="true"
-        :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
-        @click="toggleColorMode"
-      />
+    <div class="px-3.5 py-3 border-t border-default/50 flex items-center gap-2">
+      <UDropdownMenu :items="userMenuItems" :content="{ align: 'center', side: 'top' }" :ui="{ content: 'w-56' }">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          block
+          class="flex-1 justify-start min-w-0"
+          trailing-icon="i-lucide-chevrons-up-down"
+          :ui="{ trailingIcon: 'text-dimmed' }"
+        >
+          <template #leading>
+            <UAvatar icon="i-lucide-user" size="xs" class="bg-muted text-muted shrink-0" />
+          </template>
+          <span class="text-[11px] font-medium truncate text-left">{{ authStore.user?.email ?? "User" }}</span>
+        </UButton>
+      </UDropdownMenu>
       <UButton
         variant="ghost"
         color="neutral"

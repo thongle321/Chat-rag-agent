@@ -13,3 +13,6 @@ class AISettingsModel(Base):
     ollama_api_key: Mapped[str] = mapped_column(default="")
     openai_model: Mapped[str] = mapped_column(default="")
     openai_api_key: Mapped[str] = mapped_column(default="")
+    zalo_api_key: Mapped[str] = mapped_column(default="")
+    zalo_verify_token: Mapped[str] = mapped_column(default="")
+    zalo_webhook_url: Mapped[str] = mapped_column(default="")

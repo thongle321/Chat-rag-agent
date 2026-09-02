@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     )
     jwt_secret_key: SecretStr
     encryption_key: SecretStr | None = None
+    zalo_api_key: SecretStr = SecretStr("")
+    zalo_verify_token: SecretStr = SecretStr("")
+    zalo_webhook_url: str = ""
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
     retrieval_k: int = 8

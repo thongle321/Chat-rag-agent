@@ -6,10 +6,10 @@ import { useAuthStore } from "../../stores/auth";
 const authStore = useAuthStore();
 const router = useRouter();
 
+function isAdmin(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
 onMounted(() => {
-	if (authStore.isAuthenticated) {
-		router.replace("/admin/");
-	}
+	if (!authStore.isAuthenticated) return;
+	router.replace(isAdmin(authStore.user) ? "/admin/" : "/login");
 });
 
 const schema = z.object({
@@ -80,6 +80,11 @@ async function handleLogin(event: FormSubmitEvent<Schema>) {
 	isSubmitting.value = true;
 	try {
 		await authStore.login(event.data.email.trim(), event.data.password);
+		if (!isAdmin(authStore.user)) {
+			error.value = "This account is not an admin. Use User Login (/login) to chat.";
+			await authStore.logout();
+			return;
+		}
 		await router.push("/admin/");
 	} catch (err: unknown) {
 		error.value = resolveErrorMessage(err);

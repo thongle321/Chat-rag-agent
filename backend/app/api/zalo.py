@@ -192,6 +192,17 @@ async def list_zalo_channels(user: User = current_active_user, db: AsyncSession 
 async def create_zalo_channel(req: ZaloChannelRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
     if len(req.verify_token) < 8 or len(req.verify_token) > 256:
         raise HTTPException(status_code=400, detail="verify_token must be 8..256 chars")
+    # Webhook URL is now global in Settings → Integration (auto-managed), fallback if not provided
+    webhook_url = req.webhook_url
+    if not webhook_url:
+        webhook_url = getattr(settings, "zalo_webhook_url", "")
+        if not webhook_url:
+            from app.services.ai_settings import get_ai_settings as _get_ai
+            try:
+                _db = await _get_ai(db)
+                webhook_url = (_db or {}).get("zalo_webhook_url", "")
+            except Exception:
+                webhook_url = ""
     me = await _zalo_get_me(req.bot_token)
     if not me.get("ok"):
         raise HTTPException(status_code=400, detail=me.get("error", "Invalid bot_token"))
@@ -199,13 +210,13 @@ async def create_zalo_channel(req: ZaloChannelRequest, user: User = current_acti
     # plan A: always account_name from getMe (e.g. bot.VDKyGxQvc), ignore manual Bot Username — per bot.zapps.me/docs/apis/getMe
     bot_username = me.get("account_name") or me.get("result", {}).get("account_name", "") or bot_id
     # ponytail: verify webhook before DB commit to avoid orphan 409 on retry (see bot.zapps.me/docs/apis/setWebhook verification)
-    if req.webhook_url:
-        res = await _zalo_set_webhook(req.bot_token, req.webhook_url, req.verify_token)
+    if webhook_url:
+        res = await _zalo_set_webhook(req.bot_token, webhook_url, req.verify_token)
         if not res.get("ok"):
             logger.warning("Zalo setWebhook verification failed %s: %s", bot_id, res)
             raise HTTPException(status_code=400, detail=f"Webhook verification failed: {res.get('description') or res.get('hint') or 'verification failed'} — use public HTTPS like https://<ngrok>.ngrok-free.app/api/zalo/webhook")
         logger.info("Zalo setWebhook %s ok", bot_id)
-    ch = await create_channel(db, bot_id, bot_username, req.bot_token, req.verify_token, req.webhook_url or "")
+    ch = await create_channel(db, bot_id, bot_username, req.bot_token, req.verify_token, webhook_url or "")
     return _to_response(ch)
 
 

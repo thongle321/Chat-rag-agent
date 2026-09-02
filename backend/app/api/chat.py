@@ -3,7 +3,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_async_session
 from app.models.schemas import ChatRequest, ChatResponse
 from app.models.session import ChatSession
+from app.models.user import User
 from app.services.rag import answer_question, stream_answer
 
 router = APIRouter()
@@ -44,21 +45,102 @@ async def _finish_title(session: ChatSession, question: str, db: AsyncSession) -
     await db.commit()
 
 
+def _client_ip(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()[:45]
+    if request.client and request.client.host:
+        return str(request.client.host)[:45]
+    return None
+
+
+def _get_jwt_secret() -> str:
+    s = __import__("app.core.config", fromlist=["settings"]).settings.jwt_secret_key
+    return s.get_secret_value() if hasattr(s, "get_secret_value") else str(s)
+
+
+def _optional_user_id(request: Request) -> str | None:
+    """Best-effort user_id from Bearer token without enforcing auth — keeps chat open."""
+    try:
+        auth = request.headers.get("authorization", "") or request.headers.get("Authorization", "")
+        if not auth.lower().startswith("bearer "):
+            return None
+        token = auth[7:].strip()
+        if not token:
+            return None
+        secret = _get_jwt_secret()
+        for mod in ("jwt", "jose.jwt"):
+            try:
+                m = __import__(mod, fromlist=["decode"])
+                payload = m.decode(token, secret, algorithms=["HS256"], options={"verify_exp": False})  # type: ignore
+                sub = payload.get("sub")
+                return str(sub) if sub else None
+            except Exception:
+                continue
+        return None
+    except Exception:
+        return None
+
+
+async def _optional_user_with_email(request: Request, db: AsyncSession) -> tuple[str | None, str | None]:
+    """Return (user_id, user_email) best-effort — mirrors CQA activity_logs user_email."""
+    uid = _optional_user_id(request)
+    if not uid:
+        return None, None
+    try:
+        # User.id is UUID — cast string uid to UUID for comparison (otherwise SELECT returns None)
+        try:
+            uid_uuid = uuid.UUID(uid)
+        except Exception:
+            uid_uuid = uid  # fallback to string comparison
+        result = await db.execute(select(User).where(User.id == uid_uuid))
+        user = result.scalar_one_or_none()
+        if user:
+            return str(user.id), user.email
+        # Fallback: token contained email claim directly
+        auth = request.headers.get("authorization", "") or request.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+        secret = _get_jwt_secret()
+        for mod in ("jwt", "jose.jwt"):
+            try:
+                m = __import__(mod, fromlist=["decode"])
+                payload = m.decode(token, secret, algorithms=["HS256"], options={"verify_exp": False})  # type: ignore
+                return uid, payload.get("email")
+            except Exception:
+                continue
+        return uid, None
+    except Exception:
+        return uid, None
+
+
 @router.post("/query", response_model=ChatResponse)
-async def query_chat(request: ChatRequest, db: AsyncSession = Depends(get_async_session)):
+async def query_chat(
+    request: ChatRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_async_session),
+):
+    # Best-effort auth — keeps chat open for anonymous, enriches logs when logged in (like CQA tenant scoping)
+    user_id, user_email = await _optional_user_with_email(http_request, db)
     session = await _ensure_session(request, db)
-    response = await answer_question(request.question, session_id=session.id)
+    ip = _client_ip(http_request)
+    response = await answer_question(
+        request.question, session_id=session.id, user_id=user_id, user_email=user_email, ip_address=ip
+    )
     await _finish_title(session, request.question, db)
     return response
 
 
 @router.post("/query/stream")
-async def query_chat_stream(request: ChatRequest, db: AsyncSession = Depends(get_async_session)):
+async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
     session = await _ensure_session(request, db)
     session_id = session.id
+    user_id, user_email = await _optional_user_with_email(http_request, db)
+    ip = _client_ip(http_request)
 
     async def event_stream() -> AsyncIterator[str]:
-        async for ev in stream_answer(request.question, session_id):
+        async for ev in stream_answer(request.question, session_id, user_id=user_id, user_email=user_email, ip_address=ip):
             if ev["type"] == "text_delta":
                 yield f"data: {json.dumps({'content': ev['content']})}\n\n"
             elif ev["type"] == "sources":

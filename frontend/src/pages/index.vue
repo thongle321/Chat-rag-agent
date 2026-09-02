@@ -94,6 +94,9 @@ async function handleSend(question: string) {
             <span class="hidden md:inline">Search information from documents</span>
           </div>
         </div>
+        <div class="flex items-center gap-2">
+          <!-- email/logout moved to ChatSidebar footer -->
+        </div>
       </header>
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">

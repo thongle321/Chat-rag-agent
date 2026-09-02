@@ -57,6 +57,21 @@ export const useAuthStore = defineStore("auth", () => {
 		}
 	}
 
+	async function register(email: string, password: string) {
+		loading.value = true;
+		error.value = "";
+		try {
+			await api.post("/auth/register", { email, password });
+			// Auto-login after successful registration
+			await login(email, password);
+		} catch (err: any) {
+			error.value = getErrorMessage(err);
+			throw err;
+		} finally {
+			loading.value = false;
+		}
+	}
+
 	async function logout() {
 		try {
 			await api.post("/auth/logout", null, {
@@ -89,6 +104,7 @@ export const useAuthStore = defineStore("auth", () => {
 		loading,
 		login,
 		logout,
+		register,
 		token,
 		user,
 	};

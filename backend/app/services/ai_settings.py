@@ -11,7 +11,7 @@ from app.models.ai_settings import AISettingsModel
 
 logger = logging.getLogger(__name__)
 
-_API_KEY_FIELDS = {"ollama_api_key", "openai_api_key"}
+_API_KEY_FIELDS = {"ollama_api_key", "openai_api_key", "zalo_api_key", "zalo_verify_token"}
 
 
 def _get_key() -> bytes:
@@ -46,6 +46,9 @@ async def get_ai_settings(session: AsyncSession) -> dict | None:
         "ollama_api_key": row.ollama_api_key,
         "openai_model": row.openai_model,
         "openai_api_key": row.openai_api_key,
+        "zalo_api_key": getattr(row, "zalo_api_key", ""),
+        "zalo_verify_token": getattr(row, "zalo_verify_token", ""),
+        "zalo_webhook_url": getattr(row, "zalo_webhook_url", ""),
     }
     for field in _API_KEY_FIELDS & raw.keys():
         raw[field] = _decrypt(raw[field])
@@ -75,4 +78,7 @@ async def save_ai_settings(session: AsyncSession, data: dict) -> dict:
         "ollama_api_key": _decrypt(new_row.ollama_api_key),
         "openai_model": new_row.openai_model,
         "openai_api_key": _decrypt(new_row.openai_api_key),
+        "zalo_api_key": _decrypt(getattr(new_row, "zalo_api_key", "")),
+        "zalo_verify_token": _decrypt(getattr(new_row, "zalo_verify_token", "")),
+        "zalo_webhook_url": getattr(new_row, "zalo_webhook_url", ""),
     }

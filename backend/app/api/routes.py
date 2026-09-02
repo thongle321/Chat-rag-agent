@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import auth, chat, docs, facebook, health, sessions, settings, stats, zalo
+from app.api import auth, chat, docs, facebook, health, logs, sessions, settings, stats, zalo
 
 router = APIRouter(prefix="/api")
 
@@ -19,6 +19,7 @@ router.include_router(stats.router, prefix="/stats", tags=["stats"])
 router.include_router(docs.router, prefix="/documents", tags=["documents"])
 router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(sessions.router, prefix="/chat", tags=["chat"])
+router.include_router(logs.router, prefix="/logs", tags=["logs"])
 
 # Facebook Messenger (webhook + config)
 router.include_router(facebook.router, prefix="/facebook", tags=["facebook"])

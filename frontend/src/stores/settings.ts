@@ -9,6 +9,9 @@ export interface AISettings {
 	ollama_model: string;
 	openai_api_key: string;
 	openai_model: string;
+	zalo_api_key: string;
+	zalo_verify_token: string;
+	zalo_webhook_url: string;
 }
 
 export interface TestResult {
@@ -24,6 +27,9 @@ export const useSettingsStore = defineStore("settings", () => {
 		ollama_model: "",
 		openai_api_key: "",
 		openai_model: "",
+		zalo_api_key: "",
+		zalo_verify_token: "",
+		zalo_webhook_url: "",
 	});
 	const loading = ref(false);
 	const error = ref("");
