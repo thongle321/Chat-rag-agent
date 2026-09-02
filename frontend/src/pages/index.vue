@@ -26,6 +26,64 @@ const chatWindow = ref<HTMLElement>();
 const sidebarOpen = ref(false);
 const accOpen = reactive<Record<string, string | undefined>>({});
 const activeCite = reactive(new Map<string, number>());
+// ChatTitle at top left like chat-vue
+const editingTitle = ref(false);
+const titleDraft = ref("");
+const currentTitle = computed(() => chatStore.activeConversation?.title || chatStore.messages.find((m) => m.role === "user")?.text?.slice(0, 40) || "New chat");
+function startTitleEdit() {
+  titleDraft.value = currentTitle.value;
+  editingTitle.value = true;
+}
+function saveTitle() {
+  const t = titleDraft.value.trim();
+  if (t && chatStore.activeId) chatStore.renameConversation(chatStore.activeId, t);
+  editingTitle.value = false;
+}
+// AI thought timing like chat-vue
+const thinkingStart = ref<number | null>(null);
+const thinkingElapsed = ref(0);
+let thinkingTimer: ReturnType<typeof setInterval> | null = null;
+watch(
+  () => chatStore.loading,
+  (loading) => {
+    if (loading) {
+      thinkingStart.value = Date.now();
+      thinkingElapsed.value = 0;
+      if (thinkingTimer) clearInterval(thinkingTimer);
+      thinkingTimer = setInterval(() => {
+        if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
+      }, 100);
+    } else {
+      if (thinkingTimer) clearInterval(thinkingTimer);
+      thinkingTimer = null;
+      if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
+    }
+  },
+);
+// Hover edit for my messages like chat-vue
+const editingId = ref<string | null>(null);
+const editingText = ref("");
+function startEdit(msg: any) {
+  editingId.value = msg.id;
+  editingText.value = msg.text;
+}
+function cancelEdit() {
+  editingId.value = null;
+  editingText.value = "";
+}
+async function saveEdit(msg: any) {
+  const newText = editingText.value.trim();
+  if (!newText || newText === msg.text) {
+    cancelEdit();
+    return;
+  }
+  const conv = chatStore.activeConversation;
+  if (!conv) return;
+  const idx = conv.messages.findIndex((m) => m.id === msg.id);
+  if (idx !== -1) conv.messages.splice(idx);
+  cancelEdit();
+  await handleSend(newText);
+}
 
 onMounted(async () => {
 	await chatStore.fetchSessions();
@@ -80,7 +138,22 @@ async function handleSend(question: string) {
 
     <!-- Main area like chat-vue: rounded panel -->
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
-      <header class="flex items-center px-3 md:px-7 py-2 bg-default/75 min-h-[44px]">
+      <header class="flex items-center justify-between px-3 md:px-7 py-2.5 bg-default/75 min-h-[44px]">
+        <div class="flex items-center gap-2 min-w-0">
+          <div v-if="chatStore.messages.length" class="flex items-center gap-2 min-w-0">
+            <div v-if="!editingTitle" class="flex items-center gap-1.5 group cursor-pointer min-w-0" @click="startTitleEdit">
+              <span class="text-sm font-medium text-default truncate max-w-[280px]">{{ currentTitle }}</span>
+              <UIcon name="i-lucide-pencil" class="size-3 text-muted opacity-0 group-hover:opacity-100 transition" />
+            </div>
+            <div v-else class="flex items-center gap-1.5">
+              <UInput v-model="titleDraft" size="xs" class="w-[240px]" autofocus @keydown.enter="saveTitle" @keydown.escape="editingTitle = false" />
+              <UButton size="xs" color="primary" icon="i-lucide-check" @click="saveTitle" />
+              <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="editingTitle = false" />
+            </div>
+          </div>
+          <span v-else class="text-sm text-muted hidden md:inline">VeilAi RAG</span>
+        </div>
+        <div v-if="chatStore.loading && thinkingElapsed" class="text-xs text-muted hidden sm:block">{{ thinkingElapsed.toFixed(1) }}s thinking</div>
       </header>
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">
@@ -106,10 +179,18 @@ async function handleSend(question: string) {
         <template v-else>
           <div class="max-w-[820px] mx-auto px-3 md:px-7 py-6 pb-32">
             <div v-for="(msg, i) in chatStore.messages" :key="msg.id">
-              <div v-if="msg.role === 'user'" class="flex justify-end mb-7">
-                <div class="max-w-[85%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-br-sm text-inverted text-sm leading-relaxed break-words bg-primary">
+              <div v-if="msg.role === 'user'" class="group/user flex justify-end mb-7 relative">
+                <div v-if="editingId !== msg.id" class="max-w-[85%] md:max-w-[78%] px-4 py-3 rounded-2xl rounded-br-sm text-inverted text-sm leading-relaxed break-words bg-primary">
                   {{ msg.text }}
                 </div>
+                <div v-else class="max-w-[85%] md:max-w-[78%] flex flex-col gap-2">
+                  <UTextarea v-model="editingText" autoresize :maxrows="6" class="w-full" @keydown.enter.exact.prevent="saveEdit(msg)" @keydown.escape="cancelEdit" />
+                  <div class="flex gap-1.5 justify-end">
+                    <UButton size="xs" color="neutral" variant="ghost" label="Cancel" @click="cancelEdit" />
+                    <UButton size="xs" color="primary" label="Save" :disabled="!editingText.trim()" @click="saveEdit(msg)" />
+                  </div>
+                </div>
+                <UButton v-if="editingId !== msg.id" icon="i-lucide-pencil" color="neutral" variant="ghost" size="xs" class="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/user:opacity-100 transition hidden sm:flex" @click="startEdit(msg)" />
               </div>
 
               <div v-else class="flex gap-3.5 mb-3.5">
@@ -121,7 +202,19 @@ async function handleSend(question: string) {
                   </div>
 
                   <template v-if="msg.streaming && !msg.text">
-                    <Indicator label="Thinking…" />
+                    <Indicator :label="`Thinking… ${thinkingElapsed.toFixed(1)}s`" />
+                  </template>
+                  <template v-else-if="msg.streaming && msg.text">
+                    <div class="text-xs text-muted mb-1">Thinking {{ thinkingElapsed.toFixed(1) }}s…</div>
+                    <Suspense>
+                      <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+                    </Suspense>
+                  </template>
+                  <template v-else-if="!msg.streaming && msg.text && thinkingElapsed">
+                    <div class="text-xs text-muted mb-1">Thought for {{ thinkingElapsed.toFixed(1) }}s</div>
+                    <Suspense>
+                      <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+                    </Suspense>
                   </template>
                   <template v-else>
                     <Suspense>
