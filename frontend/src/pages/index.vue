@@ -89,7 +89,7 @@ async function handleSend(question: string) {
             <div class="w-full">
               <!-- center like chat-vue home: greeting + prompt centered, then goes below on chat -->
               <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8 flex flex-col gap-6">
-                <h1 class="text-2xl font-semibold text-default">{{ greeting }}</h1>
+                <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">{{ greeting }}</h1>
                 <div class="[view-transition-name:chat-prompt]">
                   <ChatComposer
                     v-model="chatInput"
