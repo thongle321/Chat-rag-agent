@@ -11,7 +11,7 @@ const chatStore = useChatStore();
 const authStore = useAuthStore();
 const { copy, copied } = useClipboard();
 
-// Template-inspired greeting + quick prompts (keep same UI, add creative RAG prompts)
+// Keep good morning only — like chat-vue (no quick prompts, no extra center text)
 const greeting = computed(() => {
   const h = new Date().getHours();
   let t = "Good evening";
@@ -20,14 +20,6 @@ const greeting = computed(() => {
   const name = authStore.user?.email?.split("@")[0] || "";
   return name ? `${t}, ${name}` : t;
 });
-const quickChats = [
-  { label: "Summarize my documents", icon: "i-lucide-files" },
-  { label: "How many documents are stored?", icon: "i-lucide-database" },
-  { label: "Search for compliance rules", icon: "i-lucide-search" },
-  { label: "Explain the RAG retrieval", icon: "i-lucide-brain" },
-  { label: "List all citations", icon: "i-lucide-book-open" },
-  { label: "What can you do?", icon: "i-lucide-sparkles" },
-];
 
 const chatInput = ref("");
 const chatWindow = ref<HTMLElement>();
@@ -127,19 +119,6 @@ async function handleSend(question: string) {
             <div class="w-full">
               <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8">
                 <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">{{ greeting }}</h1>
-                <div class="flex flex-wrap gap-2 mt-6">
-                  <UButton
-                    v-for="q in quickChats"
-                    :key="q.label"
-                    :icon="q.icon"
-                    :label="q.label"
-                    size="sm"
-                    color="neutral"
-                    variant="outline"
-                    class="rounded-full"
-                    @click="handleSend(q.label)"
-                  />
-                </div>
               </div>
             </div>
           </div>
