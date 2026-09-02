@@ -6,6 +6,7 @@ import { useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
 import Indicator from "../components/chat/Indicator.vue";
 import SourceLink from "../components/chat/SourceLink.vue";
+import { useChatActions } from "../composables/useChatActions";
 
 const chatStore = useChatStore();
 const authStore = useAuthStore();
@@ -26,22 +27,19 @@ const chatWindow = ref<HTMLElement>();
 const sidebarOpen = ref(false);
 const accOpen = reactive<Record<string, string | undefined>>({});
 const activeCite = reactive(new Map<string, number>());
-// ChatTitle at top left like chat-vue
-const editingTitle = ref(false);
+// ChatTitle at top left like chat-vue — same modal as sidebar
+const headerRenameOpen = ref(false);
 const titleDraft = ref("");
 const currentTitle = computed(() => chatStore.activeConversation?.title || chatStore.messages.find((m) => m.role === "user")?.text?.slice(0, 40) || "New chat");
+const { deleteChat: deleteHeaderChat } = useChatActions();
 const headerMenuItems = computed(() => [
-  [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => startTitleEdit() }],
-  [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: () => { if (chatStore.activeId) chatStore.deleteConversation(chatStore.activeId); } }],
+  [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => { titleDraft.value = currentTitle.value; headerRenameOpen.value = true; } }],
+  [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: async () => { if (chatStore.activeId) await deleteHeaderChat(chatStore.activeId); } }],
 ]);
-function startTitleEdit() {
-  titleDraft.value = currentTitle.value;
-  editingTitle.value = true;
-}
-function saveTitle() {
+function saveHeaderTitle() {
   const t = titleDraft.value.trim();
   if (t && chatStore.activeId) chatStore.renameConversation(chatStore.activeId, t);
-  editingTitle.value = false;
+  headerRenameOpen.value = false;
 }
 // AI thought timing like chat-vue
 const thinkingStart = ref<number | null>(null);
@@ -145,14 +143,9 @@ async function handleSend(question: string) {
       <header class="flex items-center justify-between px-3 md:px-7 py-2.5 bg-default/75 min-h-[44px]">
         <div class="flex items-center gap-2 min-w-0">
           <div v-if="chatStore.messages.length" class="min-w-0">
-          <UDropdownMenu v-if="!editingTitle" :items="headerMenuItems" :content="{ align: 'start' }" :ui="{ content: 'min-w-44' }">
+          <UDropdownMenu :items="headerMenuItems" :content="{ align: 'start' }" :ui="{ content: 'min-w-44' }">
             <UButton color="neutral" variant="ghost" :label="currentTitle" trailing-icon="i-lucide-chevron-down" class="group min-w-0 max-w-[280px] data-[state=open]:bg-elevated" :ui="{ trailingIcon: 'text-dimmed group-data-[state=open]:rotate-180 transition-transform duration-200' }" />
           </UDropdownMenu>
-          <div v-else class="flex items-center gap-1.5">
-            <UInput v-model="titleDraft" size="xs" class="w-[240px]" autofocus @keydown.enter="saveTitle" @keydown.escape="editingTitle = false" />
-            <UButton size="xs" color="primary" icon="i-lucide-check" @click="saveTitle" />
-            <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="editingTitle = false" />
-          </div>
         </div>
 
         </div>
@@ -304,6 +297,18 @@ async function handleSend(question: string) {
         </div>
       </div>
     </div>
+    <!-- Same modal as sidebar: Rename/Delete share identical UI -->
+    <UModal v-model:open="headerRenameOpen" title="Rename" description="Enter a new name for this conversation.">
+      <template #body>
+        <form id="header-rename-form" @submit.prevent="saveHeaderTitle">
+          <UInput v-model="titleDraft" placeholder="Enter a new name..." size="sm" class="w-full" />
+        </form>
+      </template>
+      <template #footer="{ close }">
+        <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
+        <UButton type="submit" form="header-rename-form" label="Rename" :disabled="!titleDraft.trim()" />
+      </template>
+    </UModal>
   </UDashboardGroup>
 </template>
 
