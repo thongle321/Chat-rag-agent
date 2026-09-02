@@ -80,24 +80,16 @@ async function handleSend(question: string) {
 
     <!-- Main area like chat-vue: rounded panel -->
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
-      <header class="flex items-center justify-between px-3 md:px-7 py-3.5 border-b border-default bg-elevated">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <UButton
-            v-if="!sidebarOpen"
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            :square="true"
-            :icon="'i-lucide-menu'"
-            @click="sidebarOpen = true"
-          />
-          <div class="flex items-center gap-2 text-muted text-xs min-w-0">
-            <span class="hidden md:inline">Search information from documents</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <!-- email/logout moved to ChatSidebar footer -->
-        </div>
+      <header class="flex items-center px-3 md:px-7 py-3.5 border-b border-default bg-default/75">
+        <UButton
+          v-if="!sidebarOpen"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :square="true"
+          :icon="'i-lucide-menu'"
+          @click="sidebarOpen = true"
+        />
       </header>
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">
