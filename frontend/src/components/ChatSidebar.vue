@@ -20,7 +20,7 @@ const route = useRoute();
 const { groups, fetchChats } = useChats();
 const { renameChat, deleteChat } = useChatActions();
 
-const sidebarOpen = ref(true);
+const sidebarOpen = defineModel<boolean>("open", { default: true });
 const searchOpen = ref(false);
 
 const search = ref("");

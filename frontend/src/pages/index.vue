@@ -75,24 +75,11 @@ async function handleSend(question: string) {
 </script>
 
 <template>
-  <div class="h-screen flex bg-bg text-default overflow-hidden">
-    <!-- Mobile backdrop -->
-    <div
-      v-if="sidebarOpen"
-      class="md:hidden fixed inset-0 bg-black/40 z-40"
-      @click="sidebarOpen = false"
-    />
+  <UDashboardGroup unit="rem" class="h-screen bg-bg text-default overflow-hidden">
+    <ChatSidebar v-model:open="sidebarOpen" :on-navigate="closeSidebarOnMobile" />
 
-    <!-- Sidebar: drawer on mobile, in-flow on desktop -->
-    <div v-if="sidebarOpen" class="fixed md:relative inset-y-0 left-0 z-50 md:z-auto">
-      <ChatSidebar
-        :on-collapse="() => sidebarOpen = false"
-        :on-navigate="closeSidebarOnMobile"
-      />
-    </div>
-
-    <!-- Main area -->
-    <div class="flex-1 flex flex-col min-w-0">
+    <!-- Main area like chat-vue: rounded panel -->
+    <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
       <header class="flex items-center justify-between px-3 md:px-7 py-3.5 border-b border-default bg-elevated">
         <div class="flex items-center gap-2.5 min-w-0">
           <UButton
@@ -238,6 +225,6 @@ async function handleSend(question: string) {
         </div>
       </div>
     </div>
-  </div>
+  </UDashboardGroup>
 </template>
 
