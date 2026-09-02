@@ -15,6 +15,20 @@ api.interceptors.request.use((config) => {
 	return config;
 });
 
+api.interceptors.response.use(
+	(res) => res,
+	(err) => {
+		if (err?.response?.status === 401) {
+			const path = window.location.pathname;
+			if (path !== "/login" && !path.startsWith("/admin/login")) {
+				localStorage.removeItem("auth_token");
+				window.location.href = path.startsWith("/admin") ? "/admin/login" : "/login";
+			}
+		}
+		return Promise.reject(err);
+	},
+);
+
 export function getErrorMessage(err: unknown): string {
 	if (!axios.isAxiosError(err)) {
 		return err instanceof Error ? err.message : "An error occurred";
@@ -63,6 +77,12 @@ export async function streamChat(
 		signal,
 	});
 	if (!(response.ok && response.body)) {
+		if (response.status === 401) {
+			localStorage.removeItem("auth_token");
+			window.location.href = "/login";
+			handlers.onError("Please log in to chat");
+			return;
+		}
 		let detail = `HTTP ${response.status}`;
 		try {
 			const body = await response.json();

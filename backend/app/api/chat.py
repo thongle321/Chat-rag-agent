@@ -13,6 +13,7 @@ from app.models.schemas import ChatRequest, ChatResponse
 from app.models.session import ChatSession
 from app.models.user import User
 from app.services.rag import answer_question, stream_answer
+from app.services.user_manager import current_active_user
 
 router = APIRouter()
 
@@ -120,9 +121,9 @@ async def query_chat(
     request: ChatRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_async_session),
+    user: User = current_active_user,
 ):
-    # Best-effort auth — keeps chat open for anonymous, enriches logs when logged in (like CQA tenant scoping)
-    user_id, user_email = await _optional_user_with_email(http_request, db)
+    user_id, user_email = str(user.id), user.email
     session = await _ensure_session(request, db)
     ip = _client_ip(http_request)
     response = await answer_question(
@@ -133,10 +134,15 @@ async def query_chat(
 
 
 @router.post("/query/stream")
-async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
+async def query_chat_stream(
+    request: ChatRequest,
+    http_request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    user: User = current_active_user,
+):
     session = await _ensure_session(request, db)
     session_id = session.id
-    user_id, user_email = await _optional_user_with_email(http_request, db)
+    user_id, user_email = str(user.id), user.email
     ip = _client_ip(http_request)
 
     async def event_stream() -> AsyncIterator[str]:

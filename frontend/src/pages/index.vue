@@ -3,8 +3,11 @@ import { Comark } from "@comark/vue";
 import { useClipboard } from "@vueuse/core";
 import { nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useChatStore } from "../stores/chat";
+import { useAuthStore } from "../stores/auth";
 
 const chatStore = useChatStore();
+const authStore = useAuthStore();
+const router = useRouter();
 const { copy, copied } = useClipboard();
 
 const chatInput = ref("");
@@ -14,6 +17,14 @@ const accOpen = reactive<Record<string, string | undefined>>({});
 const activeCite = reactive(new Map<string, number>());
 
 onMounted(async () => {
+	// Require login — redirect to /login if not authenticated (backend also enforces 401)
+	if (!authStore.isAuthenticated) {
+		if (authStore.token) await authStore.fetchUser();
+		if (!authStore.isAuthenticated) {
+			router.replace("/login");
+			return;
+		}
+	}
 	await chatStore.fetchSessions();
 	if (
 		typeof window !== "undefined" &&
@@ -48,6 +59,10 @@ function stripInlineCitations(text: string): string {
 }
 
 async function handleSend(question: string) {
+	if (!authStore.isAuthenticated) {
+		router.replace("/login");
+		return;
+	}
 	try {
 		await chatStore.sendMessage(question);
 	} catch {
@@ -215,7 +230,7 @@ async function handleSend(question: string) {
           </div>
           <ChatComposer
             v-model="chatInput"
-            :disabled="chatStore.loading"
+            :disabled="!authStore.isAuthenticated || chatStore.loading"
             :big="!chatStore.messages.length"
             @send="handleSend"
           />
