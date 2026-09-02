@@ -151,7 +151,7 @@ async function handleSend(question: string) {
               <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="editingTitle = false" />
             </div>
           </div>
-          <span v-else class="text-sm text-muted hidden md:inline">VeilAi RAG</span>
+
         </div>
         <div v-if="chatStore.loading && thinkingElapsed" class="text-xs text-muted hidden sm:block">{{ thinkingElapsed.toFixed(1) }}s thinking</div>
       </header>
