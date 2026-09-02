@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { type Conversation, useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
 import { useChats } from "../composables/useChats";
 import { useChatActions } from "../composables/useChatActions";
+import api from "../api/index.ts";
 
 defineProps<{
 	onCollapse?: () => void;
@@ -86,6 +87,22 @@ function getItems(c: Conversation) {
 
 const colorMode = useColorMode();
 
+// Backend feature-aware UI: show doc count if available (admin), else generic
+const docCount = ref<number | null>(null);
+const isBackendReady = ref(false);
+onMounted(async () => {
+  try {
+    // /documents is admin-only; anonymous will 401 — treat as 0 and keep UI clean
+    const { data } = await api.get("/documents");
+    docCount.value = data?.documents?.length ?? 0;
+    isBackendReady.value = true;
+  } catch {
+    // For anonymous/guest, try stats (also admin-only) or just hide
+    docCount.value = null;
+    isBackendReady.value = false;
+  }
+});
+
 const userMenuItems = computed(() => [
 	[{ label: authStore.user?.email ?? "User", type: "label" as const, icon: "i-lucide-user" }],
 	[
@@ -146,8 +163,13 @@ const userMenuItems = computed(() => [
       </UButton>
     </div>
 
-    <div class="px-3.5 pb-3">
+    <div class="px-3.5 pb-3 space-y-2">
       <UInput v-model="search" icon="i-lucide-search" placeholder="Search history..." variant="none" size="sm" class="w-full rounded-sm" />
+      <!-- Backend feature-aware: show RAG status (doc count) if admin, else keep clean -->
+      <div v-if="docCount !== null" class="flex items-center gap-1.5 px-1 text-[11px]" :class="docCount > 0 ? 'text-success' : 'text-warning'">
+        <UIcon :name="docCount > 0 ? 'i-lucide-database' : 'i-lucide-alert-circle'" class="size-3.5" />
+        <span>{{ docCount > 0 ? `${docCount} docs indexed` : 'No docs — upload in admin' }}</span>
+      </div>
     </div>
 
     <div class="flex-1 overflow-y-auto px-2 pb-4">
@@ -155,14 +177,14 @@ const userMenuItems = computed(() => [
         No conversations yet.
       </div>
 
-      <template v-for="[label, items] in groups" :key="label">
+      <template v-for="group in groups" :key="group.id">
         <div class="mb-3.5">
           <div class="text-[10px] font-semibold text-muted uppercase tracking-wider px-2 py-1.5">
-            {{ label }}
+            {{ group.label }}
           </div>
 
           <div
-            v-for="c in items"
+            v-for="c in group.items"
             :key="c.id"
             @click="chatStore.setActive(c.id); onNavigate?.()"
             class="group relative flex items-center gap-2 px-2 py-1.5 rounded-md mb-px cursor-pointer transition"

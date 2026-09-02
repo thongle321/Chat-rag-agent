@@ -6,7 +6,6 @@ import { useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
 import Indicator from "../components/chat/Indicator.vue";
 import SourceLink from "../components/chat/SourceLink.vue";
-import ModelSelect from "../components/ModelSelect.vue";
 
 const chatStore = useChatStore();
 const authStore = useAuthStore();
@@ -126,11 +125,9 @@ async function handleSend(question: string) {
         <template v-if="!chatStore.messages.length">
           <div class="min-h-full flex items-center">
             <div class="w-full">
-              <!-- Keep same UI (ChatEmpty) but add template's greeting + quick prompts like chat-vue home -->
               <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8">
-                <h1 class="text-2xl font-bold text-highlighted mb-2">{{ greeting }}</h1>
-                <p class="text-sm text-muted mb-6">Ask anything about your documents — VeilAi searches and cites sources.</p>
-                <div class="flex flex-wrap gap-2 mb-8">
+                <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">{{ greeting }}</h1>
+                <div class="flex flex-wrap gap-2 mt-6">
                   <UButton
                     v-for="q in quickChats"
                     :key="q.label"
@@ -144,7 +141,6 @@ async function handleSend(question: string) {
                   />
                 </div>
               </div>
-              <ChatEmpty />
             </div>
           </div>
         </template>
@@ -252,10 +248,6 @@ async function handleSend(question: string) {
             :big="!chatStore.messages.length"
             @send="handleSend"
           />
-          <div class="flex justify-between items-center mt-2 text-xs text-muted">
-            <span class="hidden sm:inline">Press Enter to send · Shift+Enter for new line</span>
-            <ModelSelect class="ml-auto" />
-          </div>
         </div>
       </div>
     </div>
