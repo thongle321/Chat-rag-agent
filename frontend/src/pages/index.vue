@@ -30,6 +30,10 @@ const activeCite = reactive(new Map<string, number>());
 const editingTitle = ref(false);
 const titleDraft = ref("");
 const currentTitle = computed(() => chatStore.activeConversation?.title || chatStore.messages.find((m) => m.role === "user")?.text?.slice(0, 40) || "New chat");
+const headerMenuItems = computed(() => [
+  [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => startTitleEdit() }],
+  [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: () => { if (chatStore.activeId) chatStore.deleteConversation(chatStore.activeId); } }],
+]);
 function startTitleEdit() {
   titleDraft.value = currentTitle.value;
   editingTitle.value = true;
@@ -140,17 +144,16 @@ async function handleSend(question: string) {
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
       <header class="flex items-center justify-between px-3 md:px-7 py-2.5 bg-default/75 min-h-[44px]">
         <div class="flex items-center gap-2 min-w-0">
-          <div v-if="chatStore.messages.length" class="flex items-center gap-2 min-w-0">
-            <div v-if="!editingTitle" class="flex items-center gap-1.5 group cursor-pointer min-w-0" @click="startTitleEdit">
-              <span class="text-sm font-medium text-default truncate max-w-[280px]">{{ currentTitle }}</span>
-              <UIcon name="i-lucide-pencil" class="size-3 text-muted opacity-0 group-hover:opacity-100 transition" />
-            </div>
-            <div v-else class="flex items-center gap-1.5">
-              <UInput v-model="titleDraft" size="xs" class="w-[240px]" autofocus @keydown.enter="saveTitle" @keydown.escape="editingTitle = false" />
-              <UButton size="xs" color="primary" icon="i-lucide-check" @click="saveTitle" />
-              <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="editingTitle = false" />
-            </div>
+          <div v-if="chatStore.messages.length" class="min-w-0">
+          <UDropdownMenu v-if="!editingTitle" :items="headerMenuItems" :content="{ align: 'start' }" :ui="{ content: 'min-w-44' }">
+            <UButton color="neutral" variant="ghost" :label="currentTitle" trailing-icon="i-lucide-chevron-down" class="group min-w-0 max-w-[280px] data-[state=open]:bg-elevated" :ui="{ trailingIcon: 'text-dimmed group-data-[state=open]:rotate-180 transition-transform duration-200' }" />
+          </UDropdownMenu>
+          <div v-else class="flex items-center gap-1.5">
+            <UInput v-model="titleDraft" size="xs" class="w-[240px]" autofocus @keydown.enter="saveTitle" @keydown.escape="editingTitle = false" />
+            <UButton size="xs" color="primary" icon="i-lucide-check" @click="saveTitle" />
+            <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click="editingTitle = false" />
           </div>
+        </div>
 
         </div>
         <div v-if="chatStore.loading && thinkingElapsed" class="text-xs text-muted hidden sm:block">{{ thinkingElapsed.toFixed(1) }}s thinking</div>
