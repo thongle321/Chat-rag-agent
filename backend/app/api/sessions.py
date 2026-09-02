@@ -9,13 +9,13 @@ from app.models.session import ChatSession
 from app.models.user import User
 from app.services.chat_logging import log_activity
 from app.services.rag import get_messages
-from app.services.user_manager import current_active_user, current_user_user
+from app.services.user_manager import current_active_user
 
 router = APIRouter()
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetail)
-async def get_session(session_id: str, db: AsyncSession = Depends(get_async_session), user: User = current_user_user):
+async def get_session(session_id: str, db: AsyncSession = Depends(get_async_session)):
     result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
     s = result.scalar_one_or_none()
     if not s:
@@ -39,7 +39,7 @@ async def delete_session(
     session_id: str,
     request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = current_user_user,
+    user: User = current_active_user,
 ):
     await db.execute(delete(ChatSession).where(ChatSession.id == session_id))
     await db.commit()
