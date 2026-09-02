@@ -5,9 +5,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import Depends
+
 from app.db.session import get_async_session
 from app.db.vector_store import get_vector_store
 from app.models.schemas import StatsResponse
+from app.models.user import User
+from app.services.user_manager import current_admin_user
 from app.models.session import ChatSession
 from app.services.rag import get_messages
 
@@ -17,7 +21,7 @@ router = APIRouter()
 
 
 @router.get("")
-async def get_stats(db: AsyncSession = Depends(get_async_session)):
+async def get_stats(db: AsyncSession = Depends(get_async_session), user: User = current_admin_user):
     """Aggregate stats for the dashboard."""
     # Documents + chunks
     docs = await asyncio.to_thread(get_vector_store().list_documents)

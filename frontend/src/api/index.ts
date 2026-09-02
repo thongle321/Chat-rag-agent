@@ -18,11 +18,22 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
 	(res) => res,
 	(err) => {
-		if (err?.response?.status === 401) {
+		const status = err?.response?.status;
+		const detail: string = err?.response?.data?.detail || "";
+		if (status === 401) {
 			const path = window.location.pathname;
 			if (path !== "/login" && !path.startsWith("/admin/login")) {
 				localStorage.removeItem("auth_token");
 				window.location.href = path.startsWith("/admin") ? "/admin/login" : "/login";
+			}
+		} else if (status === 403) {
+			// Strict role separation: admin→user or user→admin via direct API/URL
+			if (detail.includes("Admin cannot access user chat")) {
+				// Admin tried to use user chat — send to admin dashboard, keep token (still admin)
+				if (!window.location.pathname.startsWith("/admin")) window.location.href = "/admin/";
+			} else if (detail.includes("Admin only")) {
+				// User tried to hit admin API — send to user login
+				if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
 			}
 		}
 		return Promise.reject(err);
@@ -81,6 +92,16 @@ export async function streamChat(
 			localStorage.removeItem("auth_token");
 			window.location.href = "/login";
 			handlers.onError("Please log in to chat");
+			return;
+		}
+		if (response.status === 403) {
+			let detail403 = "Forbidden";
+			try {
+				const b = await response.clone().json();
+				if (b?.detail) detail403 = typeof b.detail === "string" ? b.detail : detail403;
+			} catch {}
+			if (detail403.includes("Admin cannot access")) window.location.href = "/admin/";
+			handlers.onError(detail403);
 			return;
 		}
 		let detail = `HTTP ${response.status}`;

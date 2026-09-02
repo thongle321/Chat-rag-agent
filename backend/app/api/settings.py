@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.db.session import get_async_session
 from app.models.user import User
 from app.services.ai_settings import save_ai_settings
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_admin_user
 
 
 class AISettingsResponse(BaseModel):
@@ -65,7 +65,7 @@ router = APIRouter()
 
 
 @router.get("/ai", response_model=AISettingsResponse)
-async def get_ai_settings(user: User = current_active_user):
+async def get_ai_settings(user: User = current_admin_user):
     zalo_key = _get_secret_value(getattr(settings, "zalo_api_key", SecretStr("")))
     zalo_verify = _get_secret_value(getattr(settings, "zalo_verify_token", SecretStr("")))
     zalo_webhook = getattr(settings, "zalo_webhook_url", "")
@@ -89,7 +89,7 @@ def _get_secret_value(v):
 @router.put("/ai", response_model=AISettingsResponse)
 async def update_ai_settings(
     body: AISettingsUpdate,
-    user: User = current_active_user,
+    user: User = current_admin_user,
     session: AsyncSession = Depends(get_async_session),
 ):
     if body.ai_provider is not None:
@@ -169,7 +169,7 @@ async def update_ai_settings(
 
 
 @router.post("/test", response_model=TestConnectionResponse)
-async def test_connection(body: TestConnectionRequest, user: User = current_active_user):
+async def test_connection(body: TestConnectionRequest, user: User = current_admin_user):
     provider = (body.provider or settings.ai_provider).lower()
     ollama_base_url = body.ollama_base_url or settings.ollama_base_url or "http://localhost:11434"
     ollama_key = body.ollama_api_key or _get_secret_value(settings.ollama_api_key)
@@ -216,7 +216,7 @@ async def test_connection(body: TestConnectionRequest, user: User = current_acti
 
 
 @router.post("/models", response_model=ListModelsResponse)
-async def list_models(body: ListModelsRequest | None = None, user: User = current_active_user):
+async def list_models(body: ListModelsRequest | None = None, user: User = current_admin_user):
     provider = (body.provider if body else None) or settings.ai_provider
     ollama_base_url = (body.ollama_base_url if body else None) or settings.ollama_base_url or "http://localhost:11434"
     ollama_key = (body.ollama_api_key if body else None) or _get_secret_value(settings.ollama_api_key)

@@ -13,7 +13,7 @@ from app.db.conversation_store import add_sync_log, list_sync_logs
 from app.db.session import get_async_session
 from app.models.user import User
 from app.services.rag import answer_question
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_active_user, current_admin_user
 from app.services.zalo_channels import (
     create_channel,
     delete_channel,
@@ -166,7 +166,7 @@ router = APIRouter()
 
 
 @router.get("/channels", response_model=list[ZaloChannelResponse])
-async def list_zalo_channels(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def list_zalo_channels(user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     channels = await list_channels(db)
     for c in channels:
         # plan A backfill: ensure bot_username is account_name
@@ -190,7 +190,7 @@ async def list_zalo_channels(user: User = current_active_user, db: AsyncSession 
 
 
 @router.post("/channels", response_model=ZaloChannelResponse)
-async def create_zalo_channel(req: ZaloChannelRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def create_zalo_channel(req: ZaloChannelRequest, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     if len(req.verify_token) < 8 or len(req.verify_token) > 256:
         raise HTTPException(status_code=400, detail="verify_token must be 8..256 chars")
     # Webhook URL is now global in Settings → Integration (auto-managed), fallback if not provided
@@ -222,7 +222,7 @@ async def create_zalo_channel(req: ZaloChannelRequest, user: User = current_acti
 
 
 @router.get("/channels/{identifier}", response_model=ZaloChannelResponse)
-async def get_zalo_channel(identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def get_zalo_channel(identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -230,7 +230,7 @@ async def get_zalo_channel(identifier: str, user: User = current_active_user, db
 
 
 @router.put("/channels/{identifier}", response_model=ZaloChannelResponse)
-async def update_zalo_channel(identifier: str, req: ZaloChannelUpdateRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def update_zalo_channel(identifier: str, req: ZaloChannelUpdateRequest, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -261,7 +261,7 @@ async def update_zalo_channel(identifier: str, req: ZaloChannelUpdateRequest, us
 
 
 @router.delete("/channels/{identifier}")
-async def delete_zalo_channel(identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def delete_zalo_channel(identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -278,7 +278,7 @@ async def delete_zalo_channel(identifier: str, user: User = current_active_user,
 
 
 @router.get("/channels/{identifier}/health")
-async def zalo_health(identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def zalo_health(identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -286,7 +286,7 @@ async def zalo_health(identifier: str, user: User = current_active_user, db: Asy
 
 
 @router.get("/channels/{identifier}/conversations")
-async def list_zalo_conversations(identifier: str, limit: int | None = None, offset: int = 0, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def list_zalo_conversations(identifier: str, limit: int | None = None, offset: int = 0, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -309,7 +309,7 @@ async def list_zalo_conversations(identifier: str, limit: int | None = None, off
 
 
 @router.get("/channels/{identifier}/sync-history")
-async def zalo_sync_history(identifier: str, limit: int = 10, offset: int = 0, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def zalo_sync_history(identifier: str, limit: int = 10, offset: int = 0, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -320,7 +320,7 @@ async def zalo_sync_history(identifier: str, limit: int = 10, offset: int = 0, u
 
 
 @router.get("/webhook/info")
-async def webhook_info(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def webhook_info(user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     channels = await list_channels(db)
     first = channels[0] if channels else None
     return {"webhook_url": "/api/zalo/webhook", "verify_token": first.get("verify_token", "") if first else "", "has_config": bool(first)}

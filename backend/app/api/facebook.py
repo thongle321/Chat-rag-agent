@@ -28,7 +28,7 @@ from app.services.facebook_channels import (
     update_last_sync_status,
 )
 from app.services.rag import answer_question, get_messages
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_active_user, current_admin_user
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 logger = logging.getLogger(__name__)
@@ -268,7 +268,7 @@ router = APIRouter()
 
 
 @router.get("/channels", response_model=list[FacebookChannelResponse])
-async def list_facebook_channels(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def list_facebook_channels(user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     channels = await list_channels(db)
     try:
         for c in channels:
@@ -283,7 +283,7 @@ async def list_facebook_channels(user: User = current_active_user, db: AsyncSess
 
 @router.post("/channels", response_model=FacebookChannelResponse)
 async def create_facebook_channel(
-    req: FacebookChannelRequest, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
+    req: FacebookChannelRequest, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)
 ):
     if req.sync_interval is not None and req.sync_interval not in VALID_INTERVALS:
         raise HTTPException(status_code=400, detail="Invalid sync_interval")
@@ -305,7 +305,7 @@ async def create_facebook_channel(
 
 @router.get("/channels/{identifier}", response_model=FacebookChannelResponse)
 async def get_facebook_channel(
-    identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
+    identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)
 ):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
@@ -321,7 +321,7 @@ async def get_facebook_channel(
 async def update_facebook_channel(
     identifier: str,
     req: FacebookChannelUpdateRequest,
-    user: User = current_active_user,
+    user: User = current_admin_user,
     db: AsyncSession = Depends(get_async_session),
 ):
     if req.sync_interval is not None and req.sync_interval not in VALID_INTERVALS:
@@ -350,7 +350,7 @@ async def update_facebook_channel(
 
 @router.delete("/channels/{identifier}")
 async def delete_facebook_channel(
-    identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
+    identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)
 ):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
@@ -368,7 +368,7 @@ async def delete_facebook_channel(
 
 @router.get("/channels/{identifier}/health")
 async def channel_health(
-    identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
+    identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)
 ):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
@@ -380,7 +380,7 @@ async def channel_health(
 
 @router.post("/channels/{identifier}/sync")
 async def channel_sync(
-    identifier: str, user: User = current_active_user, db: AsyncSession = Depends(get_async_session)
+    identifier: str, user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)
 ):
     ch = await get_channel_by_identifier(db, identifier)
     if not ch:
@@ -412,7 +412,7 @@ async def list_channel_conversations(
     identifier: str,
     limit: int | None = None,
     offset: int = 0,
-    user: User = current_active_user,
+    user: User = current_admin_user,
     db: AsyncSession = Depends(get_async_session),
 ):
     ch = await get_channel_by_identifier(db, identifier)
@@ -446,7 +446,7 @@ async def channel_sync_history(
     identifier: str,
     limit: int = 10,
     offset: int = 0,
-    user: User = current_active_user,
+    user: User = current_admin_user,
     db: AsyncSession = Depends(get_async_session),
 ):
     ch = await get_channel_by_identifier(db, identifier)
@@ -464,7 +464,7 @@ async def channel_sync_history(
 
 
 @router.get("/webhook/info")
-async def webhook_info(user: User = current_active_user, db: AsyncSession = Depends(get_async_session)):
+async def webhook_info(user: User = current_admin_user, db: AsyncSession = Depends(get_async_session)):
     channels = await list_channels(db)
     first = channels[0] if channels else None
     return {

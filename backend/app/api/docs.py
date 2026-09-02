@@ -10,7 +10,7 @@ from app.models.user import User
 from app.services.chat_logging import log_activity
 from app.services.document_ingest import index_file, save_and_queue_indexing
 from app.services.document_status import get_document_statuses, normalize_status
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ async def upload_files(
     request: Request,
     files: list[UploadFile] = File(...),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    user: User = current_active_user,
+    user: User = current_admin_user,
 ):
     """Upload one or more document files. Files are saved and indexed in background."""
     ip = (
@@ -74,13 +74,13 @@ async def upload_files(
 
 
 @router.get("", response_model=DocumentListResponse)
-async def list_all_documents(user: User = current_active_user):
+async def list_all_documents(user: User = current_admin_user):
     docs = await asyncio.to_thread(get_vector_store().list_documents)
     return DocumentListResponse(documents=[DocumentInfo.model_validate(d) for d in docs])
 
 
 @router.delete("/{title}")
-async def delete_document_by_title(request: Request, title: str, user: User = current_active_user):
+async def delete_document_by_title(request: Request, title: str, user: User = current_admin_user):
     deleted = await asyncio.to_thread(get_vector_store().delete_document_and_file, title)
     ip = (
         request.headers.get("x-forwarded-for", "").split(",")[0].strip()[:45]
@@ -116,7 +116,7 @@ async def _build_status_results(titles: list[str]) -> dict:
 
 
 @router.get("/upload/status")
-async def poll_upload_status(titles: str = Query(...), user: User = current_active_user):
+async def poll_upload_status(titles: str = Query(...), user: User = current_admin_user):
     """Return indexing status; the frontend polls this every few seconds."""
     title_list = [t.strip() for t in titles.split(",") if t.strip()]
     if not title_list:

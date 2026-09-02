@@ -13,7 +13,7 @@ from app.models.schemas import ChatRequest, ChatResponse
 from app.models.session import ChatSession
 from app.models.user import User
 from app.services.rag import answer_question, stream_answer
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_user_user
 
 router = APIRouter()
 
@@ -121,7 +121,7 @@ async def query_chat(
     request: ChatRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = current_active_user,
+    user: User = current_user_user,
 ):
     user_id, user_email = str(user.id), user.email
     session = await _ensure_session(request, db)
@@ -138,7 +138,7 @@ async def query_chat_stream(
     request: ChatRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_async_session),
-    user: User = current_active_user,
+    user: User = current_user_user,
 ):
     session = await _ensure_session(request, db)
     session_id = session.id
