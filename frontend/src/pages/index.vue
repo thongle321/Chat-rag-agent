@@ -117,8 +117,17 @@ async function handleSend(question: string) {
         <template v-if="!chatStore.messages.length">
           <div class="min-h-full flex items-center">
             <div class="w-full">
-              <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8">
+              <!-- center like chat-vue home: greeting + prompt centered, then goes below on chat -->
+              <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8 flex flex-col gap-6">
                 <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">{{ greeting }}</h1>
+                <div class="[view-transition-name:chat-prompt]">
+                  <ChatComposer
+                    v-model="chatInput"
+                    :disabled="chatStore.loading"
+                    :big="true"
+                    @send="handleSend"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -202,11 +211,10 @@ async function handleSend(question: string) {
       </div>
 
       <div
-        class="px-3 md:px-7 pb-5 pt-3"
+        v-if="chatStore.messages.length"
+        class="px-3 md:px-7 pb-5 pt-3 sticky bottom-0 z-10 [view-transition-name:chat-prompt]"
         :style="{
           background: 'linear-gradient(180deg, transparent 0%, var(--color-bg) 30%)',
-          marginTop: '-40px',
-          position: 'relative'
         }"
       >
         <div class="max-w-[820px] mx-auto">
@@ -224,7 +232,7 @@ async function handleSend(question: string) {
           <ChatComposer
             v-model="chatInput"
             :disabled="chatStore.loading"
-            :big="!chatStore.messages.length"
+            :big="false"
             @send="handleSend"
           />
         </div>
