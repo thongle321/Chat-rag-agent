@@ -15,8 +15,9 @@ from app.core.config import settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory, create_db_and_tables, engine
 from app.models.user import User
-# Import so Base.metadata includes new log tables for create_db_and_tables()
+# Import so Base.metadata includes all tables for create_db_and_tables()
 import app.models.chat_logging  # noqa: F401
+import app.models.unified  # noqa: F401 — single-file: channels, conversations, messages, documents, app_settings, sync_logs, ai_usage_logs
 from app.services.ai_settings import get_ai_settings
 from app.services.rag import close
 

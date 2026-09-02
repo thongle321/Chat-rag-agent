@@ -35,6 +35,30 @@ def _decrypt(ciphertext: str) -> str:
 
 
 async def get_ai_settings(session: AsyncSession) -> dict | None:
+    # 1) Prefer unified KV app_settings (single-tenant, no tenant_id) if any rows exist
+    try:
+        from sqlalchemy import text as _text
+
+        res = await session.execute(_text("SELECT setting_key, value_plain, value_encrypted FROM app_settings"))
+        rows = res.fetchall()
+        if rows:
+            kv: dict[str, str] = {}
+            for k, plain, enc in rows:
+                if k in _API_KEY_FIELDS and enc is not None:
+                    # enc is bytes (LargeBinary) or str
+                    enc_s = enc.decode() if isinstance(enc, (bytes, bytearray)) else enc
+                    kv[k] = _decrypt(enc_s)
+                else:
+                    kv[k] = plain or ""
+            # ensure defaults for missing keys
+            for k in ["ai_provider", "ollama_base_url", "ollama_model", "openai_model", "zalo_webhook_url"]:
+                kv.setdefault(k, "")
+            for k in list(_API_KEY_FIELDS):
+                kv.setdefault(k, "")
+            return kv
+    except Exception:
+        pass
+    # 2) Fallback: legacy single-row ai_settings
     result = await session.execute(select(AISettingsModel).where(AISettingsModel.id == 1))
     row = result.scalar_one_or_none()
     if not row:
@@ -60,6 +84,7 @@ async def save_ai_settings(session: AsyncSession, data: dict) -> dict:
     for field in _API_KEY_FIELDS & encrypted.keys():
         encrypted[field] = _encrypt(encrypted[field])
 
+    # Dual-write: legacy single-row ai_settings (for rollback) + unified KV app_settings (preferred)
     result = await session.execute(select(AISettingsModel).where(AISettingsModel.id == 1))
     row = result.scalar_one_or_none()
     if row:
@@ -68,9 +93,36 @@ async def save_ai_settings(session: AsyncSession, data: dict) -> dict:
                 setattr(row, key, value)
     else:
         session.add(AISettingsModel(id=1, **encrypted))
+    # Unified KV: one row per key, no tenant_id
+    try:
+        from sqlalchemy import text as _text
+        import uuid as _uuid
+
+        for k, v in data.items():
+            if k in _API_KEY_FIELDS:
+                enc = _encrypt(v) if v else ""
+                # upsert by setting_key
+                exists = await session.execute(_text("SELECT id FROM app_settings WHERE setting_key=:k"), {"k": k})
+                rid = exists.fetchone()
+                if rid:
+                    await session.execute(_text("UPDATE app_settings SET value_encrypted=:v, value_plain=NULL, updated_at=CURRENT_TIMESTAMP WHERE setting_key=:k"), {"v": enc.encode(), "k": k})
+                else:
+                    await session.execute(_text("INSERT INTO app_settings (id, setting_key, value_encrypted) VALUES (:id,:k,:v)"), {"id": _uuid.uuid4().hex[:36], "k": k, "v": enc.encode()})
+            else:
+                exists = await session.execute(_text("SELECT id FROM app_settings WHERE setting_key=:k"), {"k": k})
+                rid = exists.fetchone()
+                if rid:
+                    await session.execute(_text("UPDATE app_settings SET value_plain=:v, value_encrypted=NULL, updated_at=CURRENT_TIMESTAMP WHERE setting_key=:k"), {"v": str(v) if v is not None else "", "k": k})
+                else:
+                    await session.execute(_text("INSERT INTO app_settings (id, setting_key, value_plain) VALUES (:id,:k,:v)"), {"id": _uuid.uuid4().hex[:36], "k": k, "v": str(v) if v is not None else ""})
+    except Exception:
+        import logging as _lg
+
+        _lg.getLogger(__name__).debug("app_settings KV write skipped", exc_info=True)
     await session.commit()
     new_row = row or (await session.execute(select(AISettingsModel).where(AISettingsModel.id == 1))).scalar_one()
     logger.info("AI settings saved")
+    # Return decrypted legacy row (source of truth for response, KV is in sync)
     return {
         "ai_provider": new_row.ai_provider,
         "ollama_base_url": new_row.ollama_base_url,

@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from zalo_bot import Bot
 from zalo_bot.error import InvalidToken, ZaloError
 
+from app.core.config import settings
 from app.db.conversation_store import add_sync_log, list_sync_logs
 from app.db.session import get_async_session
 from app.models.user import User
