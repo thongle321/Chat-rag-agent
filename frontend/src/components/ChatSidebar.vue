@@ -8,7 +8,7 @@ import { useChats } from "../composables/useChats";
 import { useChatActions } from "../composables/useChatActions";
 import api from "../api/index.ts";
 
-defineProps<{
+const props = defineProps<{
   onCollapse?: () => void;
   onNavigate?: () => void;
 }>();
@@ -151,12 +151,13 @@ const chatItems = computed(() =>
     ...group.items.map((item: any) => ({
       id: item.id,
       label: item.title ?? item.label,
-      to: "#",
+      to: undefined,
       slot: "chat" as const,
       icon: undefined,
       class: (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
       onSelect: () => {
         chatStore.setActive(item.id);
+        props.onNavigate?.();
       },
     })),
   ]),
@@ -185,7 +186,7 @@ defineShortcuts({
         </div>
         <span class="text-lg font-bold text-highlighted ml-1">VeilAi Rag</span>
       </ULink>
-      <UDashboardSidebarCollapse class="ms-auto" @click="onCollapse?.()" />
+      <UDashboardSidebarCollapse class="ms-auto" />
     </template>
 
     <template #default="{ collapsed }">
