@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { type Conversation, groupByDate, useChatStore } from "../stores/chat";
+import { type Conversation, useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
+import { useChats } from "../composables/useChats";
+import { useChatActions } from "../composables/useChatActions";
 
 defineProps<{
 	onCollapse?: () => void;
@@ -11,8 +13,11 @@ defineProps<{
 const chatStore = useChatStore();
 const authStore = useAuthStore();
 const router = useRouter();
+const { groups: allGroups } = useChats();
+const { renameChat, deleteChat } = useChatActions();
 async function handleLogout() { await authStore.logout(); router.push("/login"); }
 const search = ref("");
+// Keep same UI but use template's grouping approach via useChats (filtered like template's search)
 const filtered = computed(() => {
 	const s = search.value.trim().toLowerCase();
 	if (!s) return chatStore.conversations;
@@ -20,15 +25,22 @@ const filtered = computed(() => {
 		c.title.toLowerCase().includes(s),
 	);
 });
-
-const groups = computed(() => groupByDate(filtered.value));
+// Reuse template's date bucketing for filtered list (same visual: Today/Yesterday/Last week...)
+const groups = computed(() => {
+	// If searching, show flat filtered groups; otherwise use template's allGroups
+	if (search.value.trim()) {
+		// simple flat group when searching
+		return filtered.value.length ? [{ id: "search", label: `Results (${filtered.value.length})`, items: filtered.value }] as typeof allGroups.value : [];
+	}
+	return allGroups.value;
+});
 
 function handleNew() {
 	chatStore.newConversation();
 }
 
 function handleDelete(id: string) {
-	chatStore.deleteConversation(id);
+	deleteChat(id);
 }
 
 const renameModalOpen = ref(false);
@@ -44,7 +56,7 @@ function handleRename(id: string) {
 
 function confirmRename() {
 	if (renameId.value && renameTitle.value.trim()) {
-		chatStore.renameConversation(renameId.value, renameTitle.value.trim());
+		renameChat(renameId.value, chatStore.conversations.find((c) => c.id === renameId.value)?.title ?? null, renameTitle.value.trim());
 	}
 	renameModalOpen.value = false;
 }

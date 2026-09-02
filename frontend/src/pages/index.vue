@@ -1,11 +1,34 @@
 <script setup lang="ts">
 import { Comark } from "@comark/vue";
 import { useClipboard } from "@vueuse/core";
-import { nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useChatStore } from "../stores/chat";
+import { useAuthStore } from "../stores/auth";
+import Indicator from "../components/chat/Indicator.vue";
+import SourceLink from "../components/chat/SourceLink.vue";
+import ModelSelect from "../components/ModelSelect.vue";
 
 const chatStore = useChatStore();
+const authStore = useAuthStore();
 const { copy, copied } = useClipboard();
+
+// Template-inspired greeting + quick prompts (keep same UI, add creative RAG prompts)
+const greeting = computed(() => {
+  const h = new Date().getHours();
+  let t = "Good evening";
+  if (h < 12) t = "Good morning";
+  else if (h < 18) t = "Good afternoon";
+  const name = authStore.user?.email?.split("@")[0] || "";
+  return name ? `${t}, ${name}` : t;
+});
+const quickChats = [
+  { label: "Summarize my documents", icon: "i-lucide-files" },
+  { label: "How many documents are stored?", icon: "i-lucide-database" },
+  { label: "Search for compliance rules", icon: "i-lucide-search" },
+  { label: "Explain the RAG retrieval", icon: "i-lucide-brain" },
+  { label: "List all citations", icon: "i-lucide-book-open" },
+  { label: "What can you do?", icon: "i-lucide-sparkles" },
+];
 
 const chatInput = ref("");
 const chatWindow = ref<HTMLElement>();
@@ -103,6 +126,24 @@ async function handleSend(question: string) {
         <template v-if="!chatStore.messages.length">
           <div class="min-h-full flex items-center">
             <div class="w-full">
+              <!-- Keep same UI (ChatEmpty) but add template's greeting + quick prompts like chat-vue home -->
+              <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8">
+                <h1 class="text-2xl font-bold text-highlighted mb-2">{{ greeting }}</h1>
+                <p class="text-sm text-muted mb-6">Ask anything about your documents — VeilAi searches and cites sources.</p>
+                <div class="flex flex-wrap gap-2 mb-8">
+                  <UButton
+                    v-for="q in quickChats"
+                    :key="q.label"
+                    :icon="q.icon"
+                    :label="q.label"
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    class="rounded-full"
+                    @click="handleSend(q.label)"
+                  />
+                </div>
+              </div>
               <ChatEmpty />
             </div>
           </div>
@@ -126,11 +167,7 @@ async function handleSend(question: string) {
                   </div>
 
                   <template v-if="msg.streaming && !msg.text">
-                    <div class="flex flex-col gap-2 py-1">
-                      <USkeleton class="h-2.5 rounded" style="width: 92%" />
-                      <USkeleton class="h-2.5 rounded" style="width: 78%" />
-                      <USkeleton class="h-2.5 rounded" style="width: 60%" />
-                    </div>
+                    <Indicator label="Thinking…" />
                   </template>
                   <template v-else>
                     <Suspense>
@@ -146,20 +183,16 @@ async function handleSend(question: string) {
                     >
                       <template #body>
                         <div class="grid md:grid-cols-2 gap-2">
-                          <div
+                          <SourceLink
                             v-for="s in msg.sources"
                             :id="`citation-${msg.id}-${s.n}`"
                             :key="s.n"
-                            class="flex gap-2.5 p-2 rounded-lg border cursor-pointer transition"
-                            :class="(activeCite.get(msg.id) ?? null) === s.n ? 'border-primary bg-primary/10' : 'border-default hover:bg-elevated'"
+                            :n="s.n"
+                            :title="s.title"
+                            :reference="s.reference"
+                            :active="(activeCite.get(msg.id) ?? null) === s.n"
                             @click="activeCite.set(msg.id, s.n)"
-                          >
-                            <div class="w-7 h-7 shrink-0 grid place-items-center rounded-md bg-elevated text-xs font-bold tabular-nums">{{ s.n }}</div>
-                            <div class="min-w-0">
-                              <div class="font-semibold text-default truncate">{{ s.title }}</div>
-                              <div v-if="s.reference" class="text-muted mt-0.5 truncate">{{ s.reference }}</div>
-                            </div>
-                          </div>
+                          />
                         </div>
                       </template>
                     </UAccordion>
@@ -219,6 +252,10 @@ async function handleSend(question: string) {
             :big="!chatStore.messages.length"
             @send="handleSend"
           />
+          <div class="flex justify-between items-center mt-2 text-xs text-muted">
+            <span class="hidden sm:inline">Press Enter to send · Shift+Enter for new line</span>
+            <ModelSelect class="ml-auto" />
+          </div>
         </div>
       </div>
     </div>
