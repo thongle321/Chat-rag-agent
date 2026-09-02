@@ -1,47 +1,66 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { type Conversation, useChatStore } from "../stores/chat";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import type { DropdownMenuItem } from "@nuxt/ui";
+import { useChatStore, type Conversation } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
 import { useChats } from "../composables/useChats";
 import { useChatActions } from "../composables/useChatActions";
 import api from "../api/index.ts";
 
 defineProps<{
-	onCollapse?: () => void;
-	onNavigate?: () => void;
+  onCollapse?: () => void;
+  onNavigate?: () => void;
 }>();
 
 const chatStore = useChatStore();
 const authStore = useAuthStore();
 const router = useRouter();
-const { groups: allGroups } = useChats();
+const route = useRoute();
+const { groups, fetchChats } = useChats();
 const { renameChat, deleteChat } = useChatActions();
-async function handleLogout() { await authStore.logout(); router.push("/login"); }
+
+const sidebarOpen = ref(true);
+const searchOpen = ref(false);
+
 const search = ref("");
-// Keep same UI but use template's grouping approach via useChats (filtered like template's search)
-const filtered = computed(() => {
-	const s = search.value.trim().toLowerCase();
-	if (!s) return chatStore.conversations;
-	return chatStore.conversations.filter((c) =>
-		c.title.toLowerCase().includes(s),
-	);
+// Keep filtered search for UDashboardSearch (template uses UDashboardSearch with groups)
+const filteredGroups = computed(() => {
+  const s = search.value.trim().toLowerCase();
+  if (!s) return groups.value;
+  const filtered = chatStore.conversations.filter((c) => c.title.toLowerCase().includes(s)).map((c) => ({
+    id: c.id,
+    label: c.title,
+    to: "#",
+    icon: "i-lucide-message-circle",
+    createdAt: String(c.createdAt),
+  }));
+  return filtered.length ? [{ id: "search", label: `Results (${filtered.length})`, items: filtered as any }] : [];
 });
-// Reuse template's date bucketing for filtered list (same visual: Today/Yesterday/Last week...)
-const groups = computed(() => {
-	// If searching, show flat filtered groups; otherwise use template's allGroups
-	if (search.value.trim()) {
-		// simple flat group when searching
-		return filtered.value.length ? [{ id: "search", label: `Results (${filtered.value.length})`, items: filtered.value }] as typeof allGroups.value : [];
-	}
-	return allGroups.value;
+
+// Backend feature-aware: doc count
+const docCount = ref<number | null>(null);
+onMounted(async () => {
+  try {
+    const { data } = await api.get("/documents");
+    docCount.value = data?.documents?.length ?? 0;
+  } catch {
+    docCount.value = null;
+  }
+});
+
+watch(() => chatStore.conversations.length, () => {
+  // keep groups in sync if needed
 });
 
 function handleNew() {
-	chatStore.newConversation();
+  chatStore.newConversation();
+  // template does router.push('/') for new chat — we stay on /
 }
 
 function handleDelete(id: string) {
-	deleteChat(id);
+  deleteChat(id);
+  if ((route.params as any)?.id === id) router.push("/");
 }
 
 const renameModalOpen = ref(false);
@@ -49,207 +68,206 @@ const renameId = ref<string | null>(null);
 const renameTitle = ref("");
 
 function handleRename(id: string) {
-	const conv = chatStore.conversations.find((c) => c.id === id);
-	renameId.value = id;
-	renameTitle.value = conv?.title ?? "";
-	renameModalOpen.value = true;
+  const conv = chatStore.conversations.find((c) => c.id === id);
+  renameId.value = id;
+  renameTitle.value = conv?.title ?? "";
+  renameModalOpen.value = true;
 }
-
 function confirmRename() {
-	if (renameId.value && renameTitle.value.trim()) {
-		renameChat(renameId.value, chatStore.conversations.find((c) => c.id === renameId.value)?.title ?? null, renameTitle.value.trim());
-	}
-	renameModalOpen.value = false;
-}
-
-function getItems(c: Conversation) {
-	return [
-		[
-			{
-				label: c.pinned ? "Unpin" : "Pin",
-				icon: c.pinned ? "i-lucide-pin-off" : "i-lucide-pin",
-				onSelect: () => chatStore.togglePin(c.id),
-			},
-			{
-				label: "Rename",
-				icon: "i-lucide-pencil",
-				onSelect: () => handleRename(c.id),
-			},
-			{
-				label: "Delete",
-				icon: "i-lucide-trash-2",
-				color: "error" as const,
-				onSelect: () => handleDelete(c.id),
-			},
-		],
-	];
-}
-
-const colorMode = useColorMode();
-
-// Backend feature-aware UI: show doc count if available (admin), else generic
-const docCount = ref<number | null>(null);
-const isBackendReady = ref(false);
-onMounted(async () => {
-  try {
-    // /documents is admin-only; anonymous will 401 — treat as 0 and keep UI clean
-    const { data } = await api.get("/documents");
-    docCount.value = data?.documents?.length ?? 0;
-    isBackendReady.value = true;
-  } catch {
-    // For anonymous/guest, try stats (also admin-only) or just hide
-    docCount.value = null;
-    isBackendReady.value = false;
+  if (renameId.value && renameTitle.value.trim()) {
+    renameChat(renameId.value, chatStore.conversations.find((c) => c.id === renameId.value)?.title ?? null, renameTitle.value.trim());
   }
-});
+  renameModalOpen.value = false;
+}
 
+function getChatActions(item: { id: string; label: string }): DropdownMenuItem[][] {
+  return [
+    [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => handleRename(item.id) }],
+    [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: () => handleDelete(item.id) }],
+  ];
+}
+
+// Keep color and user menu like before (our backend feature)
+const colorMode = useColorMode();
+async function handleLogout() {
+  await authStore.logout();
+  router.push("/login");
+}
 const userMenuItems = computed(() => [
-	[{ label: authStore.user?.email ?? "User", type: "label" as const, icon: "i-lucide-user" }],
-	[
-		{
-			label: "Appearance",
-			icon: "i-lucide-sun-moon",
-			children: [
-				{
-					label: "Light",
-					icon: "i-lucide-sun",
-					type: "checkbox" as const,
-					checked: colorMode.value === "light",
-					onSelect(e: Event) {
-						e.preventDefault();
-						colorMode.value = "light";
-					},
-				},
-				{
-					label: "Dark",
-					icon: "i-lucide-moon",
-					type: "checkbox" as const,
-					checked: colorMode.value === "dark",
-					onUpdateChecked(checked: boolean) {
-						if (checked) colorMode.value = "dark";
-					},
-					onSelect(e: Event) {
-						e.preventDefault();
-					},
-				},
-			],
-		},
-	],
-	[{ label: "Logout", icon: "i-lucide-log-out", onSelect: handleLogout }],
+  [{ label: authStore.user?.email ?? "Guest", type: "label" as const, icon: "i-lucide-user" }],
+  [
+    {
+      label: "Appearance",
+      icon: "i-lucide-sun-moon",
+      children: [
+        {
+          label: "Light",
+          icon: "i-lucide-sun",
+          type: "checkbox" as const,
+          checked: colorMode.value === "light",
+          onSelect(e: Event) {
+            e.preventDefault();
+            colorMode.value = "light";
+          },
+        },
+        {
+          label: "Dark",
+          icon: "i-lucide-moon",
+          type: "checkbox" as const,
+          checked: colorMode.value === "dark",
+          onUpdateChecked(checked: boolean) {
+            if (checked) colorMode.value = "dark";
+          },
+          onSelect(e: Event) {
+            e.preventDefault();
+          },
+        },
+      ],
+    },
+  ],
+  [{ label: authStore.user ? "Logout" : "Login", icon: authStore.user ? "i-lucide-log-out" : "i-lucide-log-in", onSelect: () => (authStore.user ? handleLogout() : router.push("/login")) }],
 ]);
+
+// Same items as chat-vue default.vue but using our icon library (i-lucide-*)
+const navItems = computed(() => [
+  {
+    label: "New chat",
+    to: "/",
+    kbds: ["meta", "o"],
+    icon: "i-lucide-circle-plus",
+    onSelect: () => handleNew(),
+  },
+  {
+    label: "Search",
+    icon: "i-lucide-search",
+    kbds: ["meta", "k"],
+    onSelect: () => (searchOpen.value = true),
+  },
+]);
+
+const chatItems = computed(() =>
+  groups.value.flatMap((group) => [
+    { label: group.label, type: "label" as const },
+    ...group.items.map((item: any) => ({
+      id: item.id,
+      label: item.title ?? item.label,
+      to: "#",
+      slot: "chat" as const,
+      icon: undefined,
+      class: (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
+      onSelect: () => {
+        chatStore.setActive(item.id);
+      },
+    })),
+  ]),
+);
+
+defineShortcuts({
+  meta_o: () => handleNew(),
+  meta_k: () => (searchOpen.value = true),
+});
 </script>
 
 <template>
-  <aside class="w-[85vw] max-w-[300px] md:w-[280px] h-full shrink-0 bg-elevated border-r border-default flex flex-col">
-    <div class="px-[18px] pt-[18px] pb-3 flex items-center gap-3">
-      <div class="flex items-center justify-center size-9 rounded-xl bg-primary/10">
-        <UIcon name="i-lucide-bot" class="size-5 text-primary" />
-      </div>
-      <div class="min-w-0 flex-1">
-        <div class="font-semibold text-sm tracking-tight text-default">VeilAi Rag</div>
-      </div>
-    </div>
-
-    <div class="px-3.5 pb-2.5">
-      <UButton
-        block
-        color="primary"
-        variant="solid"
-        size="lg"
-        :icon="'i-lucide-plus'"
-        @click="handleNew"
-      >
-        New chat
-      </UButton>
-    </div>
-
-    <div class="px-3.5 pb-3 space-y-2">
-      <UInput v-model="search" icon="i-lucide-search" placeholder="Search history..." variant="none" size="sm" class="w-full rounded-sm" />
-      <!-- Backend feature-aware: show RAG status (doc count) if admin, else keep clean -->
-      <div v-if="docCount !== null" class="flex items-center gap-1.5 px-1 text-[11px]" :class="docCount > 0 ? 'text-success' : 'text-warning'">
-        <UIcon :name="docCount > 0 ? 'i-lucide-database' : 'i-lucide-alert-circle'" class="size-3.5" />
-        <span>{{ docCount > 0 ? `${docCount} docs indexed` : 'No docs — upload in admin' }}</span>
-      </div>
-    </div>
-
-    <div class="flex-1 overflow-y-auto px-2 pb-4">
-      <div v-if="!groups.length" class="px-3 py-6 text-xs text-muted text-center">
-        No conversations yet.
-      </div>
-
-      <template v-for="group in groups" :key="group.id">
-        <div class="mb-3.5">
-          <div class="text-[10px] font-semibold text-muted uppercase tracking-wider px-2 py-1.5">
-            {{ group.label }}
-          </div>
-
-          <div
-            v-for="c in group.items"
-            :key="c.id"
-            @click="chatStore.setActive(c.id); onNavigate?.()"
-            class="group relative flex items-center gap-2 px-2 py-1.5 rounded-md mb-px cursor-pointer transition"
-            :class="c.id === chatStore.activeId ? 'bg-primary/10 text-primary font-medium' : 'text-muted hover:bg-muted'"
-          >
-            <span class="text-xs truncate flex-1">{{ c.title }}</span>
-
-            <UDropdownMenu :items="getItems(c)">
-              <UButton
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                :square="true"
-                :icon="'i-lucide-ellipsis'"
-                class="opacity-0 group-hover:opacity-100 transition"
-                @click.stop
-              />
-            </UDropdownMenu>
-          </div>
+  <!-- Replicate chat-vue/src/layouts/default.vue sidebar UI/UX, keep user menu + color + backend feature -->
+  <UDashboardSidebar
+    id="chat-sidebar"
+    v-model:open="sidebarOpen"
+    :min-size="12"
+    collapsible
+    resizable
+    class="border-r-0 py-4 bg-elevated"
+  >
+    <template #header="{ collapsed }">
+      <ULink v-if="!collapsed" to="/" class="flex items-center gap-0.5 outline-primary/25 focus-visible:outline-3 rounded-md">
+        <div class="flex items-center justify-center size-7 rounded-lg bg-primary/10">
+          <UIcon name="i-lucide-bot" class="size-4 text-primary" />
         </div>
-      </template>
-    </div>
+        <span class="text-lg font-bold text-highlighted ml-1">VeilAi Rag</span>
+      </ULink>
+      <UDashboardSidebarCollapse class="ms-auto" @click="onCollapse?.()" />
+    </template>
 
-    <div class="px-3.5 py-3 border-t border-default/50 flex items-center gap-2">
-      <UDropdownMenu :items="userMenuItems" :content="{ align: 'center', side: 'top' }" :ui="{ content: 'w-56' }">
+    <template #default="{ collapsed }">
+      <UNavigationMenu
+        :items="navItems"
+        :collapsed="collapsed"
+        orientation="vertical"
+      >
+        <template #item-trailing="{ item }">
+          <div v-if="(item as any).kbds?.length" class="flex items-center gap-px opacity-0 group-hover:opacity-100 transition-opacity">
+            <UKbd v-for="kbd in (item as any).kbds" :key="kbd" :value="kbd" size="sm" variant="soft" class="bg-accented/50" />
+          </div>
+        </template>
+      </UNavigationMenu>
+
+      <!-- Backend feature: doc count -->
+      <div v-if="!collapsed && docCount !== null" class="px-2 py-2">
+        <div class="flex items-center gap-1.5 px-2 text-[11px]" :class="docCount > 0 ? 'text-success' : 'text-warning'">
+          <UIcon :name="docCount > 0 ? 'i-lucide-database' : 'i-lucide-alert-circle'" class="size-3.5" />
+          <span>{{ docCount > 0 ? `${docCount} docs indexed` : 'No docs — upload in admin' }}</span>
+        </div>
+      </div>
+
+      <UNavigationMenu
+        v-if="!collapsed"
+        :items="chatItems"
+        :collapsed="collapsed"
+        orientation="vertical"
+        :ui="{ link: 'overflow-hidden pr-7.5', linkTrailing: 'translate-x-full group-hover:translate-x-0 group-has-data-[state=open]:translate-x-0 transition-transform ms-0 absolute inset-e-px' }"
+      >
+        <template #chat-trailing="{ item }">
+          <UDropdownMenu :items="getChatActions(item as { id: string; label: string })" :content="{ align: 'end' }">
+            <UButton
+              as="div"
+              icon="i-lucide-ellipsis"
+              color="neutral"
+              variant="link"
+              size="sm"
+              class="rounded-[5px] hover:bg-accented/50 focus-visible:bg-accented/50 data-[state=open]:bg-accented/50"
+              aria-label="Chat actions"
+              tabindex="-1"
+              @click.stop.prevent
+            />
+          </UDropdownMenu>
+        </template>
+      </UNavigationMenu>
+
+      <div v-if="!collapsed && !groups.length" class="px-3 py-6 text-xs text-muted text-center">No conversations yet.</div>
+    </template>
+
+    <template #footer="{ collapsed }">
+      <!-- Keep user menu and color like before -->
+      <UDropdownMenu :items="userMenuItems" :content="{ align: 'center', collisionPadding: 12 }" :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }">
         <UButton
+          v-bind="{ label: collapsed ? undefined : (authStore.user?.email ?? 'Guest'), trailingIcon: collapsed ? undefined : 'i-lucide-chevrons-up-down' }"
+          :avatar="{ icon: 'i-lucide-user', alt: authStore.user?.email ?? 'Guest' }"
           color="neutral"
           variant="ghost"
           block
-          class="flex-1 justify-start min-w-0"
-          trailing-icon="i-lucide-chevrons-up-down"
+          :square="collapsed"
+          class="data-[state=open]:bg-elevated"
           :ui="{ trailingIcon: 'text-dimmed' }"
-        >
-          <template #leading>
-            <UAvatar icon="i-lucide-user" size="xs" class="bg-muted text-muted shrink-0" />
-          </template>
-          <span class="text-[11px] font-medium truncate text-left">{{ authStore.user?.email ?? "User" }}</span>
-        </UButton>
-      </UDropdownMenu>
-      <UButton
-        variant="ghost"
-        color="neutral"
-        size="xs"
-        :square="true"
-        :icon="'i-lucide-panel-left-close'"
-        @click="onCollapse?.()"
-      />
-    </div>
-  </aside>
-
-  <UModal v-model:open="renameModalOpen" title="Rename" description="Enter a new name for this conversation." @close="renameModalOpen = false">
-    <template #body>
-      <form id="rename-form" @submit.prevent="confirmRename">
-        <UInput
-          v-model="renameTitle"
-          placeholder="Enter a new name..."
-          size="sm"
-          class="w-full"
         />
+      </UDropdownMenu>
+    </template>
+  </UDashboardSidebar>
+
+  <UDashboardSearch
+    v-model:open="searchOpen"
+    placeholder="Search chats..."
+    :groups="[{ id: 'links', items: [{ label: 'New chat', to: '/', icon: 'i-lucide-circle-plus' }] }, ...groups]"
+  />
+
+  <UModal v-model:open="renameModalOpen" title="Rename" description="Enter a new name for this conversation.">
+    <template #body>
+      <form id="rename-form-sidebar" @submit.prevent="confirmRename">
+        <UInput v-model="renameTitle" placeholder="Enter a new name..." size="sm" class="w-full" />
       </form>
     </template>
-
     <template #footer="{ close }">
       <UButton label="Cancel" color="neutral" variant="outline" @click="close" />
-      <UButton type="submit" form="rename-form" label="Rename" :disabled="!renameTitle.trim()" />
+      <UButton type="submit" form="rename-form-sidebar" label="Rename" :disabled="!renameTitle.trim()" />
     </template>
   </UModal>
 </template>
