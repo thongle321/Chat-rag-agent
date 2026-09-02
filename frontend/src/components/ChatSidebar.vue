@@ -81,7 +81,10 @@ function confirmRename() {
 }
 
 function getChatActions(item: { id: string; label: string }): DropdownMenuItem[][] {
+  const conv = chatStore.conversations.find((c) => c.id === item.id);
+  const pinned = !!conv?.pinned;
   return [
+    [{ label: pinned ? "Unpin" : "Pin", icon: pinned ? "i-lucide-pin-off" : "i-lucide-pin", onSelect: () => chatStore.togglePin(item.id) }],
     [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => handleRename(item.id) }],
     [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: () => handleDelete(item.id) }],
   ];
@@ -148,18 +151,22 @@ const navItems = computed(() => [
 const chatItems = computed(() =>
   groups.value.flatMap((group) => [
     { label: group.label, type: "label" as const },
-    ...group.items.map((item: any) => ({
-      id: item.id,
-      label: item.title ?? item.label,
-      to: undefined,
-      slot: "chat" as const,
-      icon: undefined,
-      class: (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
-      onSelect: () => {
-        chatStore.setActive(item.id);
-        props.onNavigate?.();
-      },
-    })),
+    ...group.items.map((item: any) => {
+      const conv = chatStore.conversations.find((c) => c.id === item.id);
+      const pinned = !!conv?.pinned;
+      return {
+        id: item.id,
+        label: item.title ?? item.label,
+        to: undefined,
+        slot: "chat" as const,
+        icon: pinned ? "i-lucide-pin" : undefined,
+        class: pinned ? "font-medium text-primary" : (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
+        onSelect: () => {
+          chatStore.setActive(item.id);
+          props.onNavigate?.();
+        },
+      };
+    }),
   ]),
 );
 
