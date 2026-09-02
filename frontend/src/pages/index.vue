@@ -80,16 +80,7 @@ async function handleSend(question: string) {
 
     <!-- Main area like chat-vue: rounded panel -->
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
-      <header class="flex items-center px-3 md:px-7 py-3.5 bg-default/75">
-        <UButton
-          v-if="!sidebarOpen"
-          variant="ghost"
-          color="neutral"
-          size="sm"
-          :square="true"
-          :icon="'i-lucide-menu'"
-          @click="sidebarOpen = true"
-        />
+      <header class="flex items-center px-3 md:px-7 py-2 bg-default/75 min-h-[44px]">
       </header>
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">
