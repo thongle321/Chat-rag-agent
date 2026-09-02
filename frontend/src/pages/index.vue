@@ -187,7 +187,7 @@ async function handleSend(question: string) {
                   </div>
                 </div>
                 <div v-if="editingId !== msg.id" class="flex justify-end w-full max-w-[85%] md:max-w-[78%] opacity-0 group-hover/user:opacity-100 transition">
-                  <UButton icon="i-lucide-pencil" color="neutral" variant="ghost" size="xs" label="Edit" @click="startEdit(msg)" />
+                  <UButton icon="i-lucide-pencil" color="neutral" variant="ghost" size="xs" aria-label="Edit" @click="startEdit(msg)" />
                 </div>
               </div>
 
