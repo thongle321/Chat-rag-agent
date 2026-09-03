@@ -20,9 +20,10 @@ api.interceptors.response.use(
 	(err) => {
 		const status = err?.response?.status;
 		const detail: string = err?.response?.data?.detail || "";
-		// "/" is public like ChatGPT — never auto-redirect from background 401s (e.g. /documents docCount)
+		// "/" and "/c/:id" are public like ChatGPT — never auto-redirect from
+		// background 401s (e.g. /documents docCount)
 		const path = window.location.pathname;
-		const isPublic = path === "/" || path === "/login" || path.startsWith("/admin/login");
+		const isPublic = path === "/" || path.startsWith("/c/") || path === "/login" || path.startsWith("/admin/login");
 		if (status === 401) {
 			if (!isPublic) {
 				localStorage.removeItem("auth_token");
