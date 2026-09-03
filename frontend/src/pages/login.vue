@@ -14,8 +14,14 @@ onMounted(() => {
 });
 
 const isRegister = ref(false);
-// ?mode=signup opens the register form (header Sign up button)
-if (route.query.mode === "signup") isRegister.value = true;
+// ?mode=signup opens the register form (header Sign up button).
+// Watched (not read once): in-SPA /login → /login?mode=signup reuses the
+// component, so the form must follow query changes incl. back/forward.
+watch(
+  () => route.query.mode,
+  (mode) => { isRegister.value = mode === "signup"; },
+  { immediate: true },
+);
 const error = ref("");
 const isSubmitting = ref(false);
 const showPassword = ref(false);
@@ -71,6 +77,8 @@ function resolveErrorMessage(err: unknown): string {
 function toggleMode() {
   isRegister.value = !isRegister.value;
   error.value = "";
+  // Keep URL in sync so refresh/back matches the visible form (watcher is idempotent)
+  router.replace({ query: isRegister.value ? { mode: "signup" } : {} });
 }
 
 async function handleLogin(event: FormSubmitEvent<LoginSchema>) {
