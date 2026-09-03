@@ -150,7 +150,10 @@ async function handleSend(question: string) {
         </div>
 
         </div>
-        <div v-if="chatStore.loading && thinkingElapsed" class="text-xs text-muted hidden sm:block">{{ thinkingElapsed.toFixed(1) }}s thinking</div>
+        <div v-if="!authStore.isAuthenticated" class="flex items-center gap-2">
+          <UButton to="/login" color="neutral" variant="ghost" size="sm" label="Log in" />
+          <UButton to="/login?mode=signup" color="primary" variant="solid" size="sm" label="Sign up" />
+        </div>
       </header>
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">

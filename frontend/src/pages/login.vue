@@ -5,6 +5,7 @@ import { useAuthStore } from "../stores/auth";
 
 const authStore = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 function isAdmin(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
 onMounted(() => {
@@ -13,6 +14,8 @@ onMounted(() => {
 });
 
 const isRegister = ref(false);
+// ?mode=signup opens the register form (header Sign up button)
+if (route.query.mode === "signup") isRegister.value = true;
 const error = ref("");
 const isSubmitting = ref(false);
 const showPassword = ref(false);
