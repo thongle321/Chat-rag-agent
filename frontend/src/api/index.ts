@@ -1,4 +1,5 @@
 import axios from "axios";
+import { redirectForStatus } from "../utils/routeAccess.ts";
 
 const api = axios.create({
 	baseURL: import.meta.env.VITE_API_URL || "/api",
@@ -20,24 +21,11 @@ api.interceptors.response.use(
 	(err) => {
 		const status = err?.response?.status;
 		const detail: string = err?.response?.data?.detail || "";
-		// "/" and "/c/:id" are public like ChatGPT — never auto-redirect from
-		// background 401s (e.g. /documents docCount)
-		const path = window.location.pathname;
-		const isPublic = path === "/" || path.startsWith("/c/") || path === "/login" || path.startsWith("/admin/login");
-		if (status === 401) {
-			if (!isPublic) {
-				localStorage.removeItem("auth_token");
-				window.location.href = path.startsWith("/admin") ? "/admin/login" : "/login";
-			}
-		} else if (status === 403) {
-			// Strict role separation: admin→user or user→admin via direct API/URL
-			if (detail.includes("Admin cannot access user chat")) {
-				// Admin tried to use user chat — send to admin dashboard, keep token (still admin)
-				if (!window.location.pathname.startsWith("/admin")) window.location.href = "/admin/";
-			} else if (detail.includes("Admin only")) {
-				// User tried to hit admin API — send to user login
-				if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
-			}
+		const target = redirectForStatus(status, detail, window.location.pathname);
+		if (target) {
+			// 401 means the token is dead — drop it; 403 keeps it (role issue, not auth)
+			if (status === 401) localStorage.removeItem("auth_token");
+			window.location.href = target;
 		}
 		return Promise.reject(err);
 	},
@@ -106,8 +94,11 @@ export async function streamChat(
 	});
 	if (!(response.ok && response.body)) {
 		if (response.status === 401) {
-			localStorage.removeItem("auth_token");
-			window.location.href = "/login";
+			const target = redirectForStatus(401, "", window.location.pathname);
+			if (target) {
+				localStorage.removeItem("auth_token");
+				window.location.href = target;
+			}
 			handlers.onError("Please log in to chat");
 			return;
 		}
@@ -117,7 +108,8 @@ export async function streamChat(
 				const b = await response.clone().json();
 				if (b?.detail) detail403 = typeof b.detail === "string" ? b.detail : detail403;
 			} catch {}
-			if (detail403.includes("Admin cannot access")) window.location.href = "/admin/";
+			const target = redirectForStatus(403, detail403, window.location.pathname);
+			if (target) window.location.href = target;
 			handlers.onError(detail403);
 			return;
 		}

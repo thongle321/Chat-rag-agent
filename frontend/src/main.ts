@@ -8,6 +8,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { routes as autoRoutes, handleHotUpdate } from "vue-router/auto-routes";
 import App from "./App.vue";
 import { useAuthStore } from "./stores/auth.ts";
+import { isPublicPath } from "./utils/routeAccess.ts";
 
 const app = createApp(App);
 const head = createHead();
@@ -51,8 +52,8 @@ router.beforeEach(async (to) => {
 		if (isAuthed) return isAdmin ? "/admin/" : "/";
 		return;
 	}
-	if (to.path === "/" || to.path.startsWith("/c/")) {
-		// Chat like ChatGPT: public, no login required — only redirect logged-in admin to dashboard
+	// Public chat (/, /c/:id, 404s): no login required — only redirect logged-in admin to dashboard
+	if (isPublicPath(to.path)) {
 		if (isAdmin) return "/admin/"; // admin must use /admin, not user chat
 		return;
 	}
