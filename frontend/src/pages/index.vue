@@ -6,6 +6,7 @@ import { useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
 import Indicator from "../components/chat/Indicator.vue";
 import SourceLink from "../components/chat/SourceLink.vue";
+import ProductCard from "../components/chat/ProductCard.vue";
 import { useChatActions } from "../composables/useChatActions";
 
 const chatStore = useChatStore();
@@ -241,6 +242,14 @@ async function handleSend(question: string) {
                         </div>
                       </template>
                     </UAccordion>
+
+                    <div v-if="msg.products?.length && !msg.streaming" class="grid sm:grid-cols-2 gap-2 mt-3">
+                      <ProductCard v-for="(p, pi) in msg.products" :key="p.id" :product="p" :index="pi" />
+                    </div>
+
+                    <div v-if="msg.followups?.length && !msg.streaming" class="flex flex-wrap gap-1.5 mt-3">
+                      <UButton v-for="f in msg.followups" :key="f" size="xs" color="neutral" variant="soft" icon="i-lucide-message-circle-question" @click="handleSend(f)">{{ f }}</UButton>
+                    </div>
 
                     <div v-if="!msg.streaming" class="flex items-center gap-1 mt-3">
                       <UButton

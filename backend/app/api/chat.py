@@ -134,20 +134,24 @@ async def query_chat(
 
 
 @router.post("/query/stream")
-async def query_chat_stream(
-    request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)
-):
+async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
     session = await _ensure_session(request, db)
     session_id = session.id
     user_id, user_email = await _optional_user_with_email(http_request, db)
     ip = _client_ip(http_request)
 
     async def event_stream() -> AsyncIterator[str]:
-        async for ev in stream_answer(request.question, session_id, user_id=user_id, user_email=user_email, ip_address=ip):
+        async for ev in stream_answer(
+            request.question, session_id, user_id=user_id, user_email=user_email, ip_address=ip
+        ):
             if ev["type"] == "text_delta":
                 yield f"data: {json.dumps({'content': ev['content']})}\n\n"
             elif ev["type"] == "sources":
                 yield f"event: sources\ndata: {json.dumps({'sources': ev['sources']})}\n\n"
+            elif ev["type"] == "products":
+                yield f"event: products\ndata: {json.dumps({'products': ev['products']})}\n\n"
+            elif ev["type"] == "followups":
+                yield f"event: followups\ndata: {json.dumps({'followups': ev['followups']})}\n\n"
             elif ev["type"] == "error":
                 detail = json.dumps({"detail": ev["detail"], "status_code": ev["status_code"]})
                 yield f"event: error\ndata: {detail}\n\n"

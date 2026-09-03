@@ -33,6 +33,7 @@ class Deps:
     model_name: str
     retrieval: Any = None
     retrieved: list[dict] = field(default_factory=list)
+    products: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         if self.retrieval is None:
@@ -48,9 +49,6 @@ class RAGState:
     stream: Any = None
     sources: list[str] = field(default_factory=list)
     fallback_reply: str | None = None
-
-
-
 
 
 def _format_context(docs: list[dict], nums: list[int]) -> str:
@@ -122,9 +120,7 @@ def _keep_recent(messages: list[ModelMessage]) -> list[ModelMessage]:
     return recent
 
 
-_CHAT_FALLBACK_REPLY = (
-    "Sorry, I'm having trouble right now — please try again!"
-)
+_CHAT_FALLBACK_REPLY = "Sorry, I'm having trouble right now — please try again!"
 
 
 def _model_error_reason(e: ModelAPIError) -> str | None:
@@ -137,6 +133,7 @@ def _model_error_reason(e: ModelAPIError) -> str | None:
         if body.get("message"):
             return str(body["message"])
     return None
+
 
 _RAG_LIMITS = UsageLimits(request_limit=3)
 
@@ -188,6 +185,36 @@ async def search_documents(ctx: RunContext[Deps], query: str) -> str:
     return _format_context(docs, nums)
 
 
+def _format_products(prods: list[dict]) -> str:
+    if not prods:
+        return "(No matching products in catalog.)"
+    lines = []
+    for i, p in enumerate(prods, 1):
+        price = f"{p.get('price')} {p.get('currency', 'USD')}" if p.get("price") is not None else "price on request"
+        stock = f", stock {p.get('stock', 0)}" if p.get("stock") is not None else ""
+        lines.append(f"[P{i}] {p['name']} — {price}{stock} (id: {p['id']})")
+    return "\n".join(lines)
+
+
+async def search_products(ctx: RunContext[Deps], query: str) -> str:
+    """Search the e-commerce product catalog and return matching products.
+
+    Call this when the user asks for recommendations, shopping advice, what to
+    buy/eat/use, or anything that could map to a product (e.g. 'What should I
+    eat today?'). For vague queries, first ask 1-2 clarifying questions OR call
+    with your best guess and refine after. ONLY recommend products returned here
+    — never invent SKUs. If no match, say the catalog does not carry it.
+
+    Args:
+        query: A standalone product search (e.g. 'spicy lunch under $10').
+    """
+    from app.services.products import search_products as _search
+
+    prods = await _search(query, 6)
+    ctx.deps.products = prods
+    return _format_products(prods)
+
+
 def _catalog(docs: list[dict]) -> str:
     if not docs:
         return "No documents in the library yet."
@@ -201,21 +228,29 @@ def _catalog(docs: list[dict]) -> str:
 
 async def _run_agent(state: RAGState, deps: Deps) -> None:
     try:
-        docs = await asyncio.wait_for(
-            asyncio.to_thread(deps.retrieval.list_documents), timeout=3.0
-        )
+        docs = await asyncio.wait_for(asyncio.to_thread(deps.retrieval.list_documents), timeout=3.0)
     except Exception:
         logger.warning("Catalog fetch timed out, using fallback", exc_info=True)
         catalog = "Available documents in the library: (catalog temporarily unavailable)"
     else:
         catalog = _catalog(docs)
         logger.info("Catalog injected n=%d", len(docs))
-    system_prompt = f"{settings.context_prompt.strip()}\n\n{catalog}"
+    system_prompt = (
+        f"{settings.context_prompt.strip()}\n\n{catalog}\n\n"
+        "SHOPPING RULES:\n"
+        "9) When the user asks for recommendations, shopping advice, or what to buy/eat/use, "
+        "call search_products first. Only recommend products returned by search_products — "
+        "cite them as [P1] [P2] matching the numbered products exactly. Never invent products.\n"
+        "10) For vague shopping queries (e.g. 'What should I eat today?'), ask 2-3 short "
+        "clarifying questions first (budget, category, dietary/preference) — one per line ending "
+        "with '?'. Then call search_products with the refined query.\n"
+        "11) Sales-oriented: after the answer, add one line suggesting the top match."
+    )
     agent = Agent(
         deps.model,
         system_prompt=system_prompt,
         name="conversational_rag",
-        tools=[search_documents],
+        tools=[search_documents, search_products],
         capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
     state.fallback_reply = _CHAT_FALLBACK_REPLY
@@ -301,17 +336,27 @@ async def stream_answer(
                 state.new_messages = result.new_messages()
                 # Capture token usage like CQA ai_usage_logs (input/output)
                 try:
-                    usage = result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+                    usage = (
+                        result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+                    )
                     if usage is not None:
                         # Usage object has input_tokens/output_tokens (alias request/response)
                         prompt_tokens = getattr(usage, "input_tokens", None) or getattr(usage, "request_tokens", None)
-                        completion_tokens = getattr(usage, "output_tokens", None) or getattr(usage, "response_tokens", None)
+                        completion_tokens = getattr(usage, "output_tokens", None) or getattr(
+                            usage, "response_tokens", None
+                        )
                         # Some providers nest details; ensure int or None
                         prompt_tokens = int(prompt_tokens) if prompt_tokens else None
                         completion_tokens = int(completion_tokens) if completion_tokens else None
                 except Exception:
                     logger.debug("usage extraction failed", exc_info=True)
-                logger.info("stream done emitted=%s msgs=%d usage=%s/%s", emitted, len(state.new_messages), prompt_tokens, completion_tokens)
+                logger.info(
+                    "stream done emitted=%s msgs=%d usage=%s/%s",
+                    emitted,
+                    len(state.new_messages),
+                    prompt_tokens,
+                    completion_tokens,
+                )
     except Exception as e:
         if state.fallback_reply and not emitted:
             state.new_messages = [
@@ -324,8 +369,21 @@ async def stream_answer(
             return
 
     # Only surface sources the answer actually cited — retrieval hits are not provenance.
-    cited = {int(m) for m in re.findall(r"\[(\d+)\]", "".join(answer_parts))}
+    full_text = "".join(answer_parts)
+    cited = {int(m) for m in re.findall(r"\[(\d+)\]", full_text)}
     state.sources = [s for s in deps.retrieved if s["n"] in cited]
+    # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
+    cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
+    cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
+    # Clarifying chips: lines ending with '?' (max 3) for vague shopping queries
+    followups: list[str] = []
+    if deps.products or re.search(r"\b(buy|recommend|eat|shop|price|product)\b", question, re.I):
+        for line in full_text.splitlines():
+            s = line.strip().lstrip("-•123456789. ").strip()
+            if s.endswith("?") and 8 < len(s) < 140:
+                followups.append(s)
+            if len(followups) >= 3:
+                break
     if state.sources:
         # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
         # rides inside the existing messages blob, never sent to the LLM. Titles/refs
@@ -372,12 +430,24 @@ async def stream_answer(
             user_email=user_email,
             resource_type="session",
             resource_id=sid,
-            detail=json.dumps({"model": model_name, "sources_n": len(state.sources), "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}, ensure_ascii=False),
+            detail=json.dumps(
+                {
+                    "model": model_name,
+                    "sources_n": len(state.sources),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                },
+                ensure_ascii=False,
+            ),
             ip_address=ip_address,
         )
     except Exception:
         logger.exception("chat logging failed sid=%s", sid)
     yield {"type": "sources", "sources": state.sources}
+    if cited_products:
+        yield {"type": "products", "products": cited_products}
+    if followups:
+        yield {"type": "followups", "followups": followups}
     yield {"type": "done", "session_id": sid, "model": model_name}
 
 

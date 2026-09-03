@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import auth, chat, docs, facebook, health, logs, sessions, settings, stats, zalo
+from app.api import auth, chat, docs, facebook, health, logs, products, sessions, settings, stats, zalo
 
 router = APIRouter(prefix="/api")
 
@@ -17,6 +17,7 @@ router.include_router(stats.router, prefix="/stats", tags=["stats"])
 
 # Existing routes
 router.include_router(docs.router, prefix="/documents", tags=["documents"])
+router.include_router(products.router, prefix="/products", tags=["products"])
 router.include_router(chat.router, prefix="/chat", tags=["chat"])
 router.include_router(sessions.router, prefix="/chat", tags=["chat"])
 router.include_router(logs.router, prefix="/logs", tags=["logs"])

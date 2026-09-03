@@ -14,6 +14,8 @@ export interface ChatMessage {
 	model?: string;
 	role: "user" | "assistant";
 	sources?: StreamSource[];
+	products?: import("../api/index.ts").StreamProduct[];
+	followups?: string[];
 	streaming?: boolean;
 	text: string;
 }
@@ -274,6 +276,12 @@ export const useChatStore = defineStore("chat", () => {
 					},
 					onSources: (sources) => {
 						streamMsg.sources = sources;
+					},
+					onProducts: (products) => {
+						streamMsg.products = products;
+					},
+					onFollowups: (followups) => {
+						streamMsg.followups = followups;
 					},
 				},
 				ctrl.signal,

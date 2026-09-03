@@ -163,6 +163,37 @@ class AppSetting(Base):
 
 
 # ---------------------------------------------------------------------------
+# Products — e-commerce catalog for ChatGPT-style recommendations
+# ---------------------------------------------------------------------------
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sku: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)  # manual|csv|shopify|custom
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_product_source_ext"),
+        Index("idx_product_active_cat", "is_active", "category"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Sync + AI usage logs — single-tenant
 # ---------------------------------------------------------------------------
 class SyncLog(Base):
