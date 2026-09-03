@@ -150,6 +150,21 @@ const navItems = computed(() => [
   },
 ]);
 
+// Search palette needs real links too (groups carry raw conversations without `to`)
+const searchGroups = computed(() => [
+  { id: "links", items: [{ label: "New chat", to: "/", icon: "i-lucide-circle-plus" }] },
+  ...groups.value.map((g) => ({
+    id: g.id,
+    label: g.label,
+    items: g.items.map((c: any) => ({
+      id: c.id ?? c.sessionId,
+      label: c.title ?? c.label,
+      to: `/c/${c.id ?? c.sessionId}`,
+      icon: "i-lucide-message-circle",
+    })),
+  })),
+]);
+
 const chatItems = computed(() =>
   groups.value.flatMap((group) => [
     { label: group.label, type: "label" as const },
@@ -159,13 +174,14 @@ const chatItems = computed(() =>
       return {
         id: item.id,
         label: item.title ?? item.label,
-        to: undefined,
+        // Real link (not onSelect-push): single click, middle-click/tab support,
+        // free active highlight. /c/:id page sets the active session.
+        to: `/c/${item.id}`,
         slot: "chat" as const,
         icon: pinned ? "i-lucide-pin" : undefined,
         class: pinned ? "font-medium text-primary" : (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
         onSelect: () => {
-          router.push(`/c/${item.id}`); // /c/:id page sets the active session
-          props.onNavigate?.();
+          props.onNavigate?.(); // close sidebar on mobile
         },
       };
     }),
@@ -266,7 +282,7 @@ defineShortcuts({
   <UDashboardSearch
     v-model:open="searchOpen"
     placeholder="Search chats..."
-    :groups="[{ id: 'links', items: [{ label: 'New chat', to: '/', icon: 'i-lucide-circle-plus' }] }, ...groups]"
+    :groups="searchGroups"
   />
 
   <UModal v-model:open="renameModalOpen" title="Rename" description="Enter a new name for this conversation.">
