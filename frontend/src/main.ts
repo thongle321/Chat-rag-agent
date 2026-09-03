@@ -51,7 +51,7 @@ router.beforeEach(async (to) => {
 		if (isAuthed) return isAdmin ? "/admin/" : "/";
 		return;
 	}
-	if (to.path === "/") {
+	if (to.path === "/" || to.path.startsWith("/c/")) {
 		// Chat like ChatGPT: public, no login required — only redirect logged-in admin to dashboard
 		if (isAdmin) return "/admin/"; // admin must use /admin, not user chat
 		return;

@@ -54,8 +54,9 @@ watch(() => chatStore.conversations.length, () => {
 });
 
 function handleNew() {
-  chatStore.newConversation();
-  // template does router.push('/') for new chat — we stay on /
+  // / is always a blank composer (ChatView clears the selection) — no entry
+  // is created until the first message is sent, like ChatGPT.
+  router.push("/");
 }
 
 function handleDelete(id: string) {
@@ -162,7 +163,7 @@ const chatItems = computed(() =>
         icon: pinned ? "i-lucide-pin" : undefined,
         class: pinned ? "font-medium text-primary" : (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
         onSelect: () => {
-          chatStore.setActive(item.id);
+          router.push(`/c/${item.id}`); // /c/:id page sets the active session
           props.onNavigate?.();
         },
       };

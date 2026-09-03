@@ -116,8 +116,12 @@ export const useChatStore = defineStore("chat", () => {
 		}
 	}
 
+	// Cache in-memory conversations across route changes (/ ↔ /c/:id remounts
+	// pages) so an in-flight stream is never wiped by a reload from storage.
 	async function fetchSessions() {
-		loadFromStorage();
+		if (!conversations.value.length) {
+			loadFromStorage();
+		}
 		if (!activeId.value && conversations.value.length) {
 			activeId.value = conversations.value[0].id;
 		}
@@ -157,6 +161,13 @@ export const useChatStore = defineStore("chat", () => {
 			title: "New chat",
 		});
 		activeId.value = id;
+		saveToStorage();
+	}
+
+	// Blank composer for / — clears the selection without creating an entry
+	// (a conversation is created on first send, like ChatGPT).
+	function clearActive() {
+		activeId.value = "";
 		saveToStorage();
 	}
 
@@ -314,6 +325,7 @@ export const useChatStore = defineStore("chat", () => {
 		fetchSessionMessages,
 		fetchSessions,
 		loading,
+		clearActive,
 		messages,
 		newConversation,
 		renameConversation,
