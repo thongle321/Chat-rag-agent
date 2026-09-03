@@ -13,7 +13,6 @@ from app.models.schemas import ChatRequest, ChatResponse
 from app.models.session import ChatSession
 from app.models.user import User
 from app.services.rag import answer_question, stream_answer
-from app.services.user_manager import current_active_user
 
 router = APIRouter()
 

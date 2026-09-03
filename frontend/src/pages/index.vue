@@ -243,8 +243,11 @@ async function handleSend(question: string) {
                       </template>
                     </UAccordion>
 
-                    <div v-if="msg.products?.length && !msg.streaming" class="grid sm:grid-cols-2 gap-2 mt-3">
-                      <ProductCard v-for="(p, pi) in msg.products" :key="p.id" :product="p" :index="pi" />
+                    <div v-if="msg.products?.length && !msg.streaming" class="mt-3">
+                      <div class="text-[11px] text-muted mb-1.5">Organic results ranked on relevance · merchant handles checkout</div>
+                      <div class="grid sm:grid-cols-2 gap-2">
+                        <ProductCard v-for="(p, pi) in msg.products" :key="p.id" :product="p" :index="pi" />
+                      </div>
                     </div>
 
                     <div v-if="msg.followups?.length && !msg.streaming" class="flex flex-wrap gap-1.5 mt-3">

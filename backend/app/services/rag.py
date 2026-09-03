@@ -21,6 +21,7 @@ from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
 from app.retrieval import get_retrieval
 from app.services.llm import get_llm
+from app.services.products import search_products as _search_products
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class Deps:
     retrieval: Any = None
     retrieved: list[dict] = field(default_factory=list)
     products: list[dict] = field(default_factory=list)
+    products_searched: bool = False
 
     def __post_init__(self):
         if self.retrieval is None:
@@ -208,10 +210,9 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
     Args:
         query: A standalone product search (e.g. 'spicy lunch under $10').
     """
-    from app.services.products import search_products as _search
-
-    prods = await _search(query, 6)
+    prods = await _search_products(query, 6)
     ctx.deps.products = prods
+    ctx.deps.products_searched = True
     return _format_products(prods)
 
 
@@ -244,7 +245,9 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         "10) For vague shopping queries (e.g. 'What should I eat today?'), ask 2-3 short "
         "clarifying questions first (budget, category, dietary/preference) — one per line ending "
         "with '?'. Then call search_products with the refined query.\n"
-        "11) Sales-oriented: after the answer, add one line suggesting the top match."
+        "11) Sales-oriented but honest: only suggest the top match when search_products "
+        "returned it and it fits the clarified need. Organic, unsponsored results ranked on "
+        "relevance; the merchant handles payment/fulfillment (you never take payment)."
     )
     agent = Agent(
         deps.model,
@@ -375,15 +378,18 @@ async def stream_answer(
     # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
     cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
     cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
-    # Clarifying chips: lines ending with '?' (max 3) for vague shopping queries
+    # Clarifying chips: only when shopping was invoked but nothing was cited —
+    # i.e. the query was vague. Structured-ish: prefer budget/category/dietary lines.
     followups: list[str] = []
-    if deps.products or re.search(r"\b(buy|recommend|eat|shop|price|product)\b", question, re.I):
+    if deps.products_searched and not cited_products:
+        candidates = []
         for line in full_text.splitlines():
             s = line.strip().lstrip("-•123456789. ").strip()
             if s.endswith("?") and 8 < len(s) < 140:
-                followups.append(s)
-            if len(followups) >= 3:
-                break
+                candidates.append(s)
+        prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
+        ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in prefer))
+        followups = ranked[:3]
     if state.sources:
         # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
         # rides inside the existing messages blob, never sent to the LLM. Titles/refs

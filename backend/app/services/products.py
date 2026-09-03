@@ -18,7 +18,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.embeddings import get_embeddings
+from app.db.embeddings import get_embeddings, passage_prefix, query_prefix
 from app.db.session import async_session_factory
 from app.models.unified import Product
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Serializers
 # ---------------------------------------------------------------------------
-def to_dict(p: Product) -> dict:
+def product_to_dict(p: Product) -> dict:
     price = float(p.price) if p.price is not None else None
     return {
         "id": p.id,
@@ -59,7 +59,7 @@ def _product_text(p: Product) -> str:
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if not na or not nb:
@@ -79,38 +79,36 @@ async def search_products(query: str, k: int = 6, category: str | None = None) -
         rows = (await db.execute(stmt)).scalars().all()
     if not rows:
         return []
+    import asyncio as _asyncio
+
     try:
-        from app.db.embeddings import query_prefix as _qp
-
-        q_emb = next(get_embeddings().query_embed(_qp() + query))
+        # FastEmbed is blocking — offload like Chroma/BM25 (AGENTS.md Gotchas)
+        q_emb = await _asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
         texts = [_product_text(p) for p in rows]
-        # FastEmbed passage embed for products
-        from app.db.embeddings import passage_prefix as _pp
-
-        p_embs = list(get_embeddings().embed([_pp() + t for t in texts]))
+        p_embs = await _asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
         scored = sorted(
             zip(rows, [_cosine(q_emb, e) for e in p_embs], strict=True),
             key=lambda x: x[1],
             reverse=True,
         )
         out = []
-        for p, score in scored[:k]:
+        for prod, score in scored[:k]:
             # Gate weak matches — strict grounding: don't recommend irrelevant SKUs
-            if score < 0.15:
+            if score < 0.30:
                 continue
-            d = to_dict(p)
+            d = product_to_dict(prod)
             d["score"] = round(float(score), 4)
             out.append(d)
         logger.info("product search q=%r n=%d kept=%d", query[:60], len(rows), len(out))
         return out
     except Exception:
         logger.exception("product embedding search failed, falling back to LIKE")
-        ql = query.lower()
+        qlower = query.lower()
         out = []
-        for p in rows:
-            hay = f"{p.name} {p.description or ''} {p.category or ''}".lower()
-            if any(t in hay for t in ql.split() if len(t) > 2):
-                out.append(to_dict(p))
+        for prod in rows:
+            hay = f"{prod.name} {prod.description or ''} {prod.category or ''}".lower()
+            if any(t in hay for t in qlower.split() if len(t) > 2):
+                out.append(product_to_dict(prod))
             if len(out) >= k:
                 break
         return out
@@ -122,7 +120,11 @@ async def list_products(active_only: bool = True) -> list[dict]:
         if active_only:
             stmt = stmt.where(Product.is_active.is_(True))
         rows = (await db.execute(stmt.order_by(Product.created_at.desc()))).scalars().all()
-        return [to_dict(p) for p in rows]
+        return [product_to_dict(p) for p in rows]
+
+
+# Back-compat alias (older imports)
+to_dict = product_to_dict
 
 
 # ---------------------------------------------------------------------------
@@ -150,28 +152,48 @@ class ShopifySource:
             r.raise_for_status()
             data = r.json()
         out = []
-        for p in data.get("products", []):
-            variants = p.get("variants", [{}])
+        for item in data.get("products", []):
+            variants = item.get("variants", [{}])
             v0 = variants[0] if variants else {}
-            img = (p.get("image") or {}).get("src") or (
-                p.get("images", [{}])[0].get("src") if p.get("images") else None
-            )
+            handle = item.get("handle")
             out.append(
                 {
-                    "name": p.get("title", ""),
-                    "description": (p.get("body_html") or "")[:2000],
+                    "name": item.get("title", ""),
+                    "description": (item.get("body_html") or "")[:2000],
                     "price": float(v0.get("price") or 0) or None,
                     "currency": "USD",
-                    "image_url": img,
-                    "product_url": None,
-                    "category": p.get("product_type") or None,
+                    "image_url": _shopify_image(item),
+                    # Storefront URL so Buy works for synced SKUs (was None)
+                    "product_url": f"https://{self.shop_domain}/products/{handle}" if handle else None,
+                    "category": item.get("product_type") or None,
                     "stock": sum(int(v.get("inventory_quantity") or 0) for v in variants),
                     "sku": v0.get("sku") or None,
                     "source": "shopify",
-                    "external_id": str(p.get("id")),
+                    "external_id": str(item.get("id")),
                 }
             )
         return out
+
+
+def _shopify_image(item: dict) -> str | None:
+    """Extract primary image URL without chained .get() navigation."""
+    primary = item.get("image") or {}
+    if primary.get("src"):
+        return primary["src"]
+    for img in item.get("images") or []:
+        if img.get("src"):
+            return img["src"]
+    return None
+
+
+class CsvSource:
+    """CSV content as a ProductSource so both ingest paths share the interface."""
+
+    def __init__(self, content: str):
+        self.content = content
+
+    async def fetch_products(self) -> list[dict]:
+        return parse_csv(self.content)
 
 
 def parse_csv(content: str) -> list[dict]:
@@ -209,7 +231,7 @@ def parse_csv(content: str) -> list[dict]:
 
 
 async def upsert_products(items: list[dict], db: AsyncSession) -> int:
-    """Upsert by (source, external_id) or sku. Returns count."""
+    """Upsert by (source, external_id) → sku → name. Returns count."""
     n = 0
     for it in items:
         stmt = None
@@ -217,6 +239,9 @@ async def upsert_products(items: list[dict], db: AsyncSession) -> int:
             stmt = select(Product).where(Product.source == it["source"], Product.external_id == str(it["external_id"]))
         elif it.get("sku"):
             stmt = select(Product).where(Product.sku == it["sku"])
+        elif it.get("name"):
+            # CSV rows without sku/external_id previously always inserted — dedupe by name
+            stmt = select(Product).where(Product.name == it["name"])
         existing = (await db.execute(stmt)).scalar_one_or_none() if stmt is not None else None
         if existing:
             for k in ("name", "description", "price", "currency", "image_url", "product_url", "category", "stock"):

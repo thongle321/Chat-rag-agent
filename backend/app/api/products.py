@@ -1,13 +1,20 @@
 """Products admin API — CRUD + CSV import + Shopify sync (both supported)."""
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
 from app.models.unified import Product
-from app.services.products import list_products, parse_csv, search_products, upsert_products
+from app.services.products import (
+    CsvSource,
+    ShopifySource,
+    list_products,
+    product_to_dict,
+    search_products,
+    sync_source,
+)
 from app.services.user_manager import current_admin_user
 
 router = APIRouter()
@@ -48,9 +55,7 @@ async def create_product(body: ProductUpsert, db: AsyncSession = Depends(get_asy
     db.add(p)
     await db.commit()
     await db.refresh(p)
-    from app.services.products import to_dict
-
-    return to_dict(p)
+    return product_to_dict(p)
 
 
 @router.put("/{pid}")
@@ -59,15 +64,11 @@ async def update_product(
 ):
     p = (await db.execute(select(Product).where(Product.id == pid))).scalar_one_or_none()
     if not p:
-        from fastapi import HTTPException
-
         raise HTTPException(404, "Product not found")
     for k, v in body.model_dump().items():
         setattr(p, k, v)
     await db.commit()
-    from app.services.products import to_dict
-
-    return to_dict(p)
+    return product_to_dict(p)
 
 
 @router.delete("/{pid}")
@@ -82,8 +83,7 @@ async def delete_product(pid: str, db: AsyncSession = Depends(get_async_session)
 @router.post("/import-csv")
 async def import_csv(file: UploadFile, db: AsyncSession = Depends(get_async_session), user=current_admin_user):
     content = (await file.read()).decode("utf-8-sig")
-    items = parse_csv(content)
-    n = await upsert_products(items, db)
+    n = await sync_source(CsvSource(content), db)
     return {"imported": n}
 
 
@@ -91,7 +91,5 @@ async def import_csv(file: UploadFile, db: AsyncSession = Depends(get_async_sess
 async def sync_shopify(
     body: ShopifySyncRequest, db: AsyncSession = Depends(get_async_session), user=current_admin_user
 ):
-    from app.services.products import ShopifySource, sync_source
-
     n = await sync_source(ShopifySource(body.shop_domain, body.access_token), db)
     return {"synced": n}

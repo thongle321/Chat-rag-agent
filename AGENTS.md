@@ -4,11 +4,11 @@
 
 ## Project Overview
 
-**Document RAG Chatbot** — private knowledge-base assistant with hybrid retrieval, streaming answers, citations, and omnichannel integrations (Facebook, Zalo).
+**Document RAG Chatbot + Product Recommendations** — private knowledge-base assistant with hybrid retrieval, streaming answers, citations, ChatGPT-style product cards, and omnichannel integrations (Facebook, Zalo).
 
-- **Backend:** Python 3.11+ / FastAPI + `pydantic-ai` (agent), ChromaDB (vectors), BM25s + RRF (hybrid), FastEmbed `intfloat/multilingual-e5-small`, SQLAlchemy + aiosqlite, `fastapi-users` (JWT), Logfire
-- **Frontend:** Vue 3 + Vite + `vue-router` + Pinia + `@nuxt/ui` + Tailwind 4 + Axios + `fetch` streaming
-- **Storage:** `backend/data/app.db` (users/settings/logs), `backend/data/conversations.db` (pydantic-ai messages), `backend/.chromadb/` (vectors), `backend/data/uploads/` (originals), `backend/data/bm25_index/` (BM25)
+- **Backend:** Python 3.11+ / FastAPI + `pydantic-ai` (agent), ChromaDB (vectors), BM25s + RRF (hybrid), FastEmbed `intfloat/multilingual-e5-small`, SQLAlchemy + aiosqlite, `fastapi-users` (JWT, roles `user`/`admin`), Logfire
+- **Frontend:** Vue 3 + Vite + `vue-router` + Pinia + `@nuxt/ui` + Tailwind 4 + Axios + `fetch` streaming (chat-vue template patterns: `UDashboardSidebar 15rem`, `useChats`/`useChatActions`, `view-transition-name:chat-prompt`)
+- **Storage:** `backend/data/app.db` single-tenant (users, sessions, unified tables, logs, products — no `tenant_id`), `backend/.chromadb/` (vectors), `backend/data/uploads/` (originals), `backend/data/bm25_index/` (BM25). No `conversations.db` (legacy removed).
 - **Default admin:** `admin@example.com` / `admin123` (seeded in `lifespan`)
 
 ## Repository Structure
@@ -24,39 +24,43 @@ backend/
     db/
       session.py         # async_engine (sqlite+aiosqlite://data/app.db), create_db_and_tables
       vector_store.py    # Chroma PersistentClient wrapper, BM25 build, RRF
-      embeddings.py      # FastEmbed wrapper + e5 prefix
-      conversation_store.py # SQLite store for message history (conversations.db)
+      embeddings.py      # FastEmbed wrapper + e5 prefix (blocking — always asyncio.to_thread)
+      conversation_store.py # ORM message history on app.db (ModelMessagesTypeAdapter, raw_data)
     models/
-      user.py            # User (fastapi-users), Base
+      user.py            # User (fastapi-users, role=user|admin), Base
       session.py         # ChatSession
-      ai_settings.py / document_status.py / facebook_channel.py / zalo_channel.py
+      unified.py         # Channel/Conversation/Message/Document/DocumentChunk/AppSetting/SyncLog/AIUsageLog/Product
       chat_logging.py    # ActivityLog + ChatMessageLog (durable logs)
       schemas.py         # ChatRequest/Response, DocumentInfo, etc.
     services/
-      rag.py             # _run_agent / stream_answer / answer_question — core RAG loop
+      rag.py             # _run_agent / stream_answer / answer_question — RAG + search_products tools
+      products.py        # Product catalog: search (embedding cosine, gate 0.30), ShopifySource/CsvSource, upsert
       llm.py             # get_llm() → (model, model_name) per ai_provider (openai/ollama)
       document_ingest.py # chonkie chunking + save_and_queue_indexing + index_file
       document_status.py / chat_logging.py / encryption.py / ai_settings.py
-      facebook_channels.py / zalo_channels.py / user_manager.py
+      facebook_channels.py / zalo_channels.py / user_manager.py  # require_admin/require_user, current_admin_user/current_user_user
     api/
       routes.py          # central /api router
       auth.py            # JWT login/register + /me
-      chat.py            # POST /chat/query, /chat/query/stream (SSE)
+      chat.py            # POST /chat/query, /chat/query/stream (SSE: text_delta/sources/products/followups/done/error)
       sessions.py        # chat session CRUD
-      docs.py            # POST /documents/upload, GET, DELETE /{title}
-      settings.py / stats.py / health.py / logs.py
+      docs.py            # POST /documents/upload, GET, DELETE /{title} (admin-only)
+      products.py        # GET/POST/PUT/DELETE /products (admin), POST /import-csv, POST /sync-shopify, GET /search (public)
+      settings.py / stats.py / health.py / logs.py   # admin-only (settings/stats/docs/facebook/zalo)
       facebook.py / zalo.py  # webhook, channels, sync
   data/ / .chromadb/ / .venv / pyproject.toml / uv.lock / .env
 frontend/
   vite.config.ts         # port 3000, proxy /api → localhost:8000
   src/
     main.ts / App.vue / layouts/default.vue
-    api/index.ts         # axios + streamChat (SSE via fetch, forwards JWT)
-    stores/ chat.ts / auth.ts / documents.ts / settings.ts
-    components/ ChatSidebar.vue / ChatComposer.vue / etc.
-    pages/ index.vue (chat), admin/*, login.vue
+    api/index.ts         # axios + streamChat (SSE via fetch, forwards JWT; StreamProduct/StreamHandlers)
+    stores/ chat.ts (products/followups per message) / auth.ts / documents.ts / settings.ts
+    composables/ useChats.ts / useChatActions.ts
+    components/ ChatSidebar.vue / ChatComposer.vue / UserMenu.vue
+    components/chat/ Indicator.vue / SourceLink.vue / ProductCard.vue / ModelSelect.vue
+    pages/ index.vue (public chat: title dropdown, thinking timer, hover edit, ProductCards+chips), admin/products.vue, admin/*, login.vue
   package.json / pnpm-lock.yaml / biome.json / vercel.json
-docs/research/  bilingual-rag.md, citation-persistence.md, etc.
+docs/research/  bilingual-rag.md, chat-vue-template.md, cqa-db-design-for-rag.md, etc.
 ```
 
 ## Running Locally
@@ -115,41 +119,45 @@ All under `/api` (`app/api/routes.py`):
 | `/auth` | `auth.py` | `POST /auth/jwt/login`, `/auth/jwt/logout`, `POST /auth/register`, `GET /auth/me` |
 | `/health` | `health.py` | `GET /health` |
 | `/settings` | `settings.py` | AI provider/model CRUD (admin) |
-| `/stats` | `stats.py` | usage stats |
-| `/documents` | `docs.py` | `POST /upload` (multipart, 50MB limit, background `index_file`), `GET /`, `DELETE /{title}`, `GET /status` |
+| `/stats` | `stats.py` | usage stats (admin) |
+| `/documents` | `docs.py` | `POST /upload` (multipart, 50MB limit, background `index_file`), `GET /`, `DELETE /{title}`, `GET /status` (admin) |
+| `/products` | `products.py` | `GET /` list, `POST /`, `PUT /{id}`, `DELETE /{id}` (admin); `POST /import-csv` (admin); `POST /sync-shopify` (admin); `GET /search?q=&k=` (public) |
 | `/chat` | `chat.py` + `sessions.py` | `POST /query` (non-stream), `POST /query/stream` (SSE), session list/get/delete |
 | `/logs` | `logs.py` | activity + chat logs (admin) |
-| `/facebook` | `facebook.py` | webhook verify, message handling, channel mgmt |
-| `/zalo` | `zalo.py` | Zalo webhook + channel mgmt |
+| `/facebook` | `facebook.py` | webhook verify, message handling, channel mgmt (admin) |
+| `/zalo` | `zalo.py` | Zalo webhook + channel mgmt (admin) |
 
-**Streaming protocol** (`POST /chat/query/stream`): SSE `data: {"content": "..."}` deltas, `event: sources` + `event: done` (`{session_id, model}`), `event: error`. GZip bypassed for this path (`NoGzipForSSE`).
+**Auth model:** `/` chat is public like ChatGPT (anonymous allowed, `_optional_user_with_email` enriches logs). Admin (`role=admin`) is redirected to `/admin/` and cannot use user chat; user (`role=user`) cannot access `/admin` or admin APIs. Backend enforces via `require_admin`→`current_admin_user` (docs/settings/facebook/zalo/stats/products-admin) vs public/best-effort (chat/sessions/products-search). Frontend guards are UX only.
 
-## RAG Pipeline
+**Streaming protocol** (`POST /chat/query/stream`): SSE `data: {"content": "..."}` deltas, `event: sources` + `event: products` (`{products: StreamProduct[]}`) + `event: followups` (`{followups: string[]}`) + `event: done` (`{session_id, model}`), `event: error`. GZip bypassed for this path (`NoGzipForSSE`).
 
-`app/services/rag.py` + `app/retrieval.py`:
+## RAG + Commerce Pipeline
+
+`app/services/rag.py` + `app/retrieval.py` + `app/services/products.py`:
 
 1. `get_retrieval().search(query, k=8)` — embed query (e5 prefix) → over-retrieve vectors (`k*over`), build BM25 ranks (`_ensure_bm25()`), RRF-fuse, optional `retrieval_distance_threshold` gate.
-2. `Deps` + `search_documents` tool (pydantic-ai) — agent calls it for document-related queries; catalog injected into `system_prompt`; `ProcessHistory(_keep_recent)` caps history to 10, `ReinjectSystemPrompt` refreshes catalog.
-3. `stream_answer()` — creates/fetches `conversation_id`, runs `agent.run_stream`, yields `text_delta`, persists citation stubs (`metadata.sources` on `ModelResponse`), saves to `conversation_store`, durable logs via `chat_logging` (user + assistant + `activity_logs`), token usage captured.
-4. Citations: only numbers actually present in answer (`\[(\d+)\]`) are surfaced; metadata hydrated at read-time from vector store so renames/deletes reflect immediately.
+2. `Deps` + `search_documents` / `search_products` tools (pydantic-ai) — agent calls per intent; catalog injected into `system_prompt` (+ SHOPPING RULES 9/10/11: only `[P1]`-cited SKUs, vague queries → 2-3 clarifying `?` lines, honest sales line); `ProcessHistory(_keep_recent)` caps history to 10, `ReinjectSystemPrompt` refreshes catalog.
+3. `stream_answer()` — creates/fetches `conversation_id`, runs `agent.run_stream`, yields `text_delta`, persists citation stubs (`metadata.sources` on `ModelResponse`), saves to `conversation_store`, durable logs via `chat_logging` (user + assistant + `activity_logs`), token usage captured. Emits `products` (only `[P1]`-cited) + `followups` (only when `products_searched` and nothing cited, budget/category/dietary preferred).
+4. Citations: only numbers actually present in answer (`\[(\d+)\]` / `\[P(\d+)\]`) are surfaced; doc metadata hydrated at read-time from vector store so renames/deletes reflect immediately. Product search: embedding cosine over active products via `asyncio.to_thread` (FastEmbed is blocking), gate `0.30`, LIKE fallback on failure.
+5. Ingest: `ProductSource` protocol — `ShopifySource` (Admin API `products.json`, storefront URL `https://{domain}/products/{handle}`) + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; `upsert_products` dedupes by `(source,external_id)` → `sku` → `name`.
 
 ## Conventions
 
 ### Python (backend)
 
-- **Formatter/lint:** `ruff` (line-length 120, target `py311`, rules `E,F,I,B,UP`). Run `uv run ruff check .` / `ruff format .`.
-- **Imports:** `isort` via ruff `I`. Absolute `app.*` imports.
-- **Async:** `AsyncSession` + `async_session_factory`; background work via `BackgroundTasks` + `asyncio.to_thread` for Chroma/BM25 (blocking).
+- **Formatter/lint:** `ruff` (line-length 120, target `py311`, rules `E,F,I,B,UP`). Run `uv run ruff check app/ && uv run ruff format --check app/`.
+- **Imports:** top-level only, `isort` via ruff `I`. Absolute `app.*` imports.
+- **Async:** `AsyncSession` + `async_session_factory`; blocking work (Chroma/BM25/FastEmbed) via `asyncio.to_thread`.
 - **Config:** never hardcode secrets/hosts — use `app.core.config.settings`. DB paths relative to `backend/data`.
-- **Auth:** `fastapi-users` — `current_active_user` dependency; chat endpoints are best-effort auth (anonymous allowed, Bearer token enriches logs).
+- **Auth:** `fastapi-users` — `current_admin_user` / `current_user_user`; chat endpoints are best-effort auth (anonymous allowed, Bearer token enriches logs).
 - **Logging:** `logfire` instrumented (fastapi, httpx, sqlalchemy, pydantic-ai); use `logger` + `log_activity`/`log_chat_message`.
 
 ### Frontend (Vue)
 
 - **Lint/format:** `@biomejs/biome` (`biome.json` — `noExplicitAny: off`, etc.). Don't use `eslint`.
-- **Style:** Tailwind 4, `@nuxt/ui` auto-imports (`vue`, `vue-router`, `@vueuse/core`). `<script setup lang="ts">`.
-- **State:** Pinia stores (`chat.ts` etc.); chat persistence in `localStorage` + server sessions. Streaming via `streamChat()` in `api/index.ts` (native `fetch`, not axios, to read SSE).
-- **Routing:** `vue-router/vite` file-based (`src/pages/*` → routes, `route-map.d.ts` generated).
+- **Style:** Tailwind 4, `@nuxt/ui` auto-imports (`vue`, `vue-router`, `@vueuse/core`). `<script setup lang="ts">`, `i-lucide-*` icons only.
+- **State:** Pinia stores (`chat.ts` etc.); chat persistence in `localStorage` + server sessions. Streaming via `streamChat()` in `api/index.ts` (native `fetch`, not axios, to read SSE). Shared `StreamProduct` type in `api/index.ts`, imported by `ProductCard.vue`/`chat.ts`.
+- **Routing:** `vue-router/vite` file-based (`src/pages/*` → routes, `route-map.d.ts` generated). `/` public chat, `/login` user, `/admin/*` admin-only.
 - **API:** `api` (axios) base `VITE_API_URL || "/api"`; streaming path manually adds `Authorization: Bearer <auth_token>` from `localStorage`.
 
 ### General
@@ -174,7 +182,8 @@ npx biome check src/
 ## Gotchas
 
 - `backend/.env` must exist — `JWT_SECRET_KEY` required or `lifespan` raises.
-- Chroma `PersistentClient` is blocking — always wrap in `asyncio.to_thread`.
+- Chroma `PersistentClient` **and FastEmbed** are blocking — always wrap in `asyncio.to_thread`.
 - SSE stream must not be GZipped (`NoGzipForSSE`); don't add global compression that re-enables it.
-- `conversation_store` uses separate `conversations.db` — `rag.close()` + `engine.dispose()` on shutdown.
+- Single DB `data/app.db` (`Base.metadata.create_all`, fresh, no migrations); no `tenant_id` anywhere; vectors stay in `.chromadb`, BM25 derived.
 - Frontend `VITE_API_URL` trailing `/api` matters (`api/index.ts` appends `/chat/...`).
+- Zalo: global `zalo_webhook_url` in settings vs per-channel `bot_token` + `verify_token` (8..256) in integrations.
