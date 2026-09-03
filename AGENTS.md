@@ -34,7 +34,7 @@ backend/
       schemas.py         # ChatRequest/Response, DocumentInfo, etc.
     services/
       rag.py             # _run_agent / stream_answer / answer_question — RAG + search_products tools
-      products.py        # Product catalog: search (embedding cosine, gate 0.30), ShopifySource/CsvSource, upsert
+      products.py        # Product catalog: search (embedding cosine, PRODUCT_SCORE_GATE=0.30 pre-slice), ShopifySource/CsvSource, upsert via _dedupe_stmt
       llm.py             # get_llm() → (model, model_name) per ai_provider (openai/ollama)
       document_ingest.py # chonkie chunking + save_and_queue_indexing + index_file
       document_status.py / chat_logging.py / encryption.py / ai_settings.py
@@ -42,7 +42,7 @@ backend/
     api/
       routes.py          # central /api router
       auth.py            # JWT login/register + /me
-      chat.py            # POST /chat/query, /chat/query/stream (SSE: text_delta/sources/products/followups/done/error)
+      chat.py            # POST /chat/query, /chat/query/stream (SSE via _SSE_FIELDS+_format_sse); _decode_bearer decodes pyjwt once (no jose dep)
       sessions.py        # chat session CRUD
       docs.py            # POST /documents/upload, GET, DELETE /{title} (admin-only)
       products.py        # GET/POST/PUT/DELETE /products (admin), POST /import-csv, POST /sync-shopify, GET /search (public)
@@ -138,8 +138,8 @@ All under `/api` (`app/api/routes.py`):
 1. `get_retrieval().search(query, k=8)` — embed query (e5 prefix) → over-retrieve vectors (`k*over`), build BM25 ranks (`_ensure_bm25()`), RRF-fuse, optional `retrieval_distance_threshold` gate.
 2. `Deps` + `search_documents` / `search_products` tools (pydantic-ai) — agent calls per intent; catalog injected into `system_prompt` (+ SHOPPING RULES 9/10/11: only `[P1]`-cited SKUs, vague queries → 2-3 clarifying `?` lines, honest sales line); `ProcessHistory(_keep_recent)` caps history to 10, `ReinjectSystemPrompt` refreshes catalog.
 3. `stream_answer()` — creates/fetches `conversation_id`, runs `agent.run_stream`, yields `text_delta`, persists citation stubs (`metadata.sources` on `ModelResponse`), saves to `conversation_store`, durable logs via `chat_logging` (user + assistant + `activity_logs`), token usage captured. Emits `products` (only `[P1]`-cited) + `followups` (only when `products_searched` and nothing cited, budget/category/dietary preferred).
-4. Citations: only numbers actually present in answer (`\[(\d+)\]` / `\[P(\d+)\]`) are surfaced; doc metadata hydrated at read-time from vector store so renames/deletes reflect immediately. Product search: embedding cosine over active products via `asyncio.to_thread` (FastEmbed is blocking), gate `0.30`, LIKE fallback on failure.
-5. Ingest: `ProductSource` protocol — `ShopifySource` (Admin API `products.json`, storefront URL `https://{domain}/products/{handle}`) + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; `upsert_products` dedupes by `(source,external_id)` → `sku` → `name`.
+4. Citations: only numbers actually present in answer (`\[(\d+)\]` / `\[P(\d+)\]`) are surfaced; doc metadata hydrated at read-time from vector store so renames/deletes reflect immediately. Product search: embedding cosine over active products via `asyncio.to_thread` (FastEmbed is blocking), `PRODUCT_SCORE_GATE=0.30` applied pre-slice (sorted desc, `break` on first miss); LIKE fallback on embedding failure needs 2 token hits for multi-word queries (1 for single-word). Followup strip is bullet-only (`[\u2022-]|\d+[.)]` + whitespace) so prices like `2 for $10?` survive.
+5. Ingest: `ProductSource` protocol — `ShopifySource` (Admin API `products.json`, storefront URL `https://{domain}/products/{handle}`) + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; `upsert_products` dedupes via `_dedupe_stmt`: `(source,external_id)` → `sku` → `name` (name fallback scoped by `source` when present).
 
 ## Conventions
 
