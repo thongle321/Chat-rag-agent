@@ -130,10 +130,6 @@ async def list_products(active_only: bool = True) -> list[dict]:
         return [product_to_dict(p) for p in rows]
 
 
-# Back-compat alias (older imports)
-to_dict = product_to_dict
-
-
 # ---------------------------------------------------------------------------
 # ProductSource adapter — Shopify first, CSV fallback (both supported)
 # ---------------------------------------------------------------------------
@@ -244,7 +240,10 @@ def _dedupe_stmt(it: dict):
     if it.get("sku"):
         return select(Product).where(Product.sku == it["sku"])
     if it.get("name"):
-        # CSV rows without sku/external_id previously always inserted — dedupe by name
+        # CSV rows without sku/external_id previously always inserted — dedupe by name,
+        # scoped to source so a CSV row can't collide with a Shopify SKU of the same name.
+        if it.get("source"):
+            return select(Product).where(Product.source == it["source"], Product.name == it["name"])
         return select(Product).where(Product.name == it["name"])
     return None
 

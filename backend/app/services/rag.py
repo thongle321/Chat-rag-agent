@@ -20,6 +20,7 @@ from app.db.conversation_store import load_messages, save_messages
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
 from app.retrieval import get_retrieval
+from app.services.chat_logging import log_activity, log_chat_message
 from app.services.llm import get_llm
 from app.services.products import search_products as _search_products
 
@@ -385,7 +386,8 @@ async def stream_answer(
     if deps.products_searched and not cited_products:
         candidates = []
         for line in full_text.splitlines():
-            s = re.sub(r"^[\-\•\d\.\s]+", "", line.strip()).strip()
+            # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
+            s = re.sub(r"^\s*(?:[-\•]|\d+[.)])\s+", "", line.strip()).strip()
             if s.endswith("?") and 8 < len(s) < 140:
                 candidates.append(s)
         prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
@@ -405,8 +407,6 @@ async def stream_answer(
     # --- Durable per-message logs to app.db (like CQA messages + ai_usage_logs) ---
     latency_ms = int((time.perf_counter() - t0) * 1000)
     try:
-        from app.services.chat_logging import log_activity, log_chat_message
-
         answer_text = "".join(answer_parts)
         # user turn
         await log_chat_message(

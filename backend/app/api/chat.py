@@ -66,7 +66,8 @@ def _get_jwt_secret() -> str:
 def _decode_bearer(request: Request) -> dict | None:
     """Decode the Bearer token without enforcing auth — single helper for both callers."""
     try:
-        auth = request.headers.get("authorization", "") or request.headers.get("Authorization", "")
+        # Starlette headers are case-insensitive — one lookup is enough.
+        auth = request.headers.get("authorization", "")
         if not auth.lower().startswith("bearer "):
             return None
         token = auth[7:].strip()
@@ -77,18 +78,22 @@ def _decode_bearer(request: Request) -> dict | None:
         return None
 
 
-def _optional_user_id(request: Request) -> str | None:
-    """Best-effort user_id from Bearer token without enforcing auth — keeps chat open."""
-    payload = _decode_bearer(request)
+def _user_id_from_payload(payload: dict | None) -> str | None:
     if not payload:
         return None
     sub = payload.get("sub")
     return str(sub) if sub else None
 
 
+def _optional_user_id(request: Request) -> str | None:
+    """Best-effort user_id from Bearer token without enforcing auth — keeps chat open."""
+    return _user_id_from_payload(_decode_bearer(request))
+
+
 async def _optional_user_with_email(request: Request, db: AsyncSession) -> tuple[str | None, str | None]:
     """Return (user_id, user_email) best-effort — mirrors CQA activity_logs user_email."""
-    uid = _optional_user_id(request)
+    payload = _decode_bearer(request)  # decode once, reuse for sub + email fallback
+    uid = _user_id_from_payload(payload)
     if not uid:
         return None, None
     try:
@@ -102,7 +107,6 @@ async def _optional_user_with_email(request: Request, db: AsyncSession) -> tuple
         if user:
             return str(user.id), user.email
         # Fallback: token contained email claim directly
-        payload = _decode_bearer(request)
         return uid, payload.get("email") if payload else None
     except Exception:
         return uid, None
@@ -125,6 +129,27 @@ async def query_chat(
     return response
 
 
+# Single dispatch for stream events → SSE frames (answer_question folds the same
+# events to a final answer; formatting lives here so the cascade exists once).
+_SSE_FIELDS: dict[str, tuple[str | None, tuple[str, ...]]] = {
+    "text_delta": (None, ("content",)),
+    "sources": ("sources", ("sources",)),
+    "products": ("products", ("products",)),
+    "followups": ("followups", ("followups",)),
+    "error": ("error", ("detail", "status_code")),
+    "done": ("done", ("session_id", "model")),
+}
+
+
+def _format_sse(ev: dict) -> str | None:
+    spec = _SSE_FIELDS.get(ev["type"])
+    if spec is None:
+        return None
+    event, fields = spec
+    data = json.dumps({k: ev[k] for k in fields if k in ev})
+    return f"event: {event}\ndata: {data}\n\n" if event else f"data: {data}\n\n"
+
+
 @router.post("/query/stream")
 async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
     session = await _ensure_session(request, db)
@@ -136,19 +161,9 @@ async def query_chat_stream(request: ChatRequest, http_request: Request, db: Asy
         async for ev in stream_answer(
             request.question, session_id, user_id=user_id, user_email=user_email, ip_address=ip
         ):
-            if ev["type"] == "text_delta":
-                yield f"data: {json.dumps({'content': ev['content']})}\n\n"
-            elif ev["type"] == "sources":
-                yield f"event: sources\ndata: {json.dumps({'sources': ev['sources']})}\n\n"
-            elif ev["type"] == "products":
-                yield f"event: products\ndata: {json.dumps({'products': ev['products']})}\n\n"
-            elif ev["type"] == "followups":
-                yield f"event: followups\ndata: {json.dumps({'followups': ev['followups']})}\n\n"
-            elif ev["type"] == "error":
-                detail = json.dumps({"detail": ev["detail"], "status_code": ev["status_code"]})
-                yield f"event: error\ndata: {detail}\n\n"
-            elif ev["type"] == "done":
-                yield f"event: done\ndata: {json.dumps({'session_id': ev['session_id'], 'model': ev['model']})}\n\n"
+            frame = _format_sse(ev)
+            if frame is not None:
+                yield frame
         await _finish_title(session, request.question, db)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
