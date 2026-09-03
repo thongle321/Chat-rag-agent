@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -23,6 +24,9 @@ from app.db.session import async_session_factory
 from app.models.unified import Product
 
 logger = logging.getLogger(__name__)
+
+# Minimum embedding cosine to recommend a SKU — strict grounding gate.
+PRODUCT_SCORE_GATE = 0.30
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +63,8 @@ def _product_text(p: Product) -> str:
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        return 0.0
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
@@ -79,35 +85,36 @@ async def search_products(query: str, k: int = 6, category: str | None = None) -
         rows = (await db.execute(stmt)).scalars().all()
     if not rows:
         return []
-    import asyncio as _asyncio
-
     try:
         # FastEmbed is blocking — offload like Chroma/BM25 (AGENTS.md Gotchas)
-        q_emb = await _asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
+        q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
         texts = [_product_text(p) for p in rows]
-        p_embs = await _asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
+        p_embs = await asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
         scored = sorted(
-            zip(rows, [_cosine(q_emb, e) for e in p_embs], strict=True),
+            zip(rows, [_cosine(q_emb, e) for e in p_embs], strict=False),
             key=lambda x: x[1],
             reverse=True,
         )
+        # Gate BEFORE slicing so weak top-k entries don't waste slots.
         out = []
-        for prod, score in scored[:k]:
-            # Gate weak matches — strict grounding: don't recommend irrelevant SKUs
-            if score < 0.30:
-                continue
+        for prod, score in scored:
+            if score < PRODUCT_SCORE_GATE:
+                break
             d = product_to_dict(prod)
             d["score"] = round(float(score), 4)
             out.append(d)
+            if len(out) >= k:
+                break
         logger.info("product search q=%r n=%d kept=%d", query[:60], len(rows), len(out))
         return out
     except Exception:
         logger.exception("product embedding search failed, falling back to LIKE")
-        qlower = query.lower()
+        tokens = [t for t in query.lower().split() if len(t) > 2]
+        need = 2 if len(tokens) > 1 else 1  # LIKE fallback honors grounding: multi-word needs 2 hits
         out = []
         for prod in rows:
             hay = f"{prod.name} {prod.description or ''} {prod.category or ''}".lower()
-            if any(t in hay for t in qlower.split() if len(t) > 2):
+            if sum(1 for t in tokens if t in hay) >= need:
                 out.append(product_to_dict(prod))
             if len(out) >= k:
                 break
@@ -230,18 +237,23 @@ def parse_csv(content: str) -> list[dict]:
     return out
 
 
+def _dedupe_stmt(it: dict):
+    """Single key-fn for upsert identity: (source, external_id) → sku → name."""
+    if it.get("source") and it.get("external_id"):
+        return select(Product).where(Product.source == it["source"], Product.external_id == str(it["external_id"]))
+    if it.get("sku"):
+        return select(Product).where(Product.sku == it["sku"])
+    if it.get("name"):
+        # CSV rows without sku/external_id previously always inserted — dedupe by name
+        return select(Product).where(Product.name == it["name"])
+    return None
+
+
 async def upsert_products(items: list[dict], db: AsyncSession) -> int:
     """Upsert by (source, external_id) → sku → name. Returns count."""
     n = 0
     for it in items:
-        stmt = None
-        if it.get("source") and it.get("external_id"):
-            stmt = select(Product).where(Product.source == it["source"], Product.external_id == str(it["external_id"]))
-        elif it.get("sku"):
-            stmt = select(Product).where(Product.sku == it["sku"])
-        elif it.get("name"):
-            # CSV rows without sku/external_id previously always inserted — dedupe by name
-            stmt = select(Product).where(Product.name == it["name"])
+        stmt = _dedupe_stmt(it)
         existing = (await db.execute(stmt)).scalar_one_or_none() if stmt is not None else None
         if existing:
             for k in ("name", "description", "price", "currency", "image_url", "product_url", "category", "stock"):

@@ -203,8 +203,9 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
 
     Call this when the user asks for recommendations, shopping advice, what to
     buy/eat/use, or anything that could map to a product (e.g. 'What should I
-    eat today?'). For vague queries, first ask 1-2 clarifying questions OR call
-    with your best guess and refine after. ONLY recommend products returned here
+    eat today?'). For vague queries, ask 2-3 short clarifying questions first
+    (budget, category, dietary/preference — one per line ending with '?'), then
+    call with the refined query. ONLY recommend products returned here
     — never invent SKUs. If no match, say the catalog does not carry it.
 
     Args:
@@ -384,7 +385,7 @@ async def stream_answer(
     if deps.products_searched and not cited_products:
         candidates = []
         for line in full_text.splitlines():
-            s = line.strip().lstrip("-•123456789. ").strip()
+            s = re.sub(r"^[\-\•\d\.\s]+", "", line.strip()).strip()
             if s.endswith("?") and 8 < len(s) < 140:
                 candidates.append(s)
         prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")

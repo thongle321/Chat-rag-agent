@@ -3,11 +3,13 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
+import jwt
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import get_async_session
 from app.models.schemas import ChatRequest, ChatResponse
 from app.models.session import ChatSession
@@ -57,12 +59,12 @@ def _client_ip(request: Request | None) -> str | None:
 
 
 def _get_jwt_secret() -> str:
-    s = __import__("app.core.config", fromlist=["settings"]).settings.jwt_secret_key
+    s = settings.jwt_secret_key
     return s.get_secret_value() if hasattr(s, "get_secret_value") else str(s)
 
 
-def _optional_user_id(request: Request) -> str | None:
-    """Best-effort user_id from Bearer token without enforcing auth — keeps chat open."""
+def _decode_bearer(request: Request) -> dict | None:
+    """Decode the Bearer token without enforcing auth — single helper for both callers."""
     try:
         auth = request.headers.get("authorization", "") or request.headers.get("Authorization", "")
         if not auth.lower().startswith("bearer "):
@@ -70,18 +72,18 @@ def _optional_user_id(request: Request) -> str | None:
         token = auth[7:].strip()
         if not token:
             return None
-        secret = _get_jwt_secret()
-        for mod in ("jwt", "jose.jwt"):
-            try:
-                m = __import__(mod, fromlist=["decode"])
-                payload = m.decode(token, secret, algorithms=["HS256"], options={"verify_exp": False})  # type: ignore
-                sub = payload.get("sub")
-                return str(sub) if sub else None
-            except Exception:
-                continue
-        return None
+        return jwt.decode(token, _get_jwt_secret(), algorithms=["HS256"], options={"verify_exp": False})
     except Exception:
         return None
+
+
+def _optional_user_id(request: Request) -> str | None:
+    """Best-effort user_id from Bearer token without enforcing auth — keeps chat open."""
+    payload = _decode_bearer(request)
+    if not payload:
+        return None
+    sub = payload.get("sub")
+    return str(sub) if sub else None
 
 
 async def _optional_user_with_email(request: Request, db: AsyncSession) -> tuple[str | None, str | None]:
@@ -100,17 +102,8 @@ async def _optional_user_with_email(request: Request, db: AsyncSession) -> tuple
         if user:
             return str(user.id), user.email
         # Fallback: token contained email claim directly
-        auth = request.headers.get("authorization", "") or request.headers.get("Authorization", "")
-        token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        secret = _get_jwt_secret()
-        for mod in ("jwt", "jose.jwt"):
-            try:
-                m = __import__(mod, fromlist=["decode"])
-                payload = m.decode(token, secret, algorithms=["HS256"], options={"verify_exp": False})  # type: ignore
-                return uid, payload.get("email")
-            except Exception:
-                continue
-        return uid, None
+        payload = _decode_bearer(request)
+        return uid, payload.get("email") if payload else None
     except Exception:
         return uid, None
 
