@@ -13,7 +13,7 @@ import { useChatActions } from "../composables/useChatActions";
 // Shared chat UI for / (blank composer, sessionId=null) and /c/:id (sessionId=set),
 // like ChatGPT: / is always fresh, first send routes to /c/:id.
 const props = defineProps<{ sessionId: string | null }>();
-const emit = defineEmits<{ unknown: [] }>();
+const emit = defineEmits<{ "not-found": [] }>();
 
 const chatStore = useChatStore();
 const authStore = useAuthStore();
@@ -46,7 +46,8 @@ const headerMenuItems = computed(() => [
   [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: async () => {
     if (!chatStore.activeId) return;
     await deleteHeaderChat(chatStore.activeId);
-    if (props.sessionId) router.push("/");
+    // replace: don't leave the deleted /c/:id in history
+    if (props.sessionId) router.replace("/");
   } }],
 ]);
 function saveHeaderTitle() {
@@ -103,11 +104,11 @@ async function saveEdit(msg: any) {
 onMounted(async () => {
 	await chatStore.fetchSessions();
 	if (props.sessionId) {
-		if (!chatStore.conversations.some((c) => c.id === props.sessionId)) {
-			emit("unknown"); // unknown/deleted id → parent redirects to /
+		// Local list first, then server (fresh device / cleared storage)
+		if (!(await chatStore.resolveSession(props.sessionId))) {
+			emit("not-found"); // unknown/deleted id → parent redirects to /
 			return;
 		}
-		await chatStore.setActive(props.sessionId);
 	} else {
 		// / is always a blank composer — never restore the last session here
 		chatStore.clearActive();
@@ -151,10 +152,18 @@ async function handleSend(question: string) {
 	} catch {
 		// error is already displayed via chatStore.error
 	}
-	// First send from the blank / composer → jump to the session URL like ChatGPT
+	// First send from the blank / composer → jump to the session URL like ChatGPT.
+	// Failed before a server session existed → drop the phantom so / stays blank.
 	if (!props.sessionId) {
-		const sid = chatStore.activeConversation?.sessionId || chatStore.activeId;
-		if (sid && chatStore.activeConversation?.sessionId) router.push(`/c/${sid}`);
+		const conv = chatStore.activeConversation;
+		if (conv && !conv.sessionId) {
+			if (chatStore.error) {
+				await chatStore.deleteConversation(conv.id);
+				chatStore.clearActive();
+			}
+		} else if (conv?.sessionId) {
+			router.push(`/c/${conv.sessionId}`);
+		}
 	}
 	await nextTick();
 	if (chatWindow.value) {

@@ -171,6 +171,38 @@ export const useChatStore = defineStore("chat", () => {
 		saveToStorage();
 	}
 
+	// Validate a /c/:id against local list, then the server (fresh device /
+	// cleared storage). Hydrates a local entry so direct loads work.
+	async function resolveSession(id: string): Promise<boolean> {
+		let conv = conversations.value.find((c) => c.id === id);
+		if (!conv) {
+			try {
+				await api.get(`/chat/sessions/${id}`);
+			} catch {
+				return false;
+			}
+			conversations.value.unshift({
+				createdAt: Date.now(),
+				id,
+				messages: [],
+				pinned: false,
+				sessionId: id,
+				title: "Chat",
+			});
+			saveToStorage();
+		}
+		await setActive(id);
+		conv = conversations.value.find((c) => c.id === id);
+		if (conv && conv.title === "Chat") {
+			const first = conv.messages.find((m) => m.role === "user");
+			if (first?.text) {
+				conv.title = first.text.slice(0, 60);
+				saveToStorage();
+			}
+		}
+		return true;
+	}
+
 	async function setActive(id: string) {
 		activeId.value = id;
 		saveToStorage();
@@ -319,16 +351,17 @@ export const useChatStore = defineStore("chat", () => {
 	return {
 		activeConversation,
 		activeId,
+		clearActive,
 		conversations,
 		deleteConversation,
 		error,
 		fetchSessionMessages,
 		fetchSessions,
 		loading,
-		clearActive,
 		messages,
 		newConversation,
 		renameConversation,
+		resolveSession,
 		sendMessage,
 		setActive,
 		stop,

@@ -61,7 +61,8 @@ function handleNew() {
 
 function handleDelete(id: string) {
   deleteChat(id);
-  if ((route.params as any)?.id === id) router.push("/");
+  // replace: don't leave the deleted /c/:id in history
+  if ((route.params as any)?.id === id) router.replace("/");
 }
 
 const renameModalOpen = ref(false);
