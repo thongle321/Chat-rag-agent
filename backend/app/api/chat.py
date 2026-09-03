@@ -146,6 +146,8 @@ def _format_sse(ev: dict) -> str | None:
     if spec is None:
         return None
     event, fields = spec
+    # Tolerant on purpose: never break the SSE stream on a malformed event.
+    # All producers (_error_event, stream_answer) always include every listed key.
     data = json.dumps({k: ev[k] for k in fields if k in ev})
     return f"event: {event}\ndata: {data}\n\n" if event else f"data: {data}\n\n"
 

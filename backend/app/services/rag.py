@@ -387,7 +387,7 @@ async def stream_answer(
         candidates = []
         for line in full_text.splitlines():
             # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
-            s = re.sub(r"^\s*(?:[-\•]|\d+[.)])\s+", "", line.strip()).strip()
+            s = re.sub(r"^\s*(?:[\u2022-]|\d+[.)])\s+", "", line.strip()).strip()
             if s.endswith("?") and 8 < len(s) < 140:
                 candidates.append(s)
         prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
