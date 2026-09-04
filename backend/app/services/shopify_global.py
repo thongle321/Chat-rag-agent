@@ -11,6 +11,7 @@ re-using images, so nothing here is ever persisted.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import re
 import uuid
@@ -204,6 +205,8 @@ async def search_global_catalog(
     content = result.get("structuredContent") or {}
     products = [p for p in (content.get("products") or []) if isinstance(p, dict)]
     out = [_map_product(p) for p in products]
+    # DEBUG: dump the full raw JSON response to the backend console.
+    print(json.dumps(result, indent=1, ensure_ascii=False, default=str), flush=True)
     # logfire.info (not logger.info): stdlib records are swallowed by the
     # LogfireLoggingHandler console, while spans print like `chat.message logged`.
     logfire.info(
