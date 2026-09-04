@@ -303,7 +303,7 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
     even when the query is vague (e.g. 'good headphones?'). Never interrogate
     first: recommend what comes back. Pass the user's raw query through; price
     and category extraction is handled for you. ONLY recommend products
-    returned here — never invent SKUs. If no match, say so in one short line
+    returned here — never invent products. If no match, say so in one short line
     and ask at most ONE follow-up question (budget or category).
 
     Args:

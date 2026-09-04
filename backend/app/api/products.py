@@ -29,7 +29,6 @@ class ProductUpsert(BaseModel):
     product_url: str | None = None
     category: str | None = None
     stock: int = 0
-    sku: str | None = None
     is_active: bool = True
 
 

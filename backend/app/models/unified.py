@@ -169,7 +169,6 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    sku: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)

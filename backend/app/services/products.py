@@ -1,4 +1,4 @@
-"""Products catalog — ChatGPT-style recommendations grounded on real SKUs.
+"""Products catalog — ChatGPT-style recommendations grounded on real catalog rows.
 
 - SQL table `products` (single-tenant, see models/unified.py)
 - search_products(): embedding cosine rank over active products (small catalog,
@@ -26,7 +26,7 @@ from app.models.unified import Product
 
 logger = logging.getLogger(__name__)
 
-# Minimum embedding cosine to recommend a SKU — strict grounding gate.
+# Minimum embedding cosine to recommend a product — strict grounding gate.
 PRODUCT_SCORE_GATE = 0.30
 
 # Budget hints like "under $30" / "$10 max" feed the analyzer regex-fallback
@@ -46,7 +46,6 @@ def product_to_dict(p: Product) -> dict:
     price = float(p.price) if p.price is not None else None
     return {
         "id": p.id,
-        "sku": p.sku,
         "name": p.name,
         "description": p.description,
         "price": price,
@@ -67,8 +66,6 @@ def _product_text(p: Product) -> str:
         parts.append(f"Category: {p.category}")
     if p.description:
         parts.append(p.description)
-    if p.sku:
-        parts.append(f"SKU: {p.sku}")
     return "\n".join(parts)
 
 
@@ -229,11 +226,10 @@ class ShopifySource:
                     "price": float(v0.get("price") or 0) or None,
                     "currency": "USD",
                     "image_url": _shopify_image(item),
-                    # Storefront URL so Buy works for synced SKUs (was None)
+                    # Storefront URL so Buy works for synced products (was None)
                     "product_url": f"https://{self.shop_domain}/products/{handle}" if handle else None,
                     "category": item.get("product_type") or None,
                     "stock": sum(int(v.get("inventory_quantity") or 0) for v in variants),
-                    "sku": v0.get("sku") or None,
                     "source": "shopify",
                     "external_id": str(item.get("id")),
                 }
@@ -268,7 +264,7 @@ class CsvSource:
 
 
 def parse_csv(content: str) -> list[dict]:
-    """CSV columns: name,description,price,currency,image_url,product_url,category,stock,sku."""
+    """CSV columns: name,description,price,currency,image_url,product_url,category,stock."""
     items, _ = parse_csv_stats(content)
     return items
 
@@ -311,7 +307,6 @@ def parse_csv_stats(content: str) -> tuple[list[dict], int]:
                 "product_url": (row.get("product_url") or "") or None,
                 "category": (row.get("category") or "") or None,
                 "stock": stock,
-                "sku": (row.get("sku") or "") or None,
                 "source": "csv",
                 "external_id": None,
             }
@@ -320,14 +315,12 @@ def parse_csv_stats(content: str) -> tuple[list[dict], int]:
 
 
 def _dedupe_stmt(it: dict):
-    """Single key-fn for upsert identity: (source, external_id) → sku → name."""
+    """Single key-fn for upsert identity: (source, external_id) → name."""
     if it.get("source") and it.get("external_id"):
         return select(Product).where(Product.source == it["source"], Product.external_id == str(it["external_id"]))
-    if it.get("sku"):
-        return select(Product).where(Product.sku == it["sku"])
     if it.get("name"):
-        # CSV rows without sku/external_id previously always inserted — dedupe by name,
-        # scoped to source so a CSV row can't collide with a Shopify SKU of the same name.
+        # CSV rows without external_id previously always inserted — dedupe by name,
+        # scoped to source so a CSV row can't collide with a Shopify product of the same name.
         if it.get("source"):
             return select(Product).where(Product.source == it["source"], Product.name == it["name"])
         return select(Product).where(Product.name == it["name"])
@@ -335,7 +328,7 @@ def _dedupe_stmt(it: dict):
 
 
 async def upsert_products(items: list[dict], db: AsyncSession) -> int:
-    """Upsert by (source, external_id) → sku → name. Returns count."""
+    """Upsert by (source, external_id) → name. Returns count."""
     n = 0
     for it in items:
         stmt = _dedupe_stmt(it)
