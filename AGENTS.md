@@ -17,13 +17,13 @@
 backend/
   app/
     main.py              # FastAPI app ("VeilAi Rag"), lifespan (JWT assert, DB create, admin seed, AI+zalo settings hot-reload), NoGzipForSSE lives here
-    retrieval.py         # ChromaRetrieval facade: embed → over-retrieve vectors × BM25 → RRF + distance gate
+    retrieval.py         # ChromaRetrieval.search owns RRF fusion: embed → over-retrieve → bm25_ranks → RRF → gate → fetch
     core/
       config.py          # Settings (pydantic-settings, backend/.env) — single source of truth
       middleware.py      # SecurityHeadersMiddleware only (CSP per path class)
     db/
       session.py         # async_engine (sqlite+aiosqlite://data/app.db), create_db_and_tables, get_async_session/get_user_db
-      vector_store.py    # Chroma PersistentClient wrapper, BM25 build (_ensure_bm25), rrf(), list/count/add/delete/get_metadata
+      vector_store.py    # Chroma PersistentClient wrapper; storage primitives query/bm25_ranks/fetch + rrf(); list/count/add/delete/get_metadata (no hybrid_query — fusion lives in retrieval.py)
       embeddings.py      # FastEmbed wrapper, custom-model registry, query_prefix()/passage_prefix() (blocking — always asyncio.to_thread)
       conversation_store.py # ORM message history on app.db (load/save/delete_conversation/close)
     models/
@@ -41,7 +41,7 @@ backend/
       llm.py             # get_llm() → (model, model_name) per ai_provider (openai/ollama), cached per provider:model
       document_ingest.py # liteparse (cheap + OCR vie+eng dpi=400) + chonkie RecursiveChunker (char, 1200/24) + LLM Title:/Reference: + batch-500 add
       document_status.py / chat_logging.py / encryption.py / ai_settings.py (KV save/load)
-  shopify_global.py  # Global Catalog MCP over direct HTTPS (no key; endpoint+profile+catalog_id in app_settings KV, never persists results)
+      shopify_global.py  # Global Catalog MCP over direct HTTPS (no key; endpoint+profile+catalog_id in app_settings KV, never persists results)
       facebook_channels.py / zalo_channels.py / user_manager.py  # require_admin/require_user, current_admin_user/current_user_user/current_active_user
     api/
       routes.py          # central /api router
@@ -66,12 +66,12 @@ frontend/
     components/ AppLogo.vue / ChatSidebar.vue / ChatComposer.vue / ChatEmpty.vue / ChatView.vue (shared surface: sessionId prop, ready gate, not-found emit) / ModelSelect.vue / UserMenu.vue
     components/chat/ Indicator.vue / SourceLink.vue / ProductCard.vue
     pages/ index.vue (:session-id=null + clearActive), c/[id].vue (:key + replace('/') on unknown), login.vue, 404.vue, [...all].vue, admin.vue (layout),
-           admin/index.vue, admin/documents.vue, admin/products.vue, admin/settings.vue, admin/login.vue,
+           admin/index.vue, admin/documents.vue, admin/products.vue (local CRUD + CSV import w/ result toast + Shopify Global Catalog modal: Enabled/endpoint/profile_url/catalog_id, Save/Test w/ toasts, Save closes), admin/settings.vue, admin/login.vue,
            admin/integrations/index.vue, admin/integrations/[id].vue, admin/integrations/zalo/[id].vue,
            admin/messages/index.vue, admin/messages/[id].vue
     utils/ routeAccess.ts  # deny-list: only /admin* gated (/admin/login public); substring-match ADMIN_ONLY_DETAIL/ADMIN_NO_CHAT_DETAIL + redirectForStatus
   package.json (scripts: build/dev/preview only; deps: @comark/vue, @iconify-json/lucide, @nuxt/ui, @unhead/vue, axios, pinia, vue, vue-router, zod; node 24.x) / biome.json / vercel.json
-docs/research/  bilingual-rag.md, chat-quality-agent-production-logging.md, chat-vue-template.md, citation-persistence.md, cqa-db-design-for-rag.md, gated-retrieval-vs-reranking.md, integrations-facebook-feature.md, per-user-session-storage.md, search-functionality-comparison.md, streaming-llm-frontend.md, zalo-integration.md, zalo-refactor-webhook-sdk.md
+docs/research/  bilingual-rag.md, chat-quality-agent-production-logging.md, chat-vue-template.md, chatgpt-shopping-replication.md, citation-persistence.md, cqa-db-design-for-rag.md, ecommerce-rag-lessons.md, gated-retrieval-vs-reranking.md, integrations-facebook-feature.md, per-user-session-storage.md, product-search-complexity-review.md, search-functionality-comparison.md, shopify-global-catalog.md, shopify-store-connect.md, streaming-llm-frontend.md, zalo-integration.md, zalo-refactor-webhook-sdk.md
 ```
 
 ## Running Locally
@@ -147,11 +147,11 @@ All under `/api` (`app/api/routes.py`):
 
 `app/services/rag.py` + `app/retrieval.py` + `app/services/products.py`:
 
-1. `get_retrieval().search(query, k=8)` — embed query (e5 `query:` prefix) → over-retrieve vectors (`k*over`), BM25 ranks (`store._ensure_bm25()`), `_rrf` fuse, optional `retrieval_distance_threshold` gate on vector distance.
+1. `get_retrieval().search(query, k=8)` — embed query (e5 `query:` prefix) → over-retrieve vectors (`k*over`), BM25 ranks (`store.bm25_ranks()`), `_rrf` fuse, optional `retrieval_distance_threshold` gate on vector distance, hydrate via `store.fetch()`.
 2. `Deps` + `search_documents` / `search_products` / `search_shopify_catalog` tools (pydantic-ai) — agent calls per intent; doc catalog + SHOPPING RULES 9/10/11/13 injected into `system_prompt` (only `[P1]`-cited SKUs; local catalog first, Global Catalog when local misses or user wants wider choice, shared `[Pn]` numbering); `ProcessHistory(_keep_recent)` caps history to 10 (drops leading orphan responses), `ReinjectSystemPrompt` refreshes catalog. `UsageLimits(request_limit=3)`; 120s agent + stream timeouts; provider-misconfig → 502 hint.
 3. `stream_answer()` — loads history via `conversation_store`, runs `agent.run_stream`, yields `text_delta`, persists citation stubs (`metadata.sources` chunk-ids on the last `ModelResponse`), saves `history + new_messages`, durable logs (`log_chat_message` user+assistant with tokens/latency/model + `log_activity chat.query`). Emits `products` (only `[P1]`-cited) + `followups` (only when `products_searched` and nothing cited, budget/category/dietary preferred).
 4. Citations: only numbers actually present in answer (`\[(\d+)\]` / `\[P(\d+)\]`) are surfaced; doc metadata hydrated at read-time from vector store so renames/deletes reflect immediately. Product search: embedding cosine (e5 `passage:` prefix) over active products via `asyncio.to_thread` (FastEmbed is blocking), `PRODUCT_SCORE_GATE=0.30` applied pre-slice (sorted desc, `break` on first miss); LIKE fallback on embedding failure needs 2 token hits for multi-word queries (1 for single-word). Followup strip is bullet-only (`[•-]|\d+[.)]` + whitespace) so prices like `2 for $10?` survive.
-5. Ingest: `save_and_queue_indexing` (overwrite deletes old doc + PENDING status) → `index_file` (background): liteparse cheap-parse, OCR (`vie+eng`, dpi=400) when any page `needs_ocr`, images always OCR; chonkie char-chunker; LLM `Title:`/`Reference:` summary (60s timeout, failure → filename); batch-500 `store.add`; COMPLETED/FAILED status. Product ingest: `ProductSource` protocol + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; public Shopify catalog search (`shopify_catalog.py`, Storefront Catalog `/api/ucp/mcp`, no token) is preview-only and never saved. + manual CRUD; `upsert_products` dedupes via `_dedupe_stmt`: `(source,external_id)` → `sku` → `name` (scoped by `source` when present).
+5. Ingest: `save_and_queue_indexing` (overwrite deletes old doc + PENDING status) → `index_file` (background): liteparse cheap-parse, OCR (`vie+eng`, dpi=400) when any page `needs_ocr`, images always OCR; chonkie char-chunker; LLM `Title:`/`Reference:` summary (60s timeout, failure → filename); batch-500 `store.add`; COMPLETED/FAILED status. Product ingest: `ProductSource` protocol — `CsvSource` (columns name,description,price,currency,image_url,product_url,category,stock,sku; only **name+price required**, imageless rows import and render text-only) + manual CRUD; `POST /import-csv` returns `{imported, skipped}` (skipped = rows missing name/price) and the Products page toasts the result. Global Catalog (`shopify_global.py`, `POST https://catalog.shopify.com/api/ucp/mcp`, profile-URL auth, no key) is live-search only and never saved. `upsert_products` dedupes via `_dedupe_stmt`: `(source,external_id)` → `sku` → `name` (scoped by `source` when present).
 
 ## Conventions
 
