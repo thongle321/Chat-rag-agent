@@ -204,10 +204,14 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
 
     Call this when the user asks for recommendations, shopping advice, what to
     buy/eat/use, or anything that could map to a product (e.g. 'What should I
-    eat today?'). For vague queries, ask 2-3 short clarifying questions first
-    (budget, category, dietary/preference — one per line ending with '?'), then
-    call with the refined query. ONLY recommend products returned here
-    — never invent SKUs. If no match, say the catalog does not carry it.
+    eat today?'). If the query lacks BOTH a price/budget signal and a category
+    or specific-product signal (e.g. 'good headphones?'), do NOT call yet —
+    ask 2-3 short clarifying questions first (budget, category,
+    dietary/preference — one per line ending with '?') and wait for the user's
+    reply, then call with the refined query. Call immediately only when the
+    query already carries a budget or category constraint. ONLY recommend
+    products returned here — never invent SKUs. If no match, say the catalog
+    does not carry it.
 
     Args:
         query: A standalone product search (e.g. 'spicy lunch under $10').
@@ -244,12 +248,19 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         "9) When the user asks for recommendations, shopping advice, or what to buy/eat/use, "
         "call search_products first. Only recommend products returned by search_products — "
         "cite them as [P1] [P2] matching the numbered products exactly. Never invent products.\n"
-        "10) For vague shopping queries (e.g. 'What should I eat today?'), ask 2-3 short "
-        "clarifying questions first (budget, category, dietary/preference) — one per line ending "
-        "with '?'. Then call search_products with the refined query.\n"
+        "10) For vague shopping queries (e.g. 'What should I eat today?') lacking both "
+        "a price/budget signal and a category signal, do NOT call search_products yet — "
+        "ask 2-3 short clarifying questions first (budget, category, dietary/preference) "
+        "— one per line ending with '?'. Then call search_products with the refined query "
+        "once the user answers.\n"
         "11) Sales-oriented but honest: only suggest the top match when search_products "
         "returned it and it fits the clarified need. Organic, unsponsored results ranked on "
-        "relevance; the merchant handles payment/fulfillment (you never take payment)."
+        "relevance; the merchant handles payment/fulfillment (you never take payment).\n"
+        "12) Recommendation format (required): give each cited product a 1-clause why-this-pick "
+        "tied to the user's constraint (e.g. '[P1] Trail socks — Under $30, in stock, top-rated "
+        "for blisters'). When 2+ products are cited, add a compact comparison table "
+        "(Price / Best-for rows) plus one honest caveat line when a pick strains a constraint "
+        "(e.g. '$8 over budget but fragrance-free')."
     )
     agent = Agent(
         deps.model,
@@ -380,10 +391,11 @@ async def stream_answer(
     # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
     cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
     cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
-    # Clarifying chips: only when shopping was invoked but nothing was cited —
-    # i.e. the query was vague. Structured-ish: prefer budget/category/dietary lines.
+    # Clarifying chips: post-search (shopping invoked but nothing cited — the query
+    # was vague) AND pre-search (agent asked clarifiers before calling the tool).
+    # Structured-ish: prefer budget/category/dietary lines.
     followups: list[str] = []
-    if deps.products_searched and not cited_products:
+    if not cited_products:
         candidates = []
         for line in full_text.splitlines():
             # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
@@ -391,8 +403,15 @@ async def stream_answer(
             if s.endswith("?") and 8 < len(s) < 140:
                 candidates.append(s)
         prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
-        ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in prefer))
-        followups = ranked[:3]
+        if deps.products_searched:
+            ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in prefer))
+            followups = ranked[:3]
+        else:
+            # Pre-search clarifiers only: require 2+ constraint-matched questions so
+            # non-shopping answers ending in "?" never emit chips.
+            matched = [q for q in candidates if any(w in q.lower() for w in prefer)]
+            if len(matched) >= 2:
+                followups = matched[:3]
     if state.sources:
         # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
         # rides inside the existing messages blob, never sent to the LLM. Titles/refs

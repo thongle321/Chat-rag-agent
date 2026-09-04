@@ -83,8 +83,9 @@ async def delete_product(pid: str, db: AsyncSession = Depends(get_async_session)
 @router.post("/import-csv")
 async def import_csv(file: UploadFile, db: AsyncSession = Depends(get_async_session), user=current_admin_user):
     content = (await file.read()).decode("utf-8-sig")
-    n = await sync_source(CsvSource(content), db)
-    return {"imported": n}
+    src = CsvSource(content)
+    n = await sync_source(src, db)
+    return {"imported": n, "skipped": src.skipped}
 
 
 @router.post("/sync-shopify")

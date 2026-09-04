@@ -13,6 +13,7 @@ import csv
 import io
 import logging
 import math
+import re
 from typing import Protocol
 
 import httpx
@@ -27,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 # Minimum embedding cosine to recommend a SKU — strict grounding gate.
 PRODUCT_SCORE_GATE = 0.30
+
+# Budget hints like "under $30" / "$10 max" steer the re-rank (price_ok boost).
+_BUDGET_RE = re.compile(
+    r"(?:under|below|max|up to|<=|<)\s*\$?\s*(\d+(?:\.\d+)?)|\$\s*(\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +80,49 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def _parse_budget(query: str) -> float | None:
+    """Extract a price ceiling from hints like 'under $30' / '$10 max'. None = no signal."""
+    m = _BUDGET_RE.search(query)
+    if not m:
+        return None
+    try:
+        return float(m.group(1) or m.group(2))
+    except (TypeError, ValueError):
+        return None
+
+
+def _rerank(query: str, scored: list[tuple[Product, float]]) -> list[tuple[Product, float]]:
+    """Deterministic re-rank over GATE-passing hits (existing columns only).
+
+    Sort key (desc): in-stock first, then price-ceiling match, then category
+    word-overlap with the query, then cosine. Neutral signals (no budget in
+    query) score 1 so they never demote. Stable sort preserves cosine order
+    within ties.
+    """
+    budget = _parse_budget(query)
+    qtokens = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
+
+    def key(item: tuple[Product, float]) -> tuple[int, int, int, float]:
+        prod, cos = item
+        in_stock = 1 if (prod.stock or 0) > 0 else 0
+        if budget is None:
+            price_ok = 1
+        else:
+            try:
+                price = float(prod.price) if prod.price is not None else None
+            except (TypeError, ValueError):
+                price = None
+            price_ok = 1 if (price is not None and price <= budget) else 0
+        if prod.category:
+            ctokens = {t for t in re.findall(r"[a-z0-9]+", prod.category.lower()) if len(t) > 2}
+            cat_ok = 1 if (ctokens & qtokens) else 0
+        else:
+            cat_ok = 0
+        return (in_stock, price_ok, cat_ok, cos)
+
+    return sorted(scored, key=key, reverse=True)
+
+
 # ---------------------------------------------------------------------------
 # Search — embedding rank over active products, strict grounding
 # ---------------------------------------------------------------------------
@@ -95,11 +145,13 @@ async def search_products(query: str, k: int = 6, category: str | None = None) -
             key=lambda x: x[1],
             reverse=True,
         )
-        # Gate BEFORE slicing so weak top-k entries don't waste slots.
+        # Gate BEFORE re-rank/slice so weak entries never surface.
+        gated = [(prod, score) for prod, score in scored if score >= PRODUCT_SCORE_GATE]
+        if not gated:
+            logger.info("product search q=%r n=%d kept=%d", query[:60], len(rows), 0)
+            return []
         out = []
-        for prod, score in scored:
-            if score < PRODUCT_SCORE_GATE:
-                break
+        for prod, score in _rerank(query, gated):
             d = product_to_dict(prod)
             d["score"] = round(float(score), 4)
             out.append(d)
@@ -194,23 +246,45 @@ class CsvSource:
 
     def __init__(self, content: str):
         self.content = content
+        self.skipped = 0  # rows rejected by feed hygiene (populated on fetch)
 
     async def fetch_products(self) -> list[dict]:
-        return parse_csv(self.content)
+        items, skipped = parse_csv_stats(self.content)
+        self.skipped = skipped
+        if skipped:
+            logger.warning("CSV import rejected %d rows missing name/price/image", skipped)
+        return items
 
 
 def parse_csv(content: str) -> list[dict]:
     """CSV columns: name,description,price,currency,image_url,product_url,category,stock,sku."""
+    items, _ = parse_csv_stats(content)
+    return items
+
+
+def parse_csv_stats(content: str) -> tuple[list[dict], int]:
+    """Parse CSV rows, rejecting feed-hygiene failures.
+
+    Rows missing name, price, or image_url are skipped (mirrors the ACP spec's
+    row-rejection for required fields — imageless/priceless cards never render).
+    Returns (items, skipped_count).
+    """
     reader = csv.DictReader(io.StringIO(content))
     out = []
+    skipped = 0
     for row in reader:
         name = (row.get("name") or "").strip()
         if not name:
+            skipped += 1
             continue
         try:
             price = float(row.get("price") or 0) or None
         except ValueError:
             price = None
+        image_url = (row.get("image_url") or "").strip() or None
+        if price is None or image_url is None:
+            skipped += 1
+            continue
         try:
             stock = int(float(row.get("stock") or 0))
         except ValueError:
@@ -221,7 +295,7 @@ def parse_csv(content: str) -> list[dict]:
                 "description": (row.get("description") or "")[:2000] or None,
                 "price": price,
                 "currency": (row.get("currency") or "USD").strip() or "USD",
-                "image_url": (row.get("image_url") or "") or None,
+                "image_url": image_url,
                 "product_url": (row.get("product_url") or "") or None,
                 "category": (row.get("category") or "") or None,
                 "stock": stock,
@@ -230,7 +304,7 @@ def parse_csv(content: str) -> list[dict]:
                 "external_id": None,
             }
         )
-    return out
+    return out, skipped
 
 
 def _dedupe_stmt(it: dict):
