@@ -1,0 +1,9 @@
+name,description,price,currency,image_url,product_url,category,stock,sku
+"Sony WH-1000XM5 Wireless Headphones","Flagship noise-cancelling over-ear headphones, 30h battery, multipoint Bluetooth.",7990000,VND,https://picsum.photos/seed/tech-sony-xm5/600,,Audio,15,TECH-AUDIO-001
+"Apple AirPods Pro 2","Active noise cancellation, USB-C MagSafe case, H2 chip, IP54 sweat resistant.",5490000,VND,https://picsum.photos/seed/tech-airpods-pro/600,,Audio,25,TECH-AUDIO-002
+"Logitech MX Master 3S Mouse","Quiet clicks, 8K DPI sensor, MagSpeed scrolling, USB-C quick charge.",2490000,VND,https://picsum.photos/seed/tech-mx-master/600,,Accessories,40,TECH-ACC-003
+"Keychron K8 Pro Mechanical Keyboard","Hot-swappable wireless mechanical keyboard, RGB, Mac/Windows keycaps included.",2190000,VND,https://picsum.photos/seed/tech-k8-pro/600,,Accessories,30,TECH-ACC-004
+"Samsung T7 Shield 1TB Portable SSD","1TB rugged portable SSD, 1050MB/s reads, IP65 dust and water resistant.",2790000,VND,https://picsum.photos/seed/tech-t7-shield/600,,Storage,20,TECH-STO-005
+"Anker 737 Power Bank 120W","24000mAh 3-port GaN charger, 120W fast charging for laptops and phones.",2990000,VND,https://picsum.photos/seed/tech-anker-737/600,,Accessories,35,TECH-ACC-006
+"Apple Watch SE 2 GPS 40mm","Entry smartwatch with crash detection, heart-rate alerts, swimproof 50m.",5990000,VND,https://picsum.photos/seed/tech-watch-se/600,,Wearables,12,TECH-WEAR-007
+"UGREEN USB-C Hub 6-in-1","HDMI 4K, 3x USB-A, SD/TF slots, 100W pass-through charging for laptops.",990000,VND,https://picsum.photos/seed/tech-ugreen-hub/600,,Accessories,50,TECH-ACC-008
