@@ -83,6 +83,15 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def format_usd(price: float | int | None, currency: str | None = "USD") -> str:
+    """Whole-dollar USD display ('$399'); other currencies fall back to 'N CODE'."""
+    if price is None:
+        return "price on request"
+    if (currency or "USD").upper() == "USD":
+        return f"${float(price):,.0f}"
+    return f"{float(price):,.0f} {(currency or '').upper()}"
+
+
 def _parse_budget(query: str) -> float | None:
     """Extract a price ceiling from hints like 'under $30' / '$10 max'. None = no signal."""
     m = _BUDGET_RE.search(query)

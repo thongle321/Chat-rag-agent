@@ -26,7 +26,7 @@ from app.models.unified import Product
 from app.retrieval import get_retrieval
 from app.services.chat_logging import log_activity, log_chat_message
 from app.services.llm import get_llm
-from app.services.products import _parse_budget
+from app.services.products import _parse_budget, format_usd
 from app.services.products import search_products as _search_products
 
 logger = logging.getLogger(__name__)
@@ -198,7 +198,7 @@ def _format_products(prods: list[dict]) -> str:
         return "(No matching products in catalog.)"
     lines = []
     for i, p in enumerate(prods, 1):
-        price = f"{p.get('price')} {p.get('currency', 'USD')}" if p.get("price") is not None else "price on request"
+        price = format_usd(p.get("price"), p.get("currency"))
         stock = f", stock {p.get('stock', 0)}" if p.get("stock") is not None else ""
         lines.append(f"[P{i}] {p['name']} — {price}{stock} (id: {p['id']})")
     return "\n".join(lines)
