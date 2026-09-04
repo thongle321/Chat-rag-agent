@@ -15,7 +15,7 @@ const activeCite = reactive(new Map<string, number>());
 const { copy, copied } = useClipboard();
 
 function stripInlineCitations(text: string): string {
-	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[(\d+)\]/g, "");
+	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[P(\d+)\]/g, "").replace(/\s*\[(\d+)\]/g, "");
 }
 
 async function loadThread() {

@@ -204,6 +204,18 @@ def _format_products(prods: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_STRIP_PN = re.compile(r"\s*\[P\d+\]")
+
+
+def _strip_pn_markers(text: str) -> str:
+    """Remove machine [Pn] product citations from outgoing prose.
+
+    Markers are parsed for the products event BEFORE this runs, so no surface
+    (history, logs, admin, FB/Zalo) ever shows them. Doc [n] cites untouched.
+    """
+    return _STRIP_PN.sub("", text).strip()
+
+
 def _extract_followups(full_text: str, *, products_searched: bool, has_cited_products: bool) -> list[str]:
     """Pull the post-search clarifier chip: shopping was invoked but nothing cited.
 
@@ -483,6 +495,15 @@ async def stream_answer(
         products_searched=deps.products_searched,
         has_cited_products=bool(cited_products),
     )
+    # [Pn] markers are a machine contract (products event below) — scrub them
+    # from persisted history and logs now that citations are parsed. Live web
+    # deltas keep markers (unsafe to cut mid-stream); ChatView strips display.
+    for m in state.new_messages:
+        if isinstance(m, ModelResponse):
+            for p in m.parts:
+                if isinstance(p, TextPart):
+                    p.content = _strip_pn_markers(p.content)
+    answer_parts = [_strip_pn_markers(d) for d in answer_parts]
     if state.sources:
         # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
         # rides inside the existing messages blob, never sent to the LLM. Titles/refs
@@ -565,7 +586,7 @@ async def answer_question(
         elif ev["type"] == "done":
             return ChatResponse(
                 answer_id=str(uuid.uuid4()),
-                answer=answer,
+                answer=_strip_pn_markers(answer),
                 model=ev["model"],
                 session_id=ev["session_id"],
             )
