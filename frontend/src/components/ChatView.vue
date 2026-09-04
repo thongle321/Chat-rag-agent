@@ -114,12 +114,6 @@ onMounted(async () => {
 		chatStore.clearActive();
 	}
 	ready.value = true;
-	if (
-		typeof window !== "undefined" &&
-		window.matchMedia("(min-width: 768px)").matches
-	) {
-		sidebarOpen.value = true;
-	}
 });
 
 watch(
@@ -180,6 +174,17 @@ async function handleSend(question: string) {
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
       <header class="flex items-center justify-between px-3 md:px-7 py-2.5 bg-default/75 min-h-[44px]">
         <div class="flex items-center gap-2 min-w-0">
+          <!-- Mobile only: open the sidebar drawer (UDashboardSidebar `open` drives the slideover overlay) -->
+          <UButton
+            icon="i-lucide-menu"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            square
+            aria-label="Open sidebar"
+            class="md:hidden"
+            @click="sidebarOpen = true"
+          />
           <div v-if="chatStore.messages.length" class="min-w-0">
           <UDropdownMenu :items="headerMenuItems" :content="{ align: 'start' }" :ui="{ content: 'min-w-44' }">
             <UButton color="neutral" variant="ghost" :label="currentTitle" trailing-icon="i-lucide-chevron-down" class="group min-w-0 max-w-[280px] data-[state=open]:bg-elevated" :ui="{ trailingIcon: 'text-dimmed group-data-[state=open]:rotate-180 transition-transform duration-200' }" />
@@ -195,7 +200,16 @@ async function handleSend(question: string) {
 
       <div ref="chatWindow" class="flex-1 overflow-y-auto">
         <template v-if="!chatStore.messages.length">
-          <div class="min-h-full flex items-center">
+          <!-- Cold session still hydrating: skeleton instead of blank flash -->
+          <div v-if="chatStore.activeId && chatStore.hydrating[chatStore.activeId]" class="max-w-[820px] mx-auto px-3 md:px-7 py-6 flex flex-col gap-5">
+            <div class="flex justify-end"><USkeleton class="h-12 w-2/3 rounded-2xl" /></div>
+            <div class="flex gap-3.5">
+              <USkeleton class="size-8 rounded-full shrink-0" />
+              <div class="flex-1 flex flex-col gap-2"><USkeleton class="h-4 w-full" /><USkeleton class="h-4 w-5/6" /><USkeleton class="h-4 w-3/6" /></div>
+            </div>
+            <div class="flex justify-end"><USkeleton class="h-10 w-1/2 rounded-2xl" /></div>
+          </div>
+          <div v-else class="min-h-full flex items-center">
             <div class="w-full">
               <!-- center like chat-vue home: greeting + prompt centered, then goes below on chat -->
               <div class="max-w-[820px] mx-auto px-3 md:px-7 py-8 flex flex-col gap-6">
@@ -284,9 +298,8 @@ async function handleSend(question: string) {
                     </UAccordion>
 
                     <div v-if="msg.products?.length && !msg.streaming" class="mt-3">
-                      <div class="text-[11px] text-muted mb-1.5">Organic results ranked on relevance · merchant handles checkout</div>
                       <div class="grid sm:grid-cols-2 gap-2">
-                        <ProductCard v-for="(p, pi) in msg.products" :key="p.id" :product="p" :index="pi" />
+                        <ProductCard v-for="p in msg.products" :key="p.id" :product="p" />
                       </div>
                     </div>
 

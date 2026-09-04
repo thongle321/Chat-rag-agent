@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { StreamProduct } from "../../api/index";
 
-defineProps<{ product: StreamProduct; index: number }>();
+defineProps<{ product: StreamProduct }>();
 </script>
 
 <template>
@@ -13,7 +13,7 @@ defineProps<{ product: StreamProduct; index: number }>();
   >
     <img v-if="product.image_url" :src="product.image_url" :alt="product.name" class="size-16 rounded-lg object-cover shrink-0" loading="lazy" />
     <div class="min-w-0 flex-1">
-      <div class="text-sm font-medium text-default truncate">[P{{ index + 1 }}] {{ product.name }}</div>
+      <div class="text-sm font-medium text-default truncate">{{ product.name }}</div>
       <div v-if="product.description" class="text-xs text-muted line-clamp-2 mt-0.5">{{ product.description }}</div>
       <div class="flex items-center gap-2 mt-1.5">
         <span v-if="product.price != null" class="text-sm font-semibold text-primary">{{ product.price }} {{ product.currency || 'USD' }}</span>
