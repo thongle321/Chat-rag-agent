@@ -199,6 +199,38 @@ def _format_products(prods: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_PREFER_QUESTION_WORDS = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
+
+
+def _extract_followups(
+    full_text: str, *, products_searched: bool, has_sources: bool, has_cited_products: bool
+) -> list[str]:
+    """Pull clarifier-chip questions from the answer text.
+
+    Post-search: shopping was invoked but nothing cited (the query was vague).
+    Pre-search: the agent asked clarifiers before calling the tool — only when
+    the answer cites no doc sources either, so doc-RAG answers never emit
+    shopping chips.
+    """
+    if has_cited_products:
+        return []
+    candidates = []
+    for line in full_text.splitlines():
+        # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
+        s = re.sub(r"^\s*(?:[\u2022-]|\d+[.)])\s+", "", line.strip()).strip()
+        if s.endswith("?") and 8 < len(s) < 140:
+            candidates.append(s)
+    if products_searched:
+        ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in _PREFER_QUESTION_WORDS))
+        return ranked[:3]
+    # Pre-search clarifiers only: need 2+ question lines with at least one
+    # constraint-matched, so non-shopping answers ending in "?" never emit chips.
+    matched = [q for q in candidates if any(w in q.lower() for w in _PREFER_QUESTION_WORDS)]
+    if not has_sources and len(candidates) >= 2 and matched:
+        return matched[:3]
+    return []
+
+
 async def search_products(ctx: RunContext[Deps], query: str) -> str:
     """Search the e-commerce product catalog and return matching products.
 
@@ -257,8 +289,8 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         "returned it and it fits the clarified need. Organic, unsponsored results ranked on "
         "relevance; the merchant handles payment/fulfillment (you never take payment).\n"
         "12) Recommendation format (required): give each cited product a 1-clause why-this-pick "
-        "tied to the user's constraint (e.g. '[P1] Trail socks — Under $30, in stock, top-rated "
-        "for blisters'). When 2+ products are cited, add a compact comparison table "
+        "tied to the user's constraint (e.g. '[P1] Trail socks — Under $30, in stock, cushioned "
+        "heel for blisters'). When 2+ products are cited, add a compact comparison table "
         "(Price / Best-for rows) plus one honest caveat line when a pick strains a constraint "
         "(e.g. '$8 over budget but fragrance-free')."
     )
@@ -391,27 +423,14 @@ async def stream_answer(
     # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
     cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
     cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
-    # Clarifying chips: post-search (shopping invoked but nothing cited — the query
-    # was vague) AND pre-search (agent asked clarifiers before calling the tool).
-    # Structured-ish: prefer budget/category/dietary lines.
-    followups: list[str] = []
-    if not cited_products:
-        candidates = []
-        for line in full_text.splitlines():
-            # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
-            s = re.sub(r"^\s*(?:[\u2022-]|\d+[.)])\s+", "", line.strip()).strip()
-            if s.endswith("?") and 8 < len(s) < 140:
-                candidates.append(s)
-        prefer = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
-        if deps.products_searched:
-            ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in prefer))
-            followups = ranked[:3]
-        else:
-            # Pre-search clarifiers only: require 2+ constraint-matched questions so
-            # non-shopping answers ending in "?" never emit chips.
-            matched = [q for q in candidates if any(w in q.lower() for w in prefer)]
-            if len(matched) >= 2:
-                followups = matched[:3]
+    # Clarifying chips: post-search (shopping invoked, nothing cited) and pre-search
+    # (agent asked before calling the tool; doc-cited answers excluded).
+    followups = _extract_followups(
+        full_text,
+        products_searched=deps.products_searched,
+        has_sources=bool(state.sources),
+        has_cited_products=bool(cited_products),
+    )
     if state.sources:
         # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
         # rides inside the existing messages blob, never sent to the LLM. Titles/refs

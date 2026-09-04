@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 PRODUCT_SCORE_GATE = 0.30
 
 # Budget hints like "under $30" / "$10 max" steer the re-rank (price_ok boost).
+# Bare "$N" is deliberately NOT a ceiling ("2 for $10?", "$8 over budget").
 _BUDGET_RE = re.compile(
-    r"(?:under|below|max|up to|<=|<)\s*\$?\s*(\d+(?:\.\d+)?)|\$\s*(\d+(?:\.\d+)?)",
+    r"(?:under|below|max|up to|<=|<)\s*\$?\s*(\d+(?:\.\d+)?)"
+    r"|\$?\s*(\d+(?:\.\d+)?)\s*(?:max|or less)\b",
     re.IGNORECASE,
 )
 
@@ -278,7 +280,8 @@ def parse_csv_stats(content: str) -> tuple[list[dict], int]:
             skipped += 1
             continue
         try:
-            price = float(row.get("price") or 0) or None
+            raw_price = (row.get("price") or "").strip()
+            price = float(raw_price) if raw_price else None
         except ValueError:
             price = None
         image_url = (row.get("image_url") or "").strip() or None
