@@ -146,7 +146,7 @@ function closeSidebarOnMobile() {
 }
 
 function stripInlineCitations(text: string): string {
-	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[(\d+)\]/g, "");
+	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[P(\d+)\]/g, "").replace(/\s*\[(\d+)\]/g, "");
 }
 
 async function handleSend(question: string) {
