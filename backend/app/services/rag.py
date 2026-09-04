@@ -8,20 +8,25 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import ProcessHistory, ReinjectSystemPrompt
 from pydantic_ai.exceptions import ModelAPIError, UserError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db import conversation_store
 from app.db.conversation_store import load_messages, save_messages
+from app.db.session import async_session_factory
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
+from app.models.unified import Product
 from app.retrieval import get_retrieval
 from app.services.chat_logging import log_activity, log_chat_message
 from app.services.llm import get_llm
+from app.services.products import _parse_budget
 from app.services.products import search_products as _search_products
 
 logger = logging.getLogger(__name__)
@@ -202,17 +207,13 @@ def _format_products(prods: list[dict]) -> str:
 _PREFER_QUESTION_WORDS = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
 
 
-def _extract_followups(
-    full_text: str, *, products_searched: bool, has_sources: bool, has_cited_products: bool
-) -> list[str]:
-    """Pull clarifier-chip questions from the answer text.
+def _extract_followups(full_text: str, *, products_searched: bool, has_cited_products: bool) -> list[str]:
+    """Pull post-search clarifier chips: shopping was invoked but nothing cited.
 
-    Post-search: shopping was invoked but nothing cited (the query was vague).
-    Pre-search: the agent asked clarifiers before calling the tool — only when
-    the answer cites no doc sources either, so doc-RAG answers never emit
-    shopping chips.
+    Recommend-first: no pre-search branch — the single question path fires only
+    after an empty product search, so doc-RAG answers never emit shopping chips.
     """
-    if has_cited_products:
+    if has_cited_products or not products_searched:
         return []
     candidates = []
     for line in full_text.splitlines():
@@ -220,35 +221,88 @@ def _extract_followups(
         s = re.sub(r"^\s*(?:[\u2022-]|\d+[.)])\s+", "", line.strip()).strip()
         if s.endswith("?") and 8 < len(s) < 140:
             candidates.append(s)
-    if products_searched:
-        ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in _PREFER_QUESTION_WORDS))
-        return ranked[:3]
-    # Pre-search clarifiers only: need 2+ question lines with at least one
-    # constraint-matched, so non-shopping answers ending in "?" never emit chips.
-    matched = [q for q in candidates if any(w in q.lower() for w in _PREFER_QUESTION_WORDS)]
-    if not has_sources and len(candidates) >= 2 and matched:
-        return matched[:3]
-    return []
+    ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in _PREFER_QUESTION_WORDS))
+    return ranked[:3]
+
+
+class QueryFilters(BaseModel):
+    """Analyzer output: shopping filters extracted from a raw user query."""
+
+    category: str | None = None
+    max_price: float | None = None
+
+
+_ANALYZER_PROMPT = (
+    "Extract shopping filters from the user query as JSON. "
+    "category: the product category in the user's own words (or null). "
+    "max_price: the price ceiling as a plain number (or null) — normalize magnitude "
+    "slang (500k=500000, 2 million=2000000). No ceiling mentioned means null."
+)
+
+# Magnitude slang the $-regex cannot normalize — forces the analyzer path.
+_MAGNITUDE_RE = re.compile(
+    r"\d\s*(?:k|m)\b|\d[\d.,]*\s*(?:million|thousand|billion|nghìn|nghin|triệu|trieu|tỷ|ty|củ)",
+    re.IGNORECASE,
+)
+
+
+def _needs_analyzer(query: str, regex_budget: float | None) -> bool:
+    """Run the LLM analyzer when the regex has no answer or can't be trusted."""
+    return regex_budget is None or _MAGNITUDE_RE.search(query) is not None
+
+
+async def _analyze_query(model: Any, query: str) -> QueryFilters:
+    """Temp-0 JSON extraction of {category, max_price}. Raises on failure (caller fails open)."""
+    agent = Agent(model, output_type=QueryFilters, system_prompt=_ANALYZER_PROMPT, name="query_analyzer")
+    res = await agent.run(query, model_settings={"temperature": 0})
+    return res.output
+
+
+async def _match_category(hint: str) -> str | None:
+    """Return the stored category spelling on case-insensitive match, else None."""
+    async with async_session_factory() as db:
+        rows = (await db.execute(select(Product.category).where(Product.is_active.is_(True)).distinct())).all()
+    for (c,) in rows:
+        if c and c.lower() == hint.lower():
+            return c
+    return None
+
+
+async def _resolve_shopping_filters(
+    model: Any, query: str, regex_budget: float | None
+) -> tuple[str | None, float | None, str]:
+    """Resolve (category_filter, max_price, search_text), failing open to regex."""
+    hint: str | None = None
+    max_price = regex_budget
+    if _needs_analyzer(query, regex_budget):
+        try:
+            analyzed = await asyncio.wait_for(_analyze_query(model, query), timeout=20.0)
+            hint = analyzed.category
+            if analyzed.max_price is not None:
+                max_price = analyzed.max_price
+        except Exception:
+            logger.warning("query analyzer failed, falling back to regex", exc_info=True)
+    category = await _match_category(hint) if hint else None
+    search_text = f"{query} {hint}" if hint and category is None else query
+    return category, max_price, search_text
 
 
 async def search_products(ctx: RunContext[Deps], query: str) -> str:
     """Search the e-commerce product catalog and return matching products.
 
-    Call this when the user asks for recommendations, shopping advice, what to
-    buy/eat/use, or anything that could map to a product (e.g. 'What should I
-    eat today?'). If the query lacks BOTH a price/budget signal and a category
-    or specific-product signal (e.g. 'good headphones?'), do NOT call yet —
-    ask 2-3 short clarifying questions first (budget, category,
-    dietary/preference — one per line ending with '?') and wait for the user's
-    reply, then call with the refined query. Call immediately only when the
-    query already carries a budget or category constraint. ONLY recommend
-    products returned here — never invent SKUs. If no match, say the catalog
-    does not carry it.
+    Call this IMMEDIATELY when the user asks for recommendations, shopping
+    advice, what to buy/eat/use, or anything that could map to a product —
+    even when the query is vague (e.g. 'good headphones?'). Never interrogate
+    first: recommend what comes back. Pass the user's raw query through; price
+    and category extraction is handled for you. ONLY recommend products
+    returned here — never invent SKUs. If no match, say so in one short line
+    and ask at most ONE follow-up question (budget or category).
 
     Args:
         query: A standalone product search (e.g. 'spicy lunch under $10').
     """
-    prods = await _search_products(query, 6)
+    category, max_price, search_text = await _resolve_shopping_filters(ctx.deps.model, query, _parse_budget(query))
+    prods = await _search_products(search_text, 6, category=category, max_price=max_price)
     ctx.deps.products = prods
     ctx.deps.products_searched = True
     return _format_products(prods)
@@ -280,19 +334,19 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         "9) When the user asks for recommendations, shopping advice, or what to buy/eat/use, "
         "call search_products first. Only recommend products returned by search_products — "
         "cite them as [P1] [P2] matching the numbered products exactly. Never invent products.\n"
-        "10) For vague shopping queries (e.g. 'What should I eat today?') lacking both "
-        "a price/budget signal and a category signal, do NOT call search_products yet — "
-        "ask 2-3 short clarifying questions first (budget, category, dietary/preference) "
-        "— one per line ending with '?'. Then call search_products with the refined query "
-        "once the user answers.\n"
+        "10) Recommend-first: ALWAYS call search_products, even for vague queries "
+        "('good headphones?'). Never ask clarifying questions before recommending — "
+        "recommend what comes back. Keep shopping answers to 5 lines or fewer. Ask at "
+        "most ONE question, and only when search_products returned no match "
+        "(budget or category — one line ending with '?').\n"
         "11) Sales-oriented but honest: only suggest the top match when search_products "
         "returned it and it fits the clarified need. Organic, unsponsored results ranked on "
         "relevance; the merchant handles payment/fulfillment (you never take payment).\n"
-        "12) Recommendation format (required): give each cited product a 1-clause why-this-pick "
+        "12) Recommendation format: give each cited product a 1-clause why-this-pick "
         "tied to the user's constraint (e.g. '[P1] Trail socks — Under $30, in stock, cushioned "
-        "heel for blisters'). When 2+ products are cited, add a compact comparison table "
-        "(Price / Best-for rows) plus one honest caveat line when a pick strains a constraint "
-        "(e.g. '$8 over budget but fragrance-free')."
+        "heel for blisters'). Add a compact comparison table (Price / Best-for rows) plus one "
+        "honest caveat line ONLY when the user asks to compare ('compare', 'vs', 'which is "
+        "better') or 3+ products are cited — otherwise present, don't compare."
     )
     agent = Agent(
         deps.model,
@@ -423,12 +477,11 @@ async def stream_answer(
     # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
     cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
     cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
-    # Clarifying chips: post-search (shopping invoked, nothing cited) and pre-search
-    # (agent asked before calling the tool; doc-cited answers excluded).
+    # Clarifying chips: shopping invoked but nothing cited (vague query) — the
+    # single question path. Recommend-first: no pre-search chips.
     followups = _extract_followups(
         full_text,
         products_searched=deps.products_searched,
-        has_sources=bool(state.sources),
         has_cited_products=bool(cited_products),
     )
     if state.sources:

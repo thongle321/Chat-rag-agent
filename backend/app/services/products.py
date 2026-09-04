@@ -128,12 +128,20 @@ def _rerank(query: str, scored: list[tuple[Product, float]]) -> list[tuple[Produ
 # ---------------------------------------------------------------------------
 # Search — embedding rank over active products, strict grounding
 # ---------------------------------------------------------------------------
-async def search_products(query: str, k: int = 6, category: str | None = None) -> list[dict]:
-    """Return top-k active products ranked by embedding cosine. Empty = no match."""
+async def search_products(
+    query: str, k: int = 6, category: str | None = None, max_price: float | None = None
+) -> list[dict]:
+    """Return top-k active products ranked by embedding cosine. Empty = no match.
+
+    max_price is a HARD pre-gate (price <= ceiling before embedding/top-k),
+    fail-open: None disables it. Priceless rows are excluded when gated.
+    """
     async with async_session_factory() as db:
         stmt = select(Product).where(Product.is_active.is_(True))
         if category:
             stmt = stmt.where(Product.category == category)
+        if max_price is not None:
+            stmt = stmt.where(Product.price.is_not(None), Product.price <= max_price)
         rows = (await db.execute(stmt)).scalars().all()
     if not rows:
         return []
