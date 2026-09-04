@@ -204,25 +204,21 @@ def _format_products(prods: list[dict]) -> str:
     return "\n".join(lines)
 
 
-_PREFER_QUESTION_WORDS = ("budget", "price", "categor", "type", "diet", "prefer", "flavor", "flavour", "size")
-
-
 def _extract_followups(full_text: str, *, products_searched: bool, has_cited_products: bool) -> list[str]:
-    """Pull post-search clarifier chips: shopping was invoked but nothing cited.
+    """Pull the post-search clarifier chip: shopping was invoked but nothing cited.
 
     Recommend-first: no pre-search branch — the single question path fires only
     after an empty product search, so doc-RAG answers never emit shopping chips.
+    RULE 10 caps the model at one question, so at most one chip in document order.
     """
     if has_cited_products or not products_searched:
         return []
-    candidates = []
     for line in full_text.splitlines():
         # Strip bullet markers only ("- ", "• ", "1. ") — never bare digits ("2 for $10?")
         s = re.sub(r"^\s*(?:[\u2022-]|\d+[.)])\s+", "", line.strip()).strip()
         if s.endswith("?") and 8 < len(s) < 140:
-            candidates.append(s)
-    ranked = sorted(candidates, key=lambda q: not any(w in q.lower() for w in _PREFER_QUESTION_WORDS))
-    return ranked[:3]
+            return [s]
+    return []
 
 
 class QueryFilters(BaseModel):

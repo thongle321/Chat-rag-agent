@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 # Minimum embedding cosine to recommend a SKU — strict grounding gate.
 PRODUCT_SCORE_GATE = 0.30
 
-# Budget hints like "under $30" / "$10 max" steer the re-rank (price_ok boost).
-# Bare "$N" is deliberately NOT a ceiling ("2 for $10?", "$8 over budget").
+# Budget hints like "under $30" / "$10 max" feed the analyzer regex-fallback
+# (max_price pre-gate). Bare "$N" is deliberately NOT a ceiling ("2 for $10?",
+# "$8 over budget").
 _BUDGET_RE = re.compile(
     r"(?:under|below|max|up to|<=|<)\s*\$?\s*(\d+(?:\.\d+)?)"
     r"|\$?\s*(\d+(?:\.\d+)?)\s*(?:max|or less)\b",
@@ -96,31 +97,22 @@ def _parse_budget(query: str) -> float | None:
 def _rerank(query: str, scored: list[tuple[Product, float]]) -> list[tuple[Product, float]]:
     """Deterministic re-rank over GATE-passing hits (existing columns only).
 
-    Sort key (desc): in-stock first, then price-ceiling match, then category
-    word-overlap with the query, then cosine. Neutral signals (no budget in
-    query) score 1 so they never demote. Stable sort preserves cosine order
-    within ties.
+    Sort key (desc): in-stock first, then category word-overlap with the
+    query, then cosine. No price leg: the SQL pre-gate already enforces
+    max_price, so re-deriving a regex budget here was tautological.
+    Stable sort preserves cosine order within ties.
     """
-    budget = _parse_budget(query)
     qtokens = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
 
-    def key(item: tuple[Product, float]) -> tuple[int, int, int, float]:
+    def key(item: tuple[Product, float]) -> tuple[int, int, float]:
         prod, cos = item
         in_stock = 1 if (prod.stock or 0) > 0 else 0
-        if budget is None:
-            price_ok = 1
-        else:
-            try:
-                price = float(prod.price) if prod.price is not None else None
-            except (TypeError, ValueError):
-                price = None
-            price_ok = 1 if (price is not None and price <= budget) else 0
         if prod.category:
             ctokens = {t for t in re.findall(r"[a-z0-9]+", prod.category.lower()) if len(t) > 2}
             cat_ok = 1 if (ctokens & qtokens) else 0
         else:
             cat_ok = 0
-        return (in_stock, price_ok, cat_ok, cos)
+        return (in_stock, cat_ok, cos)
 
     return sorted(scored, key=key, reverse=True)
 
