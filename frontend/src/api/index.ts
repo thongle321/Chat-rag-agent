@@ -65,6 +65,8 @@ export interface StreamProduct {
 	product_url?: string | null;
 	category?: string | null;
 	stock?: number;
+	seller?: string | null;
+	checkout_url?: string | null;
 }
 
 export interface StreamHandlers {

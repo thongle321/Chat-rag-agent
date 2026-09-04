@@ -36,11 +36,12 @@ backend/
       ai_settings.py / document_status.py  # settings mirror, PENDING/PROCESSING/COMPLETED/FAILED
       schemas.py         # ChatRequest (≤2000 chars)/Response, DocumentInfo, SessionListItem/Patch/Detail, StatsResponse
     services/
-      rag.py             # stream_answer / answer_question — RAG + search_products tools, citation stubs, followups, durable logs
-      products.py        # search (embedding cosine, PRODUCT_SCORE_GATE=0.30 pre-slice), ShopifySource/CsvSource, upsert via _dedupe_stmt
+      rag.py             # stream_answer / answer_question — RAG + search_products/search_shopify_catalog tools, citation stubs, followups, durable logs
+      products.py        # search (embedding cosine, PRODUCT_SCORE_GATE=0.30 pre-slice), CsvSource ingest, upsert via _dedupe_stmt
       llm.py             # get_llm() → (model, model_name) per ai_provider (openai/ollama), cached per provider:model
       document_ingest.py # liteparse (cheap + OCR vie+eng dpi=400) + chonkie RecursiveChunker (char, 1200/24) + LLM Title:/Reference: + batch-500 add
       document_status.py / chat_logging.py / encryption.py / ai_settings.py (KV save/load)
+  shopify_global.py  # Global Catalog MCP over direct HTTPS (no key; endpoint+profile+catalog_id in app_settings KV, never persists results)
       facebook_channels.py / zalo_channels.py / user_manager.py  # require_admin/require_user, current_admin_user/current_user_user/current_active_user
     api/
       routes.py          # central /api router
@@ -48,7 +49,7 @@ backend/
       chat.py            # POST /chat/query, /chat/query/stream (SSE via _SSE_FIELDS+_format_sse); _decode_bearer (pyjwt, no jose)
       sessions.py        # GET /sessions (own, auth), GET /sessions/:id (public + FB-PSID fallback), PATCH (owner-scoped, claims anon), DELETE (owner-scoped 404)
       docs.py            # POST /documents/upload (multi-file `files`, 50MB each, background index_file), GET "" list, DELETE /{title}, GET /upload/status?titles= (poll)
-      products.py        # GET / (admin list all), GET /search?q=&k= (public), POST /, PUT /{pid}, DELETE /{pid}, POST /import-csv, POST /sync-shopify (admin)
+      products.py        # GET / (admin list all), GET /search?q=&k= (public), POST /, PUT /{pid}, DELETE /{pid}, POST /import-csv (admin)
       settings.py        # GET+PUT /settings/ai, POST /settings/test, POST /settings/models (admin; ollama local /api/tags vs cloud /models)
       stats.py           # GET /stats (admin; bounded 500-session query scan)
       health.py          # GET /health, GET /health/detailed (vector_store component)
@@ -129,10 +130,10 @@ All under `/api` (`app/api/routes.py`):
 |--------|--------|------------|
 | `/auth` | `auth.py` | `POST /login` (form-data `username`+`password`), `POST /logout`, `POST /register`, `GET /me` |
 | `/health` | `health.py` | `GET /` (public), `GET /detailed` |
-| `/settings` | `settings.py` | `GET+PUT /ai`, `POST /test`, `POST /models` (all admin) |
+| `/settings` | `settings.py` | `GET+PUT /ai`, `POST /test`, `POST /models`, `GET+PUT /shopify-catalog`, `POST /shopify-catalog/test` (all admin) |
 | `/stats` | `stats.py` | `GET /` = `/api/stats` (admin) |
 | `/documents` | `docs.py` | `POST /upload` (field `files`, list, 50MB/file, background `index_file`), `GET /` (="" no trailing slash), `DELETE /{title}`, `GET /upload/status?titles=a,b` (all admin) |
-| `/products` | `products.py` | `GET /` list all (admin), `GET /search?q=&k=` (public), `POST /`, `PUT /{pid}`, `DELETE /{pid}`, `POST /import-csv`, `POST /sync-shopify` (admin) |
+| `/products` | `products.py` | `GET /` list all (admin), `GET /search?q=&k=` (public), `POST /`, `PUT /{pid}`, `DELETE /{pid}`, `POST /import-csv` (admin) |
 | `/chat` | `chat.py` + `sessions.py` | `POST /query` (non-stream), `POST /query/stream` (SSE), `GET /sessions` (own list, auth), `GET /sessions/:id` (public + FB-PSID fallback), `PATCH /sessions/:id` (title/pin, owner-scoped, claims anon), `DELETE` (owner-scoped 404) |
 | `/logs` | `logs.py` | `GET /chat-logs`, `GET /activity-logs` (auth required; non-admin scoped to own; `?page&per_page&session_id/role/action`) |
 | `/facebook` | `facebook.py` | webhook verify, message handling, channel mgmt (admin) |
@@ -147,10 +148,10 @@ All under `/api` (`app/api/routes.py`):
 `app/services/rag.py` + `app/retrieval.py` + `app/services/products.py`:
 
 1. `get_retrieval().search(query, k=8)` — embed query (e5 `query:` prefix) → over-retrieve vectors (`k*over`), BM25 ranks (`store._ensure_bm25()`), `_rrf` fuse, optional `retrieval_distance_threshold` gate on vector distance.
-2. `Deps` + `search_documents` / `search_products` tools (pydantic-ai) — agent calls per intent; doc catalog + SHOPPING RULES 9/10/11 injected into `system_prompt` (only `[P1]`-cited SKUs, vague queries → 2-3 clarifying `?` lines, honest sales line); `ProcessHistory(_keep_recent)` caps history to 10 (drops leading orphan responses), `ReinjectSystemPrompt` refreshes catalog. `UsageLimits(request_limit=3)`; 120s agent + stream timeouts; provider-misconfig → 502 hint.
+2. `Deps` + `search_documents` / `search_products` / `search_shopify_catalog` tools (pydantic-ai) — agent calls per intent; doc catalog + SHOPPING RULES 9/10/11/13 injected into `system_prompt` (only `[P1]`-cited SKUs; local catalog first, Global Catalog when local misses or user wants wider choice, shared `[Pn]` numbering); `ProcessHistory(_keep_recent)` caps history to 10 (drops leading orphan responses), `ReinjectSystemPrompt` refreshes catalog. `UsageLimits(request_limit=3)`; 120s agent + stream timeouts; provider-misconfig → 502 hint.
 3. `stream_answer()` — loads history via `conversation_store`, runs `agent.run_stream`, yields `text_delta`, persists citation stubs (`metadata.sources` chunk-ids on the last `ModelResponse`), saves `history + new_messages`, durable logs (`log_chat_message` user+assistant with tokens/latency/model + `log_activity chat.query`). Emits `products` (only `[P1]`-cited) + `followups` (only when `products_searched` and nothing cited, budget/category/dietary preferred).
 4. Citations: only numbers actually present in answer (`\[(\d+)\]` / `\[P(\d+)\]`) are surfaced; doc metadata hydrated at read-time from vector store so renames/deletes reflect immediately. Product search: embedding cosine (e5 `passage:` prefix) over active products via `asyncio.to_thread` (FastEmbed is blocking), `PRODUCT_SCORE_GATE=0.30` applied pre-slice (sorted desc, `break` on first miss); LIKE fallback on embedding failure needs 2 token hits for multi-word queries (1 for single-word). Followup strip is bullet-only (`[•-]|\d+[.)]` + whitespace) so prices like `2 for $10?` survive.
-5. Ingest: `save_and_queue_indexing` (overwrite deletes old doc + PENDING status) → `index_file` (background): liteparse cheap-parse, OCR (`vie+eng`, dpi=400) when any page `needs_ocr`, images always OCR; chonkie char-chunker; LLM `Title:`/`Reference:` summary (60s timeout, failure → filename); batch-500 `store.add`; COMPLETED/FAILED status. Product ingest: `ProductSource` protocol — `ShopifySource` (Admin API `products.json`, storefront URL `https://{domain}/products/{handle}`) + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; `upsert_products` dedupes via `_dedupe_stmt`: `(source,external_id)` → `sku` → `name` (scoped by `source` when present).
+5. Ingest: `save_and_queue_indexing` (overwrite deletes old doc + PENDING status) → `index_file` (background): liteparse cheap-parse, OCR (`vie+eng`, dpi=400) when any page `needs_ocr`, images always OCR; chonkie char-chunker; LLM `Title:`/`Reference:` summary (60s timeout, failure → filename); batch-500 `store.add`; COMPLETED/FAILED status. Product ingest: `ProductSource` protocol + `CsvSource` (name,description,price,currency,image_url,product_url,category,stock,sku) + manual CRUD; public Shopify catalog search (`shopify_catalog.py`, Storefront Catalog `/api/ucp/mcp`, no token) is preview-only and never saved. + manual CRUD; `upsert_products` dedupes via `_dedupe_stmt`: `(source,external_id)` → `sku` → `name` (scoped by `source` when present).
 
 ## Conventions
 

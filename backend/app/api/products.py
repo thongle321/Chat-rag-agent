@@ -1,4 +1,4 @@
-"""Products admin API — CRUD + CSV import + Shopify sync (both supported)."""
+"""Products admin API — CRUD + CSV import + public Shopify catalog search."""
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -7,14 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
 from app.models.unified import Product
-from app.services.products import (
-    CsvSource,
-    ShopifySource,
-    list_products,
-    product_to_dict,
-    search_products,
-    sync_source,
-)
+from app.services.products import CsvSource, list_products, product_to_dict, search_products, sync_source
 from app.services.user_manager import current_admin_user
 
 router = APIRouter()
@@ -30,11 +23,6 @@ class ProductUpsert(BaseModel):
     category: str | None = None
     stock: int = 0
     is_active: bool = True
-
-
-class ShopifySyncRequest(BaseModel):
-    shop_domain: str
-    access_token: str
 
 
 @router.get("/")
@@ -85,11 +73,3 @@ async def import_csv(file: UploadFile, db: AsyncSession = Depends(get_async_sess
     src = CsvSource(content)
     n = await sync_source(src, db)
     return {"imported": n, "skipped": src.skipped}
-
-
-@router.post("/sync-shopify")
-async def sync_shopify(
-    body: ShopifySyncRequest, db: AsyncSession = Depends(get_async_session), user=current_admin_user
-):
-    n = await sync_source(ShopifySource(body.shop_domain, body.access_token), db)
-    return {"synced": n}

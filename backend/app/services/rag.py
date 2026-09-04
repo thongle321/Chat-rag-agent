@@ -28,6 +28,8 @@ from app.services.chat_logging import log_activity, log_chat_message
 from app.services.llm import get_llm
 from app.services.products import _parse_budget, format_usd
 from app.services.products import search_products as _search_products
+from app.services.shopify_global import GlobalCatalogError, get_catalog_config
+from app.services.shopify_global import search_global_catalog as _search_global
 
 logger = logging.getLogger(__name__)
 
@@ -193,14 +195,15 @@ async def search_documents(ctx: RunContext[Deps], query: str) -> str:
     return _format_context(docs, nums)
 
 
-def _format_products(prods: list[dict]) -> str:
+def _format_products(prods: list[dict], start: int = 0) -> str:
     if not prods:
         return "(No matching products in catalog.)"
     lines = []
-    for i, p in enumerate(prods, 1):
+    for i, p in enumerate(prods, start + 1):
         price = format_usd(p.get("price"), p.get("currency"))
         stock = f", stock {p.get('stock', 0)}" if p.get("stock") is not None else ""
-        lines.append(f"[P{i}] {p['name']} — {price}{stock} (id: {p['id']})")
+        seller = f", sold by {p['seller']}" if p.get("seller") else ""
+        lines.append(f"[P{i}] {p['name']} — {price}{stock}{seller} (id: {p['id']})")
     return "\n".join(lines)
 
 
@@ -316,6 +319,46 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
     return _format_products(prods)
 
 
+async def search_shopify_catalog(ctx: RunContext[Deps], query: str) -> str:
+    """Search Shopify's Global Catalog — live products from millions of merchants.
+
+    Call this when search_products returned no match, or when the user wants
+    wider choice beyond the local catalog ('anywhere', 'online', brand names we
+    don't carry). Results are live and never saved. Cite them exactly like local
+    products ([P1] [P2] in order). If not connected, it says so — then skip it.
+
+    Args:
+        query: A standalone product search (e.g. 'trail running shoes under $150').
+    """
+    try:
+        async with async_session_factory() as db:
+            cfg = await get_catalog_config(db)
+    except Exception:
+        logger.warning("catalog config read failed", exc_info=True)
+        return "(Shopify catalog is not connected.)"
+    if not cfg.get("enabled"):
+        return "(Shopify catalog is not connected — only local products available.)"
+    try:
+        prods = await _search_global(
+            query,
+            6,
+            endpoint=cfg["endpoint"],
+            profile_url=cfg["profile_url"],
+            catalog_id=cfg.get("catalog_id", ""),
+        )
+    except GlobalCatalogError:
+        logger.warning("global catalog search failed", exc_info=True)
+        return "(Shopify catalog search failed — recommend from local products only.)"
+    except Exception:
+        logger.exception("global catalog search crashed")
+        return "(Shopify catalog search failed — recommend from local products only.)"
+    ctx.deps.products = [*ctx.deps.products, *prods]
+    ctx.deps.products_searched = True
+    if not prods:
+        return "(No matching products in the Shopify catalog.)"
+    return _format_products(prods, start=len(ctx.deps.products) - len(prods))
+
+
 def _catalog(docs: list[dict]) -> str:
     if not docs:
         return "No documents in the library yet."
@@ -357,13 +400,19 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         "tied to the user's constraint (e.g. 'Trail socks [P1] — Under $30, in stock, cushioned "
         "heel for blisters'). Add a compact comparison table (Price / Best-for rows) plus one "
         "honest caveat line ONLY when the user asks to compare ('compare', 'vs', 'which is "
-        "better') or 3+ products are cited — otherwise present, don't compare."
+        "better') or 3+ products are cited — otherwise present, don't compare.\n"
+        "13) Catalog order: ALWAYS call search_products (local catalog) first — it is "
+        "the merchant's own stock. Only call search_shopify_catalog when local search "
+        "returned no match, or the user wants wider/online choice. Numbering is shared: "
+        "[Pn] indexes run across both tools in call order, so cite exactly what each "
+        "tool returned. For Shopify items, name the seller once per product "
+        "(e.g. 'Trail Runner Pro [P4] (Example Running) — $129')."
     )
     agent = Agent(
         deps.model,
         system_prompt=system_prompt,
         name="conversational_rag",
-        tools=[search_documents, search_products],
+        tools=[search_documents, search_products, search_shopify_catalog],
         capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
     state.fallback_reply = _CHAT_FALLBACK_REPLY

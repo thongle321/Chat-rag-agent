@@ -10,6 +10,18 @@ from app.core.config import settings
 from app.db.session import get_async_session
 from app.models.user import User
 from app.services.ai_settings import save_ai_settings
+from app.services.shopify_global import (
+    DEFAULT_ENDPOINT,
+    DEFAULT_PROFILE_URL,
+    KEY_CATALOG_ID,
+    KEY_ENABLED,
+    KEY_ENDPOINT,
+    KEY_PROFILE_URL,
+    GlobalCatalogError,
+    get_catalog_config,
+    save_catalog_config,
+    test_catalog,
+)
 from app.services.user_manager import current_admin_user
 
 
@@ -260,3 +272,50 @@ async def list_models(body: ListModelsRequest | None = None, user: User = curren
             return ListModelsResponse(models=[])
 
     return ListModelsResponse(models=[])
+
+
+class ShopifyCatalogResponse(BaseModel):
+    enabled: bool
+    endpoint: str
+    profile_url: str
+    catalog_id: str = ""
+
+
+class ShopifyCatalogUpdate(BaseModel):
+    enabled: bool | None = None
+    endpoint: str | None = None
+    profile_url: str | None = None
+    catalog_id: str | None = None
+
+
+@router.get("/shopify-catalog", response_model=ShopifyCatalogResponse)
+async def get_shopify_catalog(user: User = current_admin_user, session: AsyncSession = Depends(get_async_session)):
+    return ShopifyCatalogResponse(**await get_catalog_config(session))
+
+
+@router.put("/shopify-catalog", response_model=ShopifyCatalogResponse)
+async def update_shopify_catalog(
+    body: ShopifyCatalogUpdate,
+    user: User = current_admin_user,
+    session: AsyncSession = Depends(get_async_session),
+):
+    data: dict = {}
+    if body.enabled is not None:
+        data[KEY_ENABLED] = "1" if body.enabled else "0"
+    if body.endpoint is not None:
+        data[KEY_ENDPOINT] = body.endpoint.strip() or DEFAULT_ENDPOINT
+    if body.profile_url is not None:
+        data[KEY_PROFILE_URL] = body.profile_url.strip() or DEFAULT_PROFILE_URL
+    if body.catalog_id is not None:
+        data[KEY_CATALOG_ID] = body.catalog_id.strip()
+    return ShopifyCatalogResponse(**await save_catalog_config(session, data))
+
+
+@router.post("/shopify-catalog/test", response_model=TestConnectionResponse)
+async def test_shopify_catalog(user: User = current_admin_user, session: AsyncSession = Depends(get_async_session)):
+    cfg = await get_catalog_config(session)
+    try:
+        tools = await test_catalog(cfg["endpoint"], cfg["profile_url"])
+        return TestConnectionResponse(ok=True, message=f"Catalog connected ({len(tools)} tools).")
+    except GlobalCatalogError as e:
+        return TestConnectionResponse(ok=False, message=str(e))

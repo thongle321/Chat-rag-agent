@@ -3,7 +3,7 @@
 - SQL table `products` (single-tenant, see models/unified.py)
 - search_products(): embedding cosine rank over active products (small catalog,
   computed on the fly — no separate Chroma collection needed)
-- ProductSource adapter: Shopify + CSV + manual (both CSV option and online)
+- ProductSource adapter: CSV + manual ingest (Shopify Global Catalog is live-only, never saved)
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import math
 import re
 from typing import Protocol
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -127,7 +126,10 @@ def _rerank(query: str, scored: list[tuple[Product, float]]) -> list[tuple[Produ
 # Search — embedding rank over active products, strict grounding
 # ---------------------------------------------------------------------------
 async def search_products(
-    query: str, k: int = 6, category: str | None = None, max_price: float | None = None
+    query: str,
+    k: int = 6,
+    category: str | None = None,
+    max_price: float | None = None,
 ) -> list[dict]:
     """Return top-k active products ranked by embedding cosine. Empty = no match.
 
@@ -191,61 +193,10 @@ async def list_products(active_only: bool = True) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# ProductSource adapter — Shopify first, CSV fallback (both supported)
+# ProductSource adapter — CSV ingest (manual CRUD bypasses it)
 # ---------------------------------------------------------------------------
 class ProductSource(Protocol):
     async def fetch_products(self) -> list[dict]: ...
-
-
-class ShopifySource:
-    """Fetch products via Shopify Admin API.
-
-    Needs: shop_domain (e.g. mystore.myshopify.com) + admin access token.
-    """
-
-    def __init__(self, shop_domain: str, access_token: str):
-        self.shop_domain = shop_domain.strip().replace("https://", "").replace("http://", "").rstrip("/")
-        self.access_token = access_token
-
-    async def fetch_products(self) -> list[dict]:
-        url = f"https://{self.shop_domain}/admin/api/2025-01/products.json?limit=250"
-        headers = {"X-Shopify-Access-Token": self.access_token}
-        async with httpx.AsyncClient(timeout=30) as cli:
-            r = await cli.get(url, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        out = []
-        for item in data.get("products", []):
-            variants = item.get("variants", [{}])
-            v0 = variants[0] if variants else {}
-            handle = item.get("handle")
-            out.append(
-                {
-                    "name": item.get("title", ""),
-                    "description": (item.get("body_html") or "")[:2000],
-                    "price": float(v0.get("price") or 0) or None,
-                    "currency": "USD",
-                    "image_url": _shopify_image(item),
-                    # Storefront URL so Buy works for synced products (was None)
-                    "product_url": f"https://{self.shop_domain}/products/{handle}" if handle else None,
-                    "category": item.get("product_type") or None,
-                    "stock": sum(int(v.get("inventory_quantity") or 0) for v in variants),
-                    "source": "shopify",
-                    "external_id": str(item.get("id")),
-                }
-            )
-        return out
-
-
-def _shopify_image(item: dict) -> str | None:
-    """Extract primary image URL without chained .get() navigation."""
-    primary = item.get("image") or {}
-    if primary.get("src"):
-        return primary["src"]
-    for img in item.get("images") or []:
-        if img.get("src"):
-            return img["src"]
-    return None
 
 
 class CsvSource:
@@ -334,7 +285,16 @@ async def upsert_products(items: list[dict], db: AsyncSession) -> int:
         stmt = _dedupe_stmt(it)
         existing = (await db.execute(stmt)).scalar_one_or_none() if stmt is not None else None
         if existing:
-            for k in ("name", "description", "price", "currency", "image_url", "product_url", "category", "stock"):
+            for k in (
+                "name",
+                "description",
+                "price",
+                "currency",
+                "image_url",
+                "product_url",
+                "category",
+                "stock",
+            ):
                 if it.get(k) is not None:
                     setattr(existing, k, it[k])
             existing.is_active = True

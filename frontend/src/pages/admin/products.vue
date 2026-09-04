@@ -18,7 +18,6 @@ type Product = {
 const products = ref<Product[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const syncing = ref(false);
 const importing = ref(false);
 const query = ref("");
 const sortBy = ref<keyof Product>("name");
@@ -38,9 +37,16 @@ const form = ref({
 });
 
 const connectOpen = ref(false);
+const catalog = ref({
+	enabled: false,
+	endpoint: "",
+	profile_url: "",
+	catalog_id: "",
+});
+const catalogSaving = ref(false);
+const catalogTesting = ref(false);
+const catalogError = ref("");
 const productTab = ref<"manual" | "csv">("manual");
-const shopDomain = ref("");
-const shopToken = ref("");
 const csvInputRef = ref<HTMLInputElement | null>(null);
 
 const filtered = computed(() => {
@@ -164,24 +170,56 @@ async function uploadCsv(e: Event) {
 	}
 }
 
-async function syncShopify() {
-	if (!shopDomain.value.trim() || !shopToken.value.trim()) return;
-	syncing.value = true;
+async function loadCatalog() {
 	try {
-		await api.post("/products/sync-shopify", {
-			shop_domain: shopDomain.value.trim(),
-			access_token: shopToken.value.trim(),
-		});
-		shopDomain.value = "";
-		shopToken.value = "";
-		connectOpen.value = false;
-		await load();
-	} finally {
-		syncing.value = false;
+		const { data } = await api.get("/settings/shopify-catalog");
+		catalog.value = { ...catalog.value, ...data };
+	} catch {
+		// catalog stays disabled until connected
 	}
 }
 
-onMounted(load);
+async function saveCatalog() {
+	catalogSaving.value = true;
+	catalogError.value = "";
+	try {
+		const { data } = await api.put("/settings/shopify-catalog", {
+			enabled: catalog.value.enabled,
+			endpoint: catalog.value.endpoint,
+			profile_url: catalog.value.profile_url,
+			catalog_id: catalog.value.catalog_id,
+		});
+		catalog.value = { ...catalog.value, ...data };
+	} catch (e: any) {
+		catalogError.value =
+			e?.response?.data?.detail || "Could not save catalog settings.";
+	} finally {
+		catalogSaving.value = false;
+	}
+}
+
+async function testCatalog() {
+	catalogTesting.value = true;
+	catalogError.value = "";
+	try {
+		const { data } = await api.post("/settings/shopify-catalog/test");
+		if (!data.ok) catalogError.value = data.message;
+	} catch (e: any) {
+		catalogError.value = e?.response?.data?.detail || "Connection test failed.";
+	} finally {
+		catalogTesting.value = false;
+	}
+}
+
+function openConnect() {
+	catalogError.value = "";
+	connectOpen.value = true;
+	loadCatalog();
+}
+
+onMounted(() => {
+	load();
+});
 </script>
 
 <template>
@@ -199,9 +237,9 @@ onMounted(load);
         <UButton
           color="neutral"
           variant="outline"
-          icon="i-lucide-plug"
-          label="Connect ecommerce"
-          @click="connectOpen = true"
+          icon="i-lucide-shopping-bag"
+          label="Shopify Catalog"
+          @click="openConnect"
         />
         <UButton
           color="primary"
@@ -447,35 +485,33 @@ onMounted(load);
     </template>
   </UModal>
 
-  <!-- Modal: Connect Ecommerce -->
-  <UModal v-model:open="connectOpen" title="Connect ecommerce" description="Sync products from your Shopify store">
+  <!-- Modal: Shopify Global Catalog -->
+  <UModal v-model:open="connectOpen" title="Shopify Global Catalog" description="Live product recommendations from all Shopify merchants — no API key, nothing is saved">
     <template #body>
       <div class="flex flex-col gap-4">
-        <div class="flex flex-col gap-3">
-          <UFormField label="Shop domain *" required>
-            <UInput v-model="shopDomain" placeholder="mystore.myshopify.com" class="w-full" />
-          </UFormField>
-          <UFormField label="Admin API access token *" required>
-            <UInput v-model="shopToken" type="password" placeholder="shpat_..." class="w-full" />
-          </UFormField>
-          <UButton
-            color="primary"
-            variant="solid"
-            label="Sync from Shopify"
-            icon="i-lucide-refresh-cw"
-            :loading="syncing"
-            :disabled="!shopDomain || !shopToken"
-            class="mt-1"
-            block
-            @click="syncShopify"
-          />
+        <div v-if="catalogError" class="p-2.5 rounded-md bg-error/10 border border-error/30 text-xs text-error">
+          {{ catalogError }}
         </div>
+        <p class="text-xs text-muted">Chat searches this catalog when your local products have no match. Results are live and never saved.</p>
+        <UFormField label="Enabled">
+          <USwitch v-model="catalog.enabled" />
+        </UFormField>
+        <UFormField label="Catalog endpoint" hint="Default connects to Shopify's global catalog.">
+          <UInput v-model="catalog.endpoint" placeholder="https://catalog.shopify.com/api/ucp/mcp" class="w-full font-mono text-sm" />
+        </UFormField>
+        <UFormField label="Agent profile URL">
+          <UInput v-model="catalog.profile_url" placeholder="https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json" class="w-full font-mono text-sm" />
+        </UFormField>
+        <UFormField label="Saved catalog ID (optional)" hint="Only if you created a saved catalog in the Dev Dashboard.">
+          <UInput v-model="catalog.catalog_id" placeholder="" class="w-full font-mono text-sm" />
+        </UFormField>
       </div>
     </template>
 
     <template #footer>
-      <div class="flex justify-end w-full">
-        <UButton variant="ghost" color="neutral" label="Close" @click="connectOpen = false" />
+      <div class="flex justify-end gap-2 w-full">
+        <UButton variant="outline" color="neutral" label="Test Connection" :loading="catalogTesting" @click="testCatalog" />
+        <UButton color="primary" variant="solid" label="Save" :loading="catalogSaving" @click="saveCatalog" />
       </div>
     </template>
   </UModal>

@@ -16,6 +16,7 @@ defineProps<{ product: StreamProduct }>();
     <div class="min-w-0 flex-1">
       <div class="text-sm font-medium text-default truncate">{{ product.name }}</div>
       <div v-if="product.description" class="text-xs text-muted line-clamp-2 mt-0.5">{{ product.description }}</div>
+      <div v-if="product.seller" class="text-[11px] text-muted mt-0.5">Sold by {{ product.seller }}</div>
       <div class="flex items-center gap-2 mt-1.5">
         <span v-if="product.price != null" class="text-sm font-semibold text-primary">{{ formatUSD(product.price, product.currency) }}</span>
         <span v-if="product.stock != null && product.stock <= 5" class="text-[11px] text-warning">Only {{ product.stock }} left</span>
