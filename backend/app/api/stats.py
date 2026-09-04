@@ -28,15 +28,18 @@ async def get_stats(db: AsyncSession = Depends(get_async_session), user: User = 
     total_documents = len(docs)
     total_chunks = await asyncio.to_thread(get_vector_store().count)
 
-    # Sessions
-    result = await db.execute(select(func.count(ChatSession.id)))
+    # Sessions — account sessions only (guest/temporary rows have user_id NULL)
+    result = await db.execute(select(func.count(ChatSession.id)).where(ChatSession.user_id.is_not(None)))
     total_sessions = result.scalar() or 0
 
     # Total queries — sum message counts across recent sessions (bounded scan)
     total_queries = 0
     if total_sessions:
         session_result = await db.execute(
-            select(ChatSession.id).order_by(ChatSession.updated_at.desc()).limit(500)
+            select(ChatSession.id)
+            .where(ChatSession.user_id.is_not(None))
+            .order_by(ChatSession.updated_at.desc())
+            .limit(500)
         )
         session_ids = [r[0] for r in session_result.all()]
         for sid in session_ids:
