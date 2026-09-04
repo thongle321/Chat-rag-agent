@@ -16,6 +16,7 @@ import re
 import uuid
 
 import httpx
+import logfire
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -203,14 +204,20 @@ async def search_global_catalog(
     content = result.get("structuredContent") or {}
     products = [p for p in (content.get("products") or []) if isinstance(p, dict)]
     out = [_map_product(p) for p in products]
-    logger.info("global catalog search q=%r n=%d", query[:60], len(out))
+    # logfire.info (not logger.info): stdlib records are swallowed by the
+    # LogfireLoggingHandler console, while spans print like `chat.message logged`.
+    logfire.info(
+        "shopify.catalog search",
+        query=query[:120],
+        hits=len(out),
+    )
     for p in out:
-        logger.info(
-            "global catalog hit name=%r price=%s %s seller=%r url=%s",
-            p["name"][:80],
-            p["price"],
-            p["currency"],
-            p.get("seller"),
-            p.get("product_url"),
+        logfire.info(
+            "shopify.catalog hit",
+            name=p["name"][:120],
+            price=p["price"],
+            currency=p["currency"],
+            seller=p.get("seller") or "",
+            url=p.get("product_url") or "",
         )
     return out
