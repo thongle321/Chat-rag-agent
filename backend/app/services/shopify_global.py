@@ -204,4 +204,13 @@ async def search_global_catalog(
     products = [p for p in (content.get("products") or []) if isinstance(p, dict)]
     out = [_map_product(p) for p in products]
     logger.info("global catalog search q=%r n=%d", query[:60], len(out))
+    for p in out:
+        logger.info(
+            "global catalog hit name=%r price=%s %s seller=%r url=%s",
+            p["name"][:80],
+            p["price"],
+            p["currency"],
+            p.get("seller"),
+            p.get("product_url"),
+        )
     return out
