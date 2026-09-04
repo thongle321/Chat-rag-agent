@@ -4,6 +4,8 @@ import api from "../../api/index";
 
 const products = ref<any[]>([]);
 const loading = ref(false);
+const importing = ref(false);
+const csvInputRef = ref<HTMLInputElement | null>(null);
 const csvFile = ref<File | null>(null);
 const shopDomain = ref("");
 const shopToken = ref("");
@@ -27,12 +29,19 @@ async function remove(id: string) {
   await load();
 }
 async function uploadCsv(e: Event) {
-  const f = (e.target as HTMLInputElement).files?.[0];
+  const input = e.target as HTMLInputElement;
+  const f = input.files?.[0];
   if (!f) return;
-  const fd = new FormData();
-  fd.append("file", f);
-  await api.post("/products/import-csv", fd);
-  await load();
+  importing.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", f);
+    await api.post("/products/import-csv", fd);
+    await load();
+  } finally {
+    importing.value = false;
+    input.value = "";
+  }
 }
 async function syncShopify() {
   if (!shopDomain.value || !shopToken.value) return;
@@ -59,13 +68,12 @@ onMounted(load);
         <UInput v-model="form.stock" type="number" placeholder="Stock" />
       </div>
       <UTextarea v-model="form.description" placeholder="Description" class="mt-2" />
-      <UButton class="mt-3" label="Add product" icon="i-lucide-plus" @click="create" />
-    </UCard>
-
-    <UCard>
-      <template #header><span class="font-medium">CSV import</span></template>
-      <p class="text-xs text-muted mb-2">Columns: name,description,price,currency,image_url,product_url,category,stock,sku</p>
-      <input type="file" accept=".csv" @change="uploadCsv" />
+      <div class="mt-3 flex items-center gap-2">
+        <UButton label="Add product" icon="i-lucide-plus" @click="create" />
+        <UButton variant="outline" color="neutral" label="Import CSV" icon="i-lucide-file-spreadsheet" :loading="importing" @click="csvInputRef?.click()" />
+        <input ref="csvInputRef" type="file" accept=".csv" class="hidden" @change="uploadCsv" />
+      </div>
+      <p class="text-xs text-muted mt-2">CSV columns: name,description,price,currency,image_url,product_url,category,stock,sku</p>
     </UCard>
 
     <UCard>
