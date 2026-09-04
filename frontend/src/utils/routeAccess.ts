@@ -1,6 +1,6 @@
 // Single source of truth for route access: deny-list, not allow-list.
 // Only /admin* is gated (/admin/login itself is public); everything else
-// (/, /c/:id, /login, 404s, future public pages) is public and needs no edits here.
+// (/, /c/:id, /uc/:id, /login, 404s, future public pages) is public and needs no edits here.
 // Consumed by main.ts router guard, the axios interceptor, and streamChat.
 
 // Backend contract — 403 detail strings from app/services/user_manager.py

@@ -10,9 +10,10 @@ import SourceLink from "./chat/SourceLink.vue";
 import ProductCard from "./chat/ProductCard.vue";
 import { useChatActions } from "../composables/useChatActions";
 
-// Shared chat UI for / (blank composer, sessionId=null) and /c/:id (sessionId=set),
-// like ChatGPT: / is always fresh, first send routes to /c/:id.
-const props = defineProps<{ sessionId: string | null }>();
+// Shared chat UI for / (blank composer, sessionId=null), /c/:id (account sessions)
+// and /uc/:id (guest temporary sessions, in-memory only — never restored).
+// Like ChatGPT: / is always fresh; first send routes to /c/:id authed, /uc/:id guest.
+const props = defineProps<{ sessionId: string | null; temporary?: boolean }>();
 const emit = defineEmits<{ "not-found": [] }>();
 
 const chatStore = useChatStore();
@@ -104,8 +105,16 @@ async function saveEdit(msg: any) {
 onMounted(async () => {
 	await chatStore.fetchSessions();
 	if (props.sessionId) {
-		// Local list first, then server (fresh device / cleared storage)
-		if (!(await chatStore.resolveSession(props.sessionId))) {
+		if (props.temporary) {
+			// Guest temp route: local memory only, never the server (reload = gone).
+			if (chatStore.conversations.some((c) => c.id === props.sessionId)) {
+				await chatStore.setActive(props.sessionId);
+			} else {
+				emit("not-found"); // reload/direct visit → parent redirects to /
+				return;
+			}
+		} else if (!(await chatStore.resolveSession(props.sessionId))) {
+			// Local list first, then server (fresh device / cleared storage)
 			emit("not-found"); // unknown/deleted id → parent redirects to /
 			return;
 		}
@@ -156,7 +165,8 @@ async function handleSend(question: string) {
 				chatStore.clearActive();
 			}
 		} else if (conv?.sessionId) {
-			router.push(`/c/${conv.sessionId}`);
+			// Guests get temporary /uc/:id URLs (in-memory only); accounts get /c/:id.
+			router.push(authStore.isAuthenticated ? `/c/${conv.sessionId}` : `/uc/${conv.sessionId}`);
 		}
 	}
 	await nextTick();
