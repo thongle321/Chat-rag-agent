@@ -207,7 +207,7 @@ async function saveCatalog() {
 		toast.add({
 			color: "success",
 			description: catalog.value.enabled
-				? "Shopify catalog recommendations enabled."
+				? "Shopify catalog enabled."
 				: "Shopify catalog disabled.",
 			icon: "i-lucide-check-circle",
 			timeout: 5000,

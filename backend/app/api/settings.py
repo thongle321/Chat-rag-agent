@@ -315,7 +315,7 @@ async def update_shopify_catalog(
 async def test_shopify_catalog(user: User = current_admin_user, session: AsyncSession = Depends(get_async_session)):
     cfg = await get_catalog_config(session)
     try:
-        tools = await test_catalog(cfg["endpoint"], cfg["profile_url"])
-        return TestConnectionResponse(ok=True, message=f"Catalog connected ({len(tools)} tools).")
+        await test_catalog(cfg["endpoint"], cfg["profile_url"])
+        return TestConnectionResponse(ok=True, message="Catalog connected.")
     except GlobalCatalogError as e:
         return TestConnectionResponse(ok=False, message=str(e))
