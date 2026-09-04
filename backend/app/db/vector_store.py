@@ -19,7 +19,6 @@ persist_dir.mkdir(parents=True, exist_ok=True)
 
 
 
-
 # ported from MacPhuPhong/TRAFFIC_LAW_LLM_RAG_AGENTIC — hand-curated Vietnamese stopwords.
 # Merged with bm25s English stopwords so one list serves both languages (each language's text
 # only contains its own stopwords, so stripping both sets is harmless to the other).
@@ -121,35 +120,26 @@ class ChromaVectorStore:
             )
         return out
 
-    def hybrid_query(self, query_text: str, query_embedding: list[float], k: int = 5) -> list[dict]:
-        """BM25 lexical search fused with dense vector search via Reciprocal Rank Fusion."""
-        if not query_text.strip():
-            return self.query(query_embedding, k=k)
-
+    def bm25_ranks(self, query_text: str, k: int) -> list[str]:
+        """Top-k chunk ids by lexical (BM25) rank. Empty when the index is empty."""
         ids = self._ensure_bm25()
-        if not ids:
+        if not ids or not query_text.strip():
             return []
-
         hits, _ = self._bm25.retrieve(
             bm25s.tokenize(query_text, stopwords=_STOPWORDS, show_progress=False),
-            k=k * 2,
+            k=k,
             show_progress=False,
         )
-        bm25_ranks = [ids[i] for i in hits[0]]
-        vec_ranks = [d["id"] for d in self.query(query_embedding, k=k * 2)]
+        return [ids[i] for i in hits[0]]
 
-        fused = rrf([vec_ranks, bm25_ranks])[:k]
-        res = self._collection.get(ids=[i for i, _ in fused], include=["documents", "metadatas"])
-        doc_by_id = dict(zip(res["ids"], res["documents"], strict=True))
-        meta_by_id = dict(zip(res["ids"], res["metadatas"], strict=True))
+    def fetch(self, ids: list[str]) -> list[dict]:
+        """Hydrate [{id, content, metadata}] for chunk ids (missing ids are omitted)."""
+        if not ids:
+            return []
+        res = self._collection.get(ids=ids, include=["documents", "metadatas"])
         return [
-            {
-                "id": doc_id,
-                "content": doc_by_id.get(doc_id, ""),
-                "metadata": meta_by_id.get(doc_id, {}),
-                "score": score,
-            }
-            for doc_id, score in fused
+            {"id": i, "content": d or "", "metadata": m or {}}
+            for i, d, m in zip(res["ids"], res["documents"], res["metadatas"], strict=True)
         ]
 
     def get_metadata(self, ids: list[str]) -> dict[str, dict]:
