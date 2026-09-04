@@ -203,6 +203,16 @@ async function saveCatalog() {
 			catalog_id: catalog.value.catalog_id,
 		});
 		catalog.value = { ...catalog.value, ...data };
+		connectOpen.value = false;
+		toast.add({
+			color: "success",
+			description: catalog.value.enabled
+				? "Shopify catalog recommendations enabled."
+				: "Shopify catalog disabled.",
+			icon: "i-lucide-check-circle",
+			timeout: 5000,
+			title: "Saved",
+		});
 	} catch (e: any) {
 		catalogError.value =
 			e?.response?.data?.detail || "Could not save catalog settings.";
@@ -216,7 +226,17 @@ async function testCatalog() {
 	catalogError.value = "";
 	try {
 		const { data } = await api.post("/settings/shopify-catalog/test");
-		if (!data.ok) catalogError.value = data.message;
+		if (!data.ok) {
+			catalogError.value = data.message;
+		} else {
+			toast.add({
+				color: "success",
+				description: data.message,
+				icon: "i-lucide-check-circle",
+				timeout: 5000,
+				title: "Connected",
+			});
+		}
 	} catch (e: any) {
 		catalogError.value = e?.response?.data?.detail || "Connection test failed.";
 	} finally {
