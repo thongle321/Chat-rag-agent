@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Comark } from "@comark/vue";
 import { useClipboard } from "@vueuse/core";
-import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useChatStore } from "../stores/chat";
 import { useAuthStore } from "../stores/auth";
@@ -56,27 +56,51 @@ function saveHeaderTitle() {
   if (t && chatStore.activeId) chatStore.renameConversation(chatStore.activeId, t);
   headerRenameOpen.value = false;
 }
-// AI thought timing like chat-vue
+// AI thought timing — per message: each assistant reply owns its counter,
+// frozen when its stream completes so older replies keep their own time.
 const thinkingStart = ref<number | null>(null);
 const thinkingElapsed = ref(0);
+const thinkingForId = ref<string | null>(null);
+const thinkingTimes = ref<Record<string, number>>({});
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
+function lastStreamingId(): string | null {
+  const msgs = chatStore.messages as any[];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role !== "user" && msgs[i].streaming) return msgs[i].id;
+  }
+  return null;
+}
+function snapThinking() {
+  if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
+  const live = lastStreamingId();
+  if (live) thinkingForId.value = live;
+  if (thinkingForId.value) thinkingTimes.value[thinkingForId.value] = thinkingElapsed.value;
+}
+function thinkSecs(msg: any): number {
+  if (msg.id && thinkingForId.value === msg.id) return thinkingElapsed.value;
+  return thinkingTimes.value[msg.id] ?? 0;
+}
 watch(
   () => chatStore.loading,
   (loading) => {
     if (loading) {
       thinkingStart.value = Date.now();
       thinkingElapsed.value = 0;
+      thinkingForId.value = lastStreamingId();
       if (thinkingTimer) clearInterval(thinkingTimer);
-      thinkingTimer = setInterval(() => {
-        if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
-      }, 100);
+      thinkingTimer = setInterval(snapThinking, 100);
     } else {
       if (thinkingTimer) clearInterval(thinkingTimer);
       thinkingTimer = null;
-      if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
+      snapThinking();
+      thinkingStart.value = null;
+      thinkingForId.value = null;
     }
   },
 );
+onUnmounted(() => {
+  if (thinkingTimer) clearInterval(thinkingTimer);
+});
 // Hover edit for my messages like chat-vue
 const editingId = ref<string | null>(null);
 const editingText = ref("");
@@ -265,16 +289,16 @@ async function handleSend(question: string) {
                   </div>
 
                   <template v-if="msg.streaming && !msg.text">
-                    <Indicator :label="`Thinking… ${thinkingElapsed.toFixed(1)}s`" />
+                    <Indicator :label="`Thinking… ${thinkSecs(msg).toFixed(1)}s`" />
                   </template>
                   <template v-else-if="msg.streaming && msg.text">
-                    <div class="text-xs text-muted mb-1">Thinking {{ thinkingElapsed.toFixed(1) }}s…</div>
+                    <div class="text-xs text-muted mb-1">Thinking {{ thinkSecs(msg).toFixed(1) }}s…</div>
                     <Suspense>
                       <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
                     </Suspense>
                   </template>
-                  <template v-else-if="!msg.streaming && msg.text && thinkingElapsed">
-                    <div class="text-xs text-muted mb-1">Thought for {{ thinkingElapsed.toFixed(1) }}s</div>
+                  <template v-else-if="!msg.streaming && msg.text && thinkingTimes[msg.id] != null">
+                    <div class="text-xs text-muted mb-1">Thought for {{ thinkingTimes[msg.id].toFixed(1) }}s</div>
                     <Suspense>
                       <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
                     </Suspense>
