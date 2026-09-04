@@ -148,6 +148,9 @@ def _map_product(p: dict) -> dict:
     media = [m for m in (p.get("media") or []) if m.get("type") == "image" and m.get("url")]
     seller = best.get("seller") or {}
     rating = p.get("rating") or {}
+    # Live search hits often omit the canonical product page `url` — fall back to
+    # the variant checkout URL so cards stay clickable (merchant site, item in cart).
+    product_url = p.get("url") or best.get("checkout_url")
     return {
         "id": p.get("id") or best.get("id") or "",
         "name": p.get("title") or "Untitled product",
@@ -155,7 +158,7 @@ def _map_product(p: dict) -> dict:
         "price": _major(price.get("amount")),
         "currency": price.get("currency") or "USD",
         "image_url": media[0]["url"] if media else None,
-        "product_url": p.get("url"),
+        "product_url": product_url,
         "checkout_url": best.get("checkout_url"),
         "category": None,
         "stock": None,
