@@ -19,17 +19,22 @@ from app.services.rag import answer_question, stream_answer
 router = APIRouter()
 
 
-async def _ensure_session(request: ChatRequest, db: AsyncSession) -> ChatSession:
+async def _ensure_session(request: ChatRequest, db: AsyncSession, user_id: str | None = None) -> ChatSession:
     session_id = request.session_id
 
     if session_id:
         result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
         session = result.scalar_one_or_none()
         if session:
+            # Pre-login chats follow the account: an authenticated user
+            # continuing an anonymous (owner-less) session claims it.
+            if user_id and not session.user_id:
+                session.user_id = user_id
+                await db.commit()
             return session
 
     sid = str(uuid.uuid4())
-    session = ChatSession(id=sid, title="New chat")
+    session = ChatSession(id=sid, title="New chat", user_id=user_id)
     db.add(session)
     await db.commit()
     return session
@@ -120,7 +125,7 @@ async def query_chat(
 ):
     # Allow anonymous like ChatGPT — best-effort auth for logging
     user_id, user_email = await _optional_user_with_email(http_request, db)
-    session = await _ensure_session(request, db)
+    session = await _ensure_session(request, db, user_id=user_id)
     ip = _client_ip(http_request)
     response = await answer_question(
         request.question, session_id=session.id, user_id=user_id, user_email=user_email, ip_address=ip
@@ -154,9 +159,9 @@ def _format_sse(ev: dict) -> str | None:
 
 @router.post("/query/stream")
 async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
-    session = await _ensure_session(request, db)
-    session_id = session.id
     user_id, user_email = await _optional_user_with_email(http_request, db)
+    session = await _ensure_session(request, db, user_id=user_id)
+    session_id = session.id
     ip = _client_ip(http_request)
 
     async def event_stream() -> AsyncIterator[str]:

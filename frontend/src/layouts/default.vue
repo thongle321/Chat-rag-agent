@@ -24,6 +24,14 @@ const links = [
 			},
 		},
 		{
+			label: "Products",
+			icon: "i-lucide-shopping-bag",
+			to: "/admin/products",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
 			label: "Integrations",
 			icon: "i-lucide-plug",
 			to: "/admin/integrations",

@@ -6,8 +6,10 @@ import api, {
 	streamChat,
 } from "../api/index.ts";
 
-const STORAGE_KEY = "chat_sessions";
-const ACTIVE_KEY = "chat_active_id";
+const STORAGE_PREFIX = "chat_sessions";
+const ACTIVE_PREFIX = "chat_active_id";
+// Identity bucket: "anon" or "user:<id>". Guests only ever see the anon
+// bucket — account sessions are invisible after logout and restored on login.
 
 export interface ChatMessage {
 	id: string;
@@ -63,8 +65,14 @@ export function groupByDate(
 export const useChatStore = defineStore("chat", () => {
 	const conversations = ref<Conversation[]>([]);
 	const activeId = ref("");
+	const identity = ref("anon");
+	const storageKey = () => `${STORAGE_PREFIX}:${identity.value}`;
+	const activeStorageKey = () => `${ACTIVE_PREFIX}:${identity.value}`;
 	const loading = ref(false);
 	const error = ref("");
+	// Sessions currently hydrating over network (drives the skeleton + dedupes
+	// hover-prefetch vs click so one session is never fetched twice).
+	const hydrating = ref<Record<string, boolean>>({});
 	// One AbortController per in-flight send, keyed by conversation id, so switching
 	// chats never aborts a running stream — it keeps streaming in the background.
 	const activeControllers = new Map<string, AbortController>();
@@ -81,6 +89,10 @@ export const useChatStore = defineStore("chat", () => {
 	);
 
 	function saveToStorage() {
+		// Logged-out = temporary chat: in-memory only, never persisted.
+		if (identity.value === "anon") {
+			return;
+		}
 		const data = conversations.value.map((c) => ({
 			createdAt: c.createdAt,
 			id: c.id,
@@ -88,13 +100,27 @@ export const useChatStore = defineStore("chat", () => {
 			sessionId: c.sessionId,
 			title: c.title,
 		}));
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-		localStorage.setItem(ACTIVE_KEY, activeId.value);
+		localStorage.setItem(storageKey(), JSON.stringify(data));
+		localStorage.setItem(activeStorageKey(), activeId.value);
+	}
+
+	// Guests keep nothing: drop pre-bucket keys and any anon-bucket keys
+	// (the old migration copied account sessions into anon). Idempotent —
+	// self-heals browsers carrying leaked data.
+	function cleanupGuestKeys() {
+		try {
+			for (const k of [STORAGE_PREFIX, ACTIVE_PREFIX, `${STORAGE_PREFIX}:anon`, `${ACTIVE_PREFIX}:anon`]) {
+				localStorage.removeItem(k);
+			}
+		} catch {
+			// storage unavailable
+		}
 	}
 
 	function loadFromStorage() {
+		cleanupGuestKeys();
 		try {
-			const raw = localStorage.getItem(STORAGE_KEY);
+			const raw = localStorage.getItem(storageKey());
 			if (!raw) {
 				return;
 			}
@@ -110,10 +136,54 @@ export const useChatStore = defineStore("chat", () => {
 			// corrupted storage
 		}
 		// Restore the chat you were viewing; fall back to the first session.
-		const stored = localStorage.getItem(ACTIVE_KEY) || "";
+		const stored = localStorage.getItem(activeStorageKey()) || "";
 		if (stored && conversations.value.some((c) => c.id === stored)) {
 			activeId.value = stored;
 		}
+	}
+
+	// Switch identity bucket (login/logout). Persists the outgoing bucket,
+	// drops in-memory messages (guest must never see account content),
+	// loads the incoming bucket.
+	function switchIdentity(next: string) {
+		if (next === identity.value) {
+			return;
+		}
+		saveToStorage();
+		identity.value = next;
+		conversations.value = [];
+		activeId.value = "";
+		loadFromStorage();
+	}
+
+	// Sidebar source after login: the account's server-side sessions.
+	// Server wins (titles/pins synced via PATCH); blank local drafts dropped.
+	async function loadServerSessions() {
+		const { data } = await api.get("/chat/sessions");
+		conversations.value = (data || []).map((s: any) => ({
+			createdAt: s.created_at ? Date.parse(s.created_at) : Date.now(),
+			id: s.id,
+			messages: [],
+			pinned: !!s.pinned,
+			sessionId: s.id,
+			title: s.title || "Chat",
+		}));
+		if (activeId.value && !conversations.value.some((c) => c.id === activeId.value)) {
+			activeId.value = "";
+		}
+		saveToStorage();
+	}
+
+	// Best-effort meta sync (rename/pin) — local save already happened.
+	function syncSessionMeta(conv: Conversation) {
+		if (identity.value === "anon") {
+			return;
+		}
+		const sid = conv.sessionId || conv.id;
+		if (!sid) {
+			return;
+		}
+		void api.patch(`/chat/sessions/${sid}`, { title: conv.title, pinned: conv.pinned }).catch(() => {});
 	}
 
 	// Cache in-memory conversations across route changes (/ ↔ /c/:id remounts
@@ -126,9 +196,21 @@ export const useChatStore = defineStore("chat", () => {
 			activeId.value = conversations.value[0].id;
 		}
 		// Restore the chat you were in before refresh — messages (and hydrated sources).
-		const conv = conversations.value.find((c) => c.id === activeId.value);
-		if (conv && !conv.messages.length) {
-			await fetchSessionMessages(activeId.value);
+		await prefetchSession(activeId.value);
+	}
+
+	// Warm an uncached session (hover/focus prefetch). No-op when cached or
+	// already in flight — safe to call from mouseover/focusin repeatedly.
+	async function prefetchSession(id: string) {
+		const conv = conversations.value.find((c) => c.id === id);
+		if (!conv || conv.messages.length || hydrating.value[id]) {
+			return;
+		}
+		hydrating.value[id] = true;
+		try {
+			await fetchSessionMessages(id);
+		} finally {
+			hydrating.value[id] = false;
 		}
 	}
 
@@ -206,10 +288,9 @@ export const useChatStore = defineStore("chat", () => {
 	async function setActive(id: string) {
 		activeId.value = id;
 		saveToStorage();
-		const conv = conversations.value.find((c) => c.id === id);
-		if (conv && !conv.messages.length) {
-			await fetchSessionMessages(id);
-		}
+		// Same guarded path as hover-prefetch: instant when warm, skeleton
+		// while cold (covers touch devices and clicks that beat the hover).
+		await prefetchSession(id);
 	}
 
 	async function deleteConversation(id: string) {
@@ -238,6 +319,7 @@ export const useChatStore = defineStore("chat", () => {
 		}
 		c.pinned = !c.pinned;
 		saveToStorage();
+		syncSessionMeta(c);
 	}
 
 	function renameConversation(id: string, title: string) {
@@ -247,6 +329,7 @@ export const useChatStore = defineStore("chat", () => {
 		}
 		c.title = title;
 		saveToStorage();
+		syncSessionMeta(c);
 	}
 
 	async function sendMessage(question: string) {
@@ -357,15 +440,20 @@ export const useChatStore = defineStore("chat", () => {
 		error,
 		fetchSessionMessages,
 		fetchSessions,
+		hydrating,
+		identity,
 		loading,
+		loadServerSessions,
 		messages,
 		newConversation,
+		prefetchSession,
 		renameConversation,
 		resolveSession,
 		sendMessage,
 		setActive,
 		stop,
 		streamingText,
+		switchIdentity,
 		togglePin,
 	};
 });

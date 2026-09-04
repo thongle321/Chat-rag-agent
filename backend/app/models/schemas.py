@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -46,6 +47,19 @@ class SessionMessage(BaseModel):
 
 class SessionDetail(BaseModel):
     messages: list[SessionMessage]
+
+
+class SessionListItem(BaseModel):
+    id: str
+    title: str
+    pinned: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SessionPatch(BaseModel):
+    title: str | None = None
+    pinned: bool | None = None
 
 
 class StatsResponse(BaseModel):

@@ -32,6 +32,8 @@ export const useChats = createSharedComposable(() => {
   const chatStore = useChatStore();
 
   const groups = computed(() => {
+    // Guests have no saved sessions — sidebar stays empty (temporary chat).
+    if (chatStore.identity === "anon") return [];
     const today: typeof chatStore.conversations.value = [];
     const yesterday: typeof chatStore.conversations.value = [];
     const lastWeek: typeof chatStore.conversations.value = [];

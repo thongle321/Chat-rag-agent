@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import api, { getErrorMessage } from "../api/index.ts";
+import { useChatStore } from "./chat.ts";
 
 interface User {
 	email: string;
@@ -35,6 +36,22 @@ export const useAuthStore = defineStore("auth", () => {
 		api.defaults.headers.common.Authorization = `Bearer ${token.value}`;
 	}
 
+	// Sessions belong to the account: entering an account restores its bucket
+	// (server list), leaving drops to the separate anon bucket.
+	async function syncChatBucket() {
+		try {
+			const chat = useChatStore();
+			if (user.value) {
+				chat.switchIdentity(`user:${user.value.id}`);
+				await chat.loadServerSessions();
+			} else {
+				chat.switchIdentity("anon");
+			}
+		} catch {
+			// sidebar keeps whatever is cached
+		}
+	}
+
 	async function login(email: string, password: string) {
 		loading.value = true;
 		error.value = "";
@@ -49,6 +66,9 @@ export const useAuthStore = defineStore("auth", () => {
 			});
 			setToken(data.access_token);
 			await fetchUser();
+			if (user.value) {
+				await syncChatBucket();
+			}
 		} catch (err: any) {
 			error.value = getErrorMessage(err);
 			throw err;
@@ -82,15 +102,21 @@ export const useAuthStore = defineStore("auth", () => {
 		}
 		setToken("");
 		user.value = null;
+		await syncChatBucket();
 	}
 
 	async function fetchUser() {
 		if (!token.value) {
 			return;
 		}
+		const wasLoggedOut = !user.value;
 		try {
 			const { data } = await api.get("/auth/me");
 			user.value = data;
+			// Boot path (router guard): returning account restores its bucket.
+			if (wasLoggedOut && user.value) {
+				await syncChatBucket();
+			}
 		} catch {
 			setToken("");
 			user.value = null;
