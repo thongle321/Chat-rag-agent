@@ -210,7 +210,7 @@ class CsvSource:
         items, skipped = parse_csv_stats(self.content)
         self.skipped = skipped
         if skipped:
-            logger.warning("CSV import rejected %d rows missing name/price/image", skipped)
+            logger.warning("CSV import rejected %d rows missing name/price", skipped)
         return items
 
 
@@ -223,8 +223,8 @@ def parse_csv(content: str) -> list[dict]:
 def parse_csv_stats(content: str) -> tuple[list[dict], int]:
     """Parse CSV rows, rejecting feed-hygiene failures.
 
-    Rows missing name, price, or image_url are skipped (mirrors the ACP spec's
-    row-rejection for required fields — imageless/priceless cards never render).
+    Rows missing name or price are skipped (imageless/priceless cards never
+    render). image_url is optional — imageless rows import and render text-only.
     Returns (items, skipped_count).
     """
     reader = csv.DictReader(io.StringIO(content))
@@ -240,10 +240,10 @@ def parse_csv_stats(content: str) -> tuple[list[dict], int]:
             price = float(raw_price) if raw_price else None
         except ValueError:
             price = None
-        image_url = (row.get("image_url") or "").strip() or None
-        if price is None or image_url is None:
+        if price is None:
             skipped += 1
             continue
+        image_url = (row.get("image_url") or "").strip() or None
         try:
             stock = int(float(row.get("stock") or 0))
         except ValueError:

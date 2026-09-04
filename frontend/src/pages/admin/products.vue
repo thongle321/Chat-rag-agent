@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import api from "../../api/index";
 
+const toast = useToast();
+
 type Product = {
 	id: string;
 	name: string;
@@ -161,9 +163,20 @@ async function uploadCsv(e: Event) {
 	try {
 		const fd = new FormData();
 		fd.append("file", f);
-		await api.post("/products/import-csv", fd);
+		const { data } = await api.post("/products/import-csv", fd);
 		modalOpen.value = false;
 		await load();
+		toast.add({
+			color: (data.imported ?? 0) > 0 ? "success" : "warning",
+			description:
+				`Imported ${data.imported ?? 0} products` +
+				(data.skipped
+					? `, skipped ${data.skipped} rows missing name/price.`
+					: "."),
+			icon: "i-lucide-file-spreadsheet",
+			timeout: 6000,
+			title: "CSV import",
+		});
 	} finally {
 		importing.value = false;
 		input.value = "";
