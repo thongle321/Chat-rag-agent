@@ -11,6 +11,7 @@ re-using images, so nothing here is ever persisted.
 from __future__ import annotations
 
 import asyncio
+import heapq
 import html
 import json
 import logging
@@ -19,6 +20,7 @@ import uuid
 
 import httpx
 import logfire
+import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -179,22 +181,24 @@ async def _rerank_local(query: str, prods: list[dict], k: int) -> list[dict]:
     """Order Shopify candidates by e5 cosine against the query, keep top-k.
 
     Fail-open: on embedding failure Shopify's own ordering stands (sliced)."""
-    if len(prods) <= k:
+    if not prods:
         return prods
     try:
         texts = [f"{p.get('name') or ''}\n{p.get('description') or ''}" for p in prods]
-        q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
-        p_embs = await asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
-        scored = sorted(
+
+        def _embed() -> tuple[np.ndarray, list[np.ndarray]]:
+            model = get_embeddings()
+            q = np.asarray(next(model.query_embed(query_prefix() + query)))
+            ps = [np.asarray(e) for e in model.embed([passage_prefix() + t for t in texts])]
+            return q, ps
+
+        q_emb, p_embs = await asyncio.to_thread(_embed)
+        ranked = heapq.nlargest(
+            min(k, len(prods)),
             ((p, cosine_sim(q_emb, e)) for p, e in zip(prods, p_embs, strict=True)),
             key=lambda x: x[1],
-            reverse=True,
         )
-        out = []
-        for p, score in scored[:k]:
-            p["score"] = round(float(score), 4)
-            out.append(p)
-        return out
+        return [{**p, "score": round(score, 4)} for p, score in ranked]
     except Exception:
         logger.exception("global catalog re-rank failed, keeping Shopify order")
         return prods[:k]

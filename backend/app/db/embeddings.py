@@ -1,8 +1,8 @@
 import logging
-import math
 import os
 from functools import lru_cache
 
+import numpy as np
 from fastembed import TextEmbedding
 from fastembed.common.model_description import ModelSource, PoolingType
 
@@ -33,14 +33,13 @@ def passage_prefix() -> str:
     return "passage: " if "e5" in settings.embedding_model.lower() else ""
 
 
-def cosine_sim(a: list[float], b: list[float]) -> float:
-    """Cosine similarity for same-length embedding vectors (0.0 on mismatch)."""
-    if len(a) != len(b):
+def cosine_sim(a: list[float] | np.ndarray, b: list[float] | np.ndarray) -> float:
+    """Cosine similarity (0.0 on shape mismatch or zero vector)."""
+    va, vb = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    if va.shape != vb.shape or not va.size:
         return 0.0
-    denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-    if not denom:
-        return 0.0
-    return sum(x * y for x, y in zip(a, b, strict=True)) / denom
+    denom = float(np.linalg.norm(va) * np.linalg.norm(vb))
+    return float(va @ vb / denom) if denom else 0.0
 
 
 @lru_cache(maxsize=1)
