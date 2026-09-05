@@ -1,8 +1,9 @@
 """Products catalog — ChatGPT-style recommendations grounded on real catalog rows.
 
-- SQL table `products` (single-tenant, see models/unified.py)
-- search_products(): embedding cosine rank over active products (small catalog,
-  computed on the fly — no separate Chroma collection needed)
+- SQL table `products` is the system of record (single-tenant, see models/unified.py)
+- `products` Chroma collection is the search index: CRUD write-through sync
+  (sync_product_to_index / remove_product_from_index), search_products() ranks
+  via hybrid RRF + distance gate and hydrates display fields from chunk metadata
 - ProductSource adapter: CSV + manual ingest (Shopify Global Catalog is live-only, never saved)
 """
 
@@ -12,21 +13,26 @@ import asyncio
 import csv
 import io
 import logging
-import math
 import re
 from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.embeddings import get_embeddings, passage_prefix, query_prefix
 from app.db.session import async_session_factory
+from app.db.vector_store import get_product_store
+from app.db.vector_store import rrf as _rrf
 from app.models.unified import Product
 
 logger = logging.getLogger(__name__)
 
-# Minimum embedding cosine to recommend a product — strict grounding gate.
-PRODUCT_SCORE_GATE = 0.30
+# Maximum Chroma cosine distance for a recommendation — strict grounding gate.
+# (Old SQL-scan gate was cosine similarity >= 0.30; distance = 1 - similarity.)
+PRODUCT_DISTANCE_GATE = 0.70
+
+PRODUCT_CHUNK_PREFIX = "product:"
 
 # Budget hints like "under $30" / "$10 max" feed the analyzer regex-fallback
 # (max_price pre-gate). Bare "$N" is deliberately NOT a ceiling ("2 for $10?",
@@ -68,15 +74,68 @@ def _product_text(p: Product) -> str:
     return "\n".join(parts)
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if not na or not nb:
-        return 0.0
-    return dot / (na * nb)
+def product_chunk_id(pid: str) -> str:
+    return f"{PRODUCT_CHUNK_PREFIX}{pid}"
+
+
+def _chunk_meta(p: Product) -> dict:
+    """Display fields for the index (Chroma metadata: str/int/float/bool, no Nones)."""
+    meta: dict = {
+        "product_id": p.id,
+        "name": p.name or "",
+        "currency": p.currency or "USD",
+        "stock": int(p.stock or 0),
+        "is_active": True,
+    }
+    if p.description:
+        meta["description"] = p.description[:2000]
+    if p.price is not None:
+        meta["price"] = float(p.price)
+    if p.image_url:
+        meta["image_url"] = p.image_url
+    if p.product_url:
+        meta["product_url"] = p.product_url
+    if p.category:
+        meta["category"] = p.category
+    if p.source:
+        meta["source"] = p.source
+    if p.external_id:
+        meta["external_id"] = p.external_id
+    return meta
+
+
+async def sync_products_to_index(products: list[Product]) -> None:
+    """CRUD write-through: upsert active rows, drop inactive ones. Never raises —
+    SQL already committed by the caller; an index failure only logs loudly (Q8)."""
+    upserts = [p for p in products if p.is_active]
+    drops = [product_chunk_id(p.id) for p in products if not p.is_active]
+    try:
+        store = get_product_store()
+        if drops:
+            await asyncio.to_thread(store.delete_ids, drops)
+        if upserts:
+            texts = [_product_text(p) for p in upserts]
+            embs = await asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
+            await asyncio.to_thread(
+                store.upsert,
+                [product_chunk_id(p.id) for p in upserts],
+                embs,
+                texts,
+                [_chunk_meta(p) for p in upserts],
+            )
+    except Exception:
+        logger.exception("product index sync failed (%d upserts, %d drops)", len(upserts), len(drops))
+
+
+async def sync_product_to_index(p: Product) -> None:
+    await sync_products_to_index([p])
+
+
+async def remove_product_from_index(pid: str) -> None:
+    try:
+        await asyncio.to_thread(get_product_store().delete_ids, [product_chunk_id(pid)])
+    except Exception:
+        logger.exception("product index delete failed pid=%s", pid)
 
 
 def format_usd(price: float | int | None, currency: str | None = "USD") -> str:
@@ -99,25 +158,25 @@ def _parse_budget(query: str) -> float | None:
         return None
 
 
-def _rerank(query: str, scored: list[tuple[Product, float]]) -> list[tuple[Product, float]]:
+def _rerank(query: str, scored: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
     """Deterministic re-rank over GATE-passing hits (existing columns only).
 
     Sort key (desc): in-stock first, then category word-overlap with the
-    query, then cosine. No price leg: the SQL pre-gate already enforces
-    max_price, so re-deriving a regex budget here was tautological.
-    Stable sort preserves cosine order within ties.
+    query, then fusion score. No price leg: max_price already pre-gates,
+    so re-deriving a regex budget here was tautological.
+    Stable sort preserves fusion order within ties.
     """
     qtokens = {t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 2}
 
-    def key(item: tuple[Product, float]) -> tuple[int, int, float]:
-        prod, cos = item
-        in_stock = 1 if (prod.stock or 0) > 0 else 0
-        if prod.category:
-            ctokens = {t for t in re.findall(r"[a-z0-9]+", prod.category.lower()) if len(t) > 2}
+    def key(item: tuple[dict, float]) -> tuple[int, int, float]:
+        prod, score = item
+        in_stock = 1 if (prod.get("stock") or 0) > 0 else 0
+        if prod.get("category"):
+            ctokens = {t for t in re.findall(r"[a-z0-9]+", prod["category"].lower()) if len(t) > 2}
             cat_ok = 1 if (ctokens & qtokens) else 0
         else:
             cat_ok = 0
-        return (in_stock, cat_ok, cos)
+        return (in_stock, cat_ok, score)
 
     return sorted(scored, key=key, reverse=True)
 
@@ -131,56 +190,66 @@ async def search_products(
     category: str | None = None,
     max_price: float | None = None,
 ) -> list[dict]:
-    """Return top-k active products ranked by embedding cosine. Empty = no match.
+    """Return top-k active products ranked by the products vector collection. Empty = no match.
 
-    max_price is a HARD pre-gate (price <= ceiling before embedding/top-k),
-    fail-open: None disables it. Priceless rows are excluded when gated.
+    Hybrid RRF (dense over-retrieve + BM25 ranks) + cosine-distance gate, then
+    category/max_price post-filters on chunk metadata (priceless rows excluded
+    when gated). Display fields hydrate from the index — SQL is never scanned.
     """
-    async with async_session_factory() as db:
-        stmt = select(Product).where(Product.is_active.is_(True))
-        if category:
-            stmt = stmt.where(Product.category == category)
-        if max_price is not None:
-            stmt = stmt.where(Product.price.is_not(None), Product.price <= max_price)
-        rows = (await db.execute(stmt)).scalars().all()
-    if not rows:
+    if not query.strip():
         return []
     try:
-        # FastEmbed is blocking — offload like Chroma/BM25 (AGENTS.md Gotchas)
+        store = get_product_store()
+        # FastEmbed/Chroma/BM25 are blocking — offload (AGENTS.md Gotchas)
         q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
-        texts = [_product_text(p) for p in rows]
-        p_embs = await asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
-        scored = sorted(
-            zip(rows, [_cosine(q_emb, e) for e in p_embs], strict=False),
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        # Gate BEFORE re-rank/slice so weak entries never surface.
-        gated = [(prod, score) for prod, score in scored if score >= PRODUCT_SCORE_GATE]
-        if not gated:
-            logger.info("product search q=%r n=%d kept=%d", query[:60], len(rows), 0)
+        over = settings.retrieval_bm25_overretrieve
+        vec_hits = await asyncio.to_thread(store.query, q_emb, k * over)
+        if not vec_hits:
             return []
-        out = []
-        for prod, score in _rerank(query, gated):
-            d = product_to_dict(prod)
-            d["score"] = round(float(score), 4)
-            out.append(d)
-            if len(out) >= k:
-                break
-        logger.info("product search q=%r n=%d kept=%d", query[:60], len(rows), len(out))
+        dist_by_id = {h["id"]: h["score"] for h in vec_hits}
+        vec_ranks = [h["id"] for h in vec_hits]
+        bm25_ranks = await asyncio.to_thread(store.bm25_ranks, query, k * over)
+        if not bm25_ranks:
+            fused = [(h["id"], 1.0 / (settings.retrieval_rrf_k + i + 1)) for i, h in enumerate(vec_hits)]
+        else:
+            fused = _rrf([vec_ranks, bm25_ranks], k=settings.retrieval_rrf_k)
+        gated = [(doc_id, sc) for doc_id, sc in fused if dist_by_id.get(doc_id, 2.0) < PRODUCT_DISTANCE_GATE]
+        if not gated:
+            logger.info("product search q=%r kept=0 (gated)", query[:60])
+            return []
+        hydrated = {h["id"]: h["metadata"] for h in await asyncio.to_thread(store.fetch, [i for i, _ in gated])}
+        scored = []
+        for doc_id, score in gated:
+            m = hydrated.get(doc_id)
+            if not m:
+                continue
+            if category and m.get("category") != category:
+                continue
+            price = m.get("price")
+            if max_price is not None and (not isinstance(price, (int, float)) or price > max_price):
+                continue
+            d = {
+                "id": m.get("product_id", doc_id),
+                "name": m.get("name", ""),
+                "description": m.get("description"),
+                "price": price,
+                "currency": m.get("currency", "USD"),
+                "image_url": m.get("image_url"),
+                "product_url": m.get("product_url"),
+                "category": m.get("category"),
+                "stock": m.get("stock", 0),
+                "is_active": True,
+                "source": m.get("source"),
+                "external_id": m.get("external_id"),
+                "score": round(float(score), 4),
+            }
+            scored.append((d, score))
+        out = [d for d, _ in _rerank(query, scored)[:k]]
+        logger.info("product search q=%r kept=%d", query[:60], len(out))
         return out
     except Exception:
-        logger.exception("product embedding search failed, falling back to LIKE")
-        tokens = [t for t in query.lower().split() if len(t) > 2]
-        need = 2 if len(tokens) > 1 else 1  # LIKE fallback honors grounding: multi-word needs 2 hits
-        out = []
-        for prod in rows:
-            hay = f"{prod.name} {prod.description or ''} {prod.category or ''}".lower()
-            if sum(1 for t in tokens if t in hay) >= need:
-                out.append(product_to_dict(prod))
-            if len(out) >= k:
-                break
-        return out
+        logger.exception("product vector search failed")
+        return []
 
 
 async def list_products(active_only: bool = True) -> list[dict]:
@@ -279,8 +348,9 @@ def _dedupe_stmt(it: dict):
 
 
 async def upsert_products(items: list[dict], db: AsyncSession) -> int:
-    """Upsert by (source, external_id) → name. Returns count."""
+    """Upsert by (source, external_id) → name. Commits, then write-through syncs the index. Returns count."""
     n = 0
+    synced: list[Product] = []
     for it in items:
         stmt = _dedupe_stmt(it)
         existing = (await db.execute(stmt)).scalar_one_or_none() if stmt is not None else None
@@ -298,10 +368,16 @@ async def upsert_products(items: list[dict], db: AsyncSession) -> int:
                 if it.get(k) is not None:
                     setattr(existing, k, it[k])
             existing.is_active = True
+            synced.append(existing)
         else:
-            db.add(Product(**{k: v for k, v in it.items() if k in Product.__table__.columns.keys()}))
+            p = Product(**{k: v for k, v in it.items() if k in Product.__table__.columns.keys()})
+            db.add(p)
+            synced.append(p)
         n += 1
     await db.commit()
+    for p in synced:  # re-attach post-commit (attributes expire) before reading fields
+        await db.refresh(p)
+    await sync_products_to_index(synced)
     return n
 
 

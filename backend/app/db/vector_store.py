@@ -43,18 +43,16 @@ def rrf(ranked: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
 
 
 class ChromaVectorStore:
-    def __init__(self) -> None:
+    def __init__(self, collection_name: str = "documents", bm25_subdir: str = "bm25_index") -> None:
         self._client = chromadb.PersistentClient(path=str(persist_dir))
         self._collection = self._client.get_or_create_collection(
-            "documents",
+            collection_name,
             metadata={"hnsw:space": "cosine"},
         )
         self._bm25: bm25s.BM25 | None = None
         self._bm25_ids: list[str] | None = None
-        self._bm25_dir = Path(settings.upload_dir).resolve().parent / "bm25_index"
-        logger.info(
-            "Vector store initialized. Document count: %d", self._collection.count()
-        )
+        self._bm25_dir = Path(settings.upload_dir).resolve().parent / bm25_subdir
+        logger.info("Vector store '%s' initialized. Count: %d", collection_name, self._collection.count())
 
     def _invalidate_bm25(self) -> None:
         self._bm25 = None
@@ -94,9 +92,20 @@ class ChromaVectorStore:
         documents: list[str],
         metadatas: list[dict],
     ) -> None:
-        self._collection.add(
-            ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas
-        )
+        self._collection.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        self._invalidate_bm25()
+
+    def upsert(
+        self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict]
+    ) -> None:
+        self._collection.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        self._invalidate_bm25()
+
+    def delete_ids(self, ids: list[str]) -> None:
+        """Delete chunks by id (missing ids are ignored)."""
+        if not ids:
+            return
+        self._collection.delete(ids=ids)
         self._invalidate_bm25()
 
     def query(self, query_embedding: list[float], k: int = 5) -> list[dict]:
@@ -127,7 +136,7 @@ class ChromaVectorStore:
             return []
         hits, _ = self._bm25.retrieve(
             bm25s.tokenize(query_text, stopwords=_STOPWORDS, show_progress=False),
-            k=k,
+            k=min(k, len(ids)),  # bm25s raises when k > corpus size
             show_progress=False,
         )
         return [ids[i] for i in hits[0]]
@@ -201,3 +210,9 @@ class ChromaVectorStore:
 @lru_cache(maxsize=1)
 def get_vector_store() -> ChromaVectorStore:
     return ChromaVectorStore()
+
+
+@lru_cache(maxsize=1)
+def get_product_store() -> ChromaVectorStore:
+    """Separate collection for catalog products (own BM25, no cross-talk with documents)."""
+    return ChromaVectorStore(collection_name="products", bm25_subdir="bm25_products")

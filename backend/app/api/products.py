@@ -7,7 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
 from app.models.unified import Product
-from app.services.products import CsvSource, list_products, product_to_dict, search_products, sync_source
+from app.services.products import (
+    CsvSource,
+    list_products,
+    product_to_dict,
+    remove_product_from_index,
+    search_products,
+    sync_product_to_index,
+    sync_source,
+)
 from app.services.user_manager import current_admin_user
 
 router = APIRouter()
@@ -42,6 +50,7 @@ async def create_product(body: ProductUpsert, db: AsyncSession = Depends(get_asy
     db.add(p)
     await db.commit()
     await db.refresh(p)
+    await sync_product_to_index(p)
     return product_to_dict(p)
 
 
@@ -55,6 +64,8 @@ async def update_product(
     for k, v in body.model_dump().items():
         setattr(p, k, v)
     await db.commit()
+    await db.refresh(p)
+    await sync_product_to_index(p)  # deactivation drops it from the index
     return product_to_dict(p)
 
 
@@ -64,6 +75,7 @@ async def delete_product(pid: str, db: AsyncSession = Depends(get_async_session)
     if p:
         await db.delete(p)
         await db.commit()
+        await remove_product_from_index(pid)
     return {"ok": True}
 
 
