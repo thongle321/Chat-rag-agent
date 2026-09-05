@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.139.0",
-    "httpx>=0.28.0",
     "httpx2>=2.12",
     "liteparse>=2.13.0",
     "chromadb>=1.5,<2",
@@ -24,6 +23,7 @@ dependencies = [
     "bm25s>=0.3.10",
     "numpy>=2",
     "python-zalo-bot>=0.1.9",
+    "httpx>=0.28.1",
 ]
 
 [tool.setuptools.packages.find]
