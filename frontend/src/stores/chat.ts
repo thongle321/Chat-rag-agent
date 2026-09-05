@@ -47,6 +47,7 @@ interface ServerMessage {
 	role: string;
 	content: string;
 	sources?: StreamSource[];
+	products?: StreamProduct[];
 }
 
 export const useChatStore = defineStore("chat", () => {
@@ -207,6 +208,7 @@ export const useChatStore = defineStore("chat", () => {
 				id: String(i),
 				role: m.role === "user" ? "user" : "assistant",
 				sources: m.sources ?? undefined,
+				products: m.products ?? undefined,
 				text: m.content,
 			}));
 		} catch {

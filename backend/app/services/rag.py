@@ -117,6 +117,10 @@ async def get_messages(session_id: str) -> list[dict]:
                     ]
                     if sources:
                         entry["sources"] = sources
+                    # Product snapshots ride the same metadata sidecar as citation
+                    # stubs (persisted with history) so cards survive reloads.
+                    if isinstance(m, ModelResponse) and m.metadata and m.metadata.get("products"):
+                        entry["products"] = m.metadata["products"]
                     result.append(entry)
     return result
 
@@ -557,15 +561,20 @@ async def stream_answer(
                 if isinstance(p, TextPart):
                     p.content = _strip_pn_markers(p.content)
     answer_parts = [_strip_pn_markers(d) for d in answer_parts]
+    # Persist citation stubs (chunk ids only) plus cited product snapshots on the
+    # response's metadata sidecar — rides inside the existing messages blob, never
+    # sent to the LLM. Titles/refs hydrate from the vector DB at read time so renames
+    # always surface; products hydrate verbatim so cards survive reloads.
+    # Must happen BEFORE save_messages or the stored blob lacks the sidecar.
+    sidecar: dict = {}
     if state.sources:
-        # Persist citation stubs (chunk ids only) on the response's metadata sidecar —
-        # rides inside the existing messages blob, never sent to the LLM. Titles/refs
-        # hydrate from the vector DB at read time so renames always surface.
-        # Must happen BEFORE save_messages or the stored blob lacks the stubs.
-        stubs = [{"n": s["n"], "id": s["id"], "pages": s["pages"]} for s in state.sources]
+        sidecar["sources"] = [{"n": s["n"], "id": s["id"], "pages": s["pages"]} for s in state.sources]
+    if cited_products:
+        sidecar["products"] = cited_products
+    if sidecar:
         for m in reversed(state.new_messages):
             if isinstance(m, ModelResponse) and any(isinstance(p, TextPart) for p in m.parts):
-                m.metadata = {"sources": stubs}
+                m.metadata = sidecar
                 break
     await save_messages(sid, history + state.new_messages)
     # --- Durable per-message logs to app.db (like CQA messages + ai_usage_logs) ---
