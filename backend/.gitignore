@@ -17,6 +17,7 @@ channels.json
 # Data
 .chromadb/
 data/bm25_index/
+data/bm25_products/
 
 # Node
 node_modules/
