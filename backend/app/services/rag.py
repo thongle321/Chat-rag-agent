@@ -16,6 +16,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, Text
 from pydantic_ai.usage import UsageLimits
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db import conversation_store
 from app.db.conversation_store import load_messages, save_messages
 from app.db.session import async_session_factory
@@ -409,7 +410,7 @@ async def _inject_catalog() -> str:
 async def _run_agent(state: RAGState, deps: Deps) -> None:
     intent = await _route_intent(deps.model, state.question, deps)
     catalog = await _inject_catalog() if intent == "docs" else ""
-    system_prompt = get_prompt(intent, catalog)
+    system_prompt = get_prompt(intent, settings.context_prompt.strip(), catalog)
     tools = _tools(intent)
     agent = Agent(
         deps.model,
