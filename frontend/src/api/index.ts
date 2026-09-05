@@ -119,8 +119,7 @@ export async function streamChat(
 		try {
 			const body = await response.json();
 			if (body?.detail) {
-				detail =
-					typeof body.detail === "string" ? body.detail : getErrorMessage(body);
+				detail = typeof body.detail === "string" ? body.detail : getErrorMessage(body);
 			}
 		} catch {
 			/* non-JSON body */
@@ -173,11 +172,7 @@ export async function streamChat(
 			} else {
 				handlers.onDelta(data.content ?? "");
 			}
-			if (
-				currentEvent === "sources" ||
-				currentEvent === "error" ||
-				currentEvent === "done"
-			) {
+			if (currentEvent === "sources" || currentEvent === "error" || currentEvent === "done") {
 				currentEvent = "message";
 			}
 		}

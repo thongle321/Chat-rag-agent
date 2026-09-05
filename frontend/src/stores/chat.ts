@@ -1,10 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import api, {
-	getErrorMessage,
-	type StreamSource,
-	streamChat,
-} from "../api/index.ts";
+import api, { getErrorMessage, type StreamSource, streamChat } from "../api/index.ts";
 
 const STORAGE_PREFIX = "chat_sessions";
 const ACTIVE_PREFIX = "chat_active_id";
@@ -31,9 +27,7 @@ export interface Conversation {
 	title: string;
 }
 
-export function groupByDate(
-	conversations: Conversation[],
-): [string, Conversation[]][] {
+export function groupByDate(conversations: Conversation[]): [string, Conversation[]][] {
 	const now = Date.now();
 	const day = 86_400_000;
 	const groups = new Map<string, Conversation[]>();
@@ -77,16 +71,11 @@ export const useChatStore = defineStore("chat", () => {
 	// chats never aborts a running stream — it keeps streaming in the background.
 	const activeControllers = new Map<string, AbortController>();
 
-	const activeConversation = computed(
-		() => conversations.value.find((c) => c.id === activeId.value) ?? null,
-	);
+	const activeConversation = computed(() => conversations.value.find((c) => c.id === activeId.value) ?? null);
 
 	const messages = computed(() => activeConversation.value?.messages ?? []);
 
-	const streamingText = computed(
-		() =>
-			activeConversation.value?.messages.find((m) => m.streaming)?.text ?? "",
-	);
+	const streamingText = computed(() => activeConversation.value?.messages.find((m) => m.streaming)?.text ?? "");
 
 	function saveToStorage() {
 		// Logged-out = temporary chat: in-memory only, never persisted.

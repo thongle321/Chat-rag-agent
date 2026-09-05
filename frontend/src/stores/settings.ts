@@ -96,9 +96,7 @@ export const useSettingsStore = defineStore("settings", () => {
 		try {
 			const { data } = await api.post("/settings/models", opts ?? {});
 			models.value = data.models;
-			modelsCache.value[
-				modelsKey(opts?.provider ?? "", opts?.ollama_base_url ?? "")
-			] = data.models;
+			modelsCache.value[modelsKey(opts?.provider ?? "", opts?.ollama_base_url ?? "")] = data.models;
 		} catch {
 			models.value = [];
 		} finally {

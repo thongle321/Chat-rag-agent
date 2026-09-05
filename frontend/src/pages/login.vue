@@ -7,10 +7,12 @@ const authStore = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-function isAdmin(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
+function isAdmin(u: any) {
+	return !!u && (u.role === "admin" || u.is_superuser);
+}
 onMounted(() => {
-  if (!authStore.isAuthenticated) return;
-  router.replace(isAdmin(authStore.user) ? "/admin/" : "/");
+	if (!authStore.isAuthenticated) return;
+	router.replace(isAdmin(authStore.user) ? "/admin/" : "/");
 });
 
 const isRegister = ref(false);
@@ -18,9 +20,11 @@ const isRegister = ref(false);
 // Watched (not read once): in-SPA /login → /login?mode=signup reuses the
 // component, so the form must follow query changes incl. back/forward.
 watch(
-  () => route.query.mode,
-  (mode) => { isRegister.value = mode === "signup"; },
-  { immediate: true },
+	() => route.query.mode,
+	(mode) => {
+		isRegister.value = mode === "signup";
+	},
+	{ immediate: true },
 );
 const error = ref("");
 const isSubmitting = ref(false);
@@ -29,95 +33,92 @@ const showConfirm = ref(false);
 
 // Login schema: 2 inputs
 const loginSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
+	email: z.string().min(1, "Email is required").email("Enter a valid email"),
+	password: z.string().min(1, "Password is required"),
 });
 
 // Register schema: 3 inputs inside SAME file
 const registerSchema = z
-  .object({
-    email: z.string().min(1, "Email is required").email("Enter a valid email"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
-    confirmPassword: z.string().min(1, "Confirm your password"),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+	.object({
+		email: z.string().min(1, "Email is required").email("Enter a valid email"),
+		password: z.string().min(6, "Password must be at least 6 characters"),
+		confirmPassword: z.string().min(1, "Confirm your password"),
+	})
+	.refine((d) => d.password === d.confirmPassword, {
+		message: "Passwords do not match",
+		path: ["confirmPassword"],
+	});
 
 type LoginSchema = z.output<typeof loginSchema>;
 type RegisterSchema = z.output<typeof registerSchema>;
 
 const loginState = reactive<Partial<LoginSchema>>({
-  email: "",
-  password: "",
+	email: "",
+	password: "",
 });
 const registerState = reactive<Partial<RegisterSchema>>({
-  email: "",
-  password: "",
-  confirmPassword: "",
+	email: "",
+	password: "",
+	confirmPassword: "",
 });
 
 function resolveErrorMessage(err: unknown): string {
-  const storeMessage = authStore.error;
-  const status =
-    (err as any)?.response?.status ??
-    (err as any)?.statusCode ??
-    (err as any)?.status;
-  if (status === 400) return "Invalid data. Check email/password.";
-  if (status === 401) return "Incorrect email or password.";
-  if (status === 422) return (err as any)?.response?.data?.detail?.[0]?.msg ?? "Invalid input.";
-  if (status === 400 && isRegister.value) return "Email already registered.";
-  if (status === 429) return "Too many attempts. Wait a moment.";
-  if (status && status >= 500) return "Server error. Try again shortly.";
-  if (storeMessage) return storeMessage;
-  return "Something went wrong. Try again.";
+	const storeMessage = authStore.error;
+	const status = (err as any)?.response?.status ?? (err as any)?.statusCode ?? (err as any)?.status;
+	if (status === 400) return "Invalid data. Check email/password.";
+	if (status === 401) return "Incorrect email or password.";
+	if (status === 422) return (err as any)?.response?.data?.detail?.[0]?.msg ?? "Invalid input.";
+	if (status === 400 && isRegister.value) return "Email already registered.";
+	if (status === 429) return "Too many attempts. Wait a moment.";
+	if (status && status >= 500) return "Server error. Try again shortly.";
+	if (storeMessage) return storeMessage;
+	return "Something went wrong. Try again.";
 }
 
 function toggleMode() {
-  isRegister.value = !isRegister.value;
-  error.value = "";
-  // Keep URL in sync so refresh/back matches the visible form (watcher is idempotent)
-  router.replace({ query: isRegister.value ? { mode: "signup" } : {} });
+	isRegister.value = !isRegister.value;
+	error.value = "";
+	// Keep URL in sync so refresh/back matches the visible form (watcher is idempotent)
+	router.replace({ query: isRegister.value ? { mode: "signup" } : {} });
 }
 
 async function handleLogin(event: FormSubmitEvent<LoginSchema>) {
-  if (isSubmitting.value) return;
-  error.value = "";
-  isSubmitting.value = true;
-  try {
-    await authStore.login(event.data.email.trim(), event.data.password);
-    if (isAdmin(authStore.user)) {
-      error.value = "Admin accounts must use Admin Login (/admin/login).";
-      await authStore.logout();
-      return;
-    }
-    await router.push("/");
-  } catch (err: unknown) {
-    error.value = resolveErrorMessage(err);
-  } finally {
-    isSubmitting.value = false;
-  }
+	if (isSubmitting.value) return;
+	error.value = "";
+	isSubmitting.value = true;
+	try {
+		await authStore.login(event.data.email.trim(), event.data.password);
+		if (isAdmin(authStore.user)) {
+			error.value = "Admin accounts must use Admin Login (/admin/login).";
+			await authStore.logout();
+			return;
+		}
+		await router.push("/");
+	} catch (err: unknown) {
+		error.value = resolveErrorMessage(err);
+	} finally {
+		isSubmitting.value = false;
+	}
 }
 
 async function handleRegister(event: FormSubmitEvent<RegisterSchema>) {
-  if (isSubmitting.value) return;
-  error.value = "";
-  isSubmitting.value = true;
-  try {
-    await authStore.register(event.data.email.trim(), event.data.password);
-    // New accounts are always role=user, but double-check
-    if (isAdmin(authStore.user)) {
-      error.value = "Admin accounts must use Admin Login.";
-      await authStore.logout();
-      return;
-    }
-    await router.push("/");
-  } catch (err: unknown) {
-    error.value = resolveErrorMessage(err);
-  } finally {
-    isSubmitting.value = false;
-  }
+	if (isSubmitting.value) return;
+	error.value = "";
+	isSubmitting.value = true;
+	try {
+		await authStore.register(event.data.email.trim(), event.data.password);
+		// New accounts are always role=user, but double-check
+		if (isAdmin(authStore.user)) {
+			error.value = "Admin accounts must use Admin Login.";
+			await authStore.logout();
+			return;
+		}
+		await router.push("/");
+	} catch (err: unknown) {
+		error.value = resolveErrorMessage(err);
+	} finally {
+		isSubmitting.value = false;
+	}
 }
 </script>
 

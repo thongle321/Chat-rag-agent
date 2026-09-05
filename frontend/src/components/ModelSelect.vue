@@ -5,7 +5,7 @@ const settingsStore = useSettingsStore();
 const model = defineModel<string>({ default: "" });
 
 async function refresh() {
-  await settingsStore.fetchSettings();
+	await settingsStore.fetchSettings();
 }
 </script>
 

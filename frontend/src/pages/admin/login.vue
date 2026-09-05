@@ -6,17 +6,16 @@ import { useAuthStore } from "../../stores/auth";
 const authStore = useAuthStore();
 const router = useRouter();
 
-function isAdmin(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
+function isAdmin(u: any) {
+	return !!u && (u.role === "admin" || u.is_superuser);
+}
 onMounted(() => {
 	if (!authStore.isAuthenticated) return;
 	router.replace(isAdmin(authStore.user) ? "/admin/" : "/login");
 });
 
 const schema = z.object({
-	email: z
-		.string()
-		.min(1, "Email is required")
-		.email("Enter a valid email address"),
+	email: z.string().min(1, "Email is required").email("Enter a valid email address"),
 	password: z.string().min(1, "Password is required"),
 });
 
@@ -33,10 +32,7 @@ function resolveErrorMessage(err: unknown): string {
 	const storeMessage = authStore.error;
 
 	// Try to detect common HTTP status codes surfaced via $fetch/ofetch errors
-	const status =
-		(err as any)?.response?.status ??
-		(err as any)?.statusCode ??
-		(err as any)?.status;
+	const status = (err as any)?.response?.status ?? (err as any)?.statusCode ?? (err as any)?.status;
 
 	if (status === 401 || status === 400) {
 		return "Incorrect email or password. Please try again.";
@@ -52,10 +48,7 @@ function resolveErrorMessage(err: unknown): string {
 	}
 
 	// Offline / network failure (no response at all)
-	if (
-		((err as any)?.name === "FetchError" && !status) ||
-		(typeof navigator !== "undefined" && !navigator.onLine)
-	) {
+	if (((err as any)?.name === "FetchError" && !status) || (typeof navigator !== "undefined" && !navigator.onLine)) {
 		return "Unable to reach the server. Check your internet connection and try again.";
 	}
 

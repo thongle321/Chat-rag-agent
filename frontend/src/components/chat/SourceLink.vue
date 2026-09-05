@@ -1,11 +1,11 @@
 <script setup lang="ts">
 defineProps<{
-  n: number;
-  title: string;
-  reference?: string | null;
-  active?: boolean;
+	n: number;
+	title: string;
+	reference?: string | null;
+	active?: boolean;
 }>();
-defineEmits<{ (e: "click"): void }>();
+defineEmits<(e: "click") => void>();
 </script>
 
 <template>

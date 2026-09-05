@@ -36,72 +36,72 @@ const disconnecting = ref(false);
 const disconnectTarget = ref<any | null>(null);
 
 const syncIntervalOptions = [
-    { label: "Every 1 minute", value: 1 },
-    { label: "Every 5 minutes", value: 5 },
-    { label: "Every 10 minutes", value: 10 },
-    { label: "Every 15 minutes (default)", value: 15 },
-    { label: "Every 30 minutes", value: 30 },
-    { label: "Every 1 hour", value: 60 },
-    { label: "Every 6 hours", value: 360 },
-    { label: "Every day", value: 1440 },
+	{ label: "Every 1 minute", value: 1 },
+	{ label: "Every 5 minutes", value: 5 },
+	{ label: "Every 10 minutes", value: 10 },
+	{ label: "Every 15 minutes (default)", value: 15 },
+	{ label: "Every 30 minutes", value: 30 },
+	{ label: "Every 1 hour", value: 60 },
+	{ label: "Every 6 hours", value: 360 },
+	{ label: "Every day", value: 1440 },
 ];
 
 const connectSchema = z.object({
-    page_id: z.string().min(1, "Page ID is required"),
-    page_name: z.string().min(1, "Page name is required"),
-    page_token: z.string().min(1, "Page access token is required"),
-    sync_interval: z.number().int().min(1).default(15),
-    verify_token: z.string().min(1, "Verify token is required"),
+	page_id: z.string().min(1, "Page ID is required"),
+	page_name: z.string().min(1, "Page name is required"),
+	page_token: z.string().min(1, "Page access token is required"),
+	sync_interval: z.number().int().min(1).default(15),
+	verify_token: z.string().min(1, "Verify token is required"),
 });
 type ConnectSchema = z.output<typeof connectSchema>;
 const connectState = reactive<Partial<ConnectSchema>>({
-    page_id: "",
-    page_name: "",
-    page_token: "",
-    sync_interval: 15,
-    verify_token: "",
+	page_id: "",
+	page_name: "",
+	page_token: "",
+	sync_interval: 15,
+	verify_token: "",
 });
 
 const editSchema = z.object({
-    page_name: z.string().min(1, "Page name is required"),
-    page_token: z.string().min(1, "Page access token is required"),
-    sync_interval: z.number().int().min(1).default(15),
-    verify_token: z.string().min(1, "Verify token is required"),
+	page_name: z.string().min(1, "Page name is required"),
+	page_token: z.string().min(1, "Page access token is required"),
+	sync_interval: z.number().int().min(1).default(15),
+	verify_token: z.string().min(1, "Verify token is required"),
 });
 type EditSchema = z.output<typeof editSchema>;
 const editState = reactive<Partial<EditSchema>>({
-    page_name: "",
-    page_token: "",
-    sync_interval: 15,
-    verify_token: "",
+	page_name: "",
+	page_token: "",
+	sync_interval: 15,
+	verify_token: "",
 });
 
 const zaloConnectSchema = z.object({
-    bot_token: z.string().min(1, "Bot token is required"),
-    bot_username: z.string().optional(),
-    verify_token: z.string().min(8, "Verify token 8..256 chars").max(256),
-    // webhook_url moved to global Settings → Integration (auto-managed, no manual input)
-    webhook_url: z.string().optional().or(z.literal("")),
+	bot_token: z.string().min(1, "Bot token is required"),
+	bot_username: z.string().optional(),
+	verify_token: z.string().min(8, "Verify token 8..256 chars").max(256),
+	// webhook_url moved to global Settings → Integration (auto-managed, no manual input)
+	webhook_url: z.string().optional().or(z.literal("")),
 });
 type ZaloConnectSchema = z.output<typeof zaloConnectSchema>;
 const zaloConnectState = reactive<Partial<ZaloConnectSchema>>({
-    bot_token: "",
-    bot_username: "",
-    webhook_url: "",
-    verify_token: "",
+	bot_token: "",
+	bot_username: "",
+	webhook_url: "",
+	verify_token: "",
 });
 const zaloEditSchema = z.object({
-    bot_username: z.string().optional(),
-    bot_token: z.string().optional(),
-    verify_token: z.string().min(8).max(256).optional().or(z.literal("")),
-    webhook_url: z.string().optional(),
+	bot_username: z.string().optional(),
+	bot_token: z.string().optional(),
+	verify_token: z.string().min(8).max(256).optional().or(z.literal("")),
+	webhook_url: z.string().optional(),
 });
 type ZaloEditSchema = z.output<typeof zaloEditSchema>;
 const zaloEditState = reactive<Partial<ZaloEditSchema>>({
-    bot_username: "",
-    bot_token: "",
-    verify_token: "",
-    webhook_url: "",
+	bot_username: "",
+	bot_token: "",
+	verify_token: "",
+	webhook_url: "",
 });
 const zaloEditTarget = ref<any | null>(null);
 
@@ -109,304 +109,304 @@ const editTarget = ref<any | null>(null);
 const toast = useToast();
 
 watch(connectModalOpen, (open) => {
-    if (open) {
-        connectState.page_name = "";
-        connectState.page_id = "";
-        connectState.page_token = "";
-        connectState.verify_token = "";
-        connectState.sync_interval = 15;
-        connectError.value = "";
-    }
+	if (open) {
+		connectState.page_name = "";
+		connectState.page_id = "";
+		connectState.page_token = "";
+		connectState.verify_token = "";
+		connectState.sync_interval = 15;
+		connectError.value = "";
+	}
 });
 
 watch(editModalOpen, (open) => {
-    if (open) {
-        editState.page_name = editTarget.value?.page_name || "";
-        editState.page_token = "";
-        editState.verify_token = editTarget.value?.verify_token || "";
-        editState.sync_interval = editTarget.value?.sync_interval ?? 15;
-        editError.value = "";
-    }
+	if (open) {
+		editState.page_name = editTarget.value?.page_name || "";
+		editState.page_token = "";
+		editState.verify_token = editTarget.value?.verify_token || "";
+		editState.sync_interval = editTarget.value?.sync_interval ?? 15;
+		editError.value = "";
+	}
 });
 watch(zaloConnectModalOpen, async (open) => {
-    if (open) {
-        zaloConnectState.bot_token = "";
-        zaloConnectState.bot_username = "";
-        zaloConnectState.webhook_url = "";
-        zaloConnectState.verify_token = "";
-        zaloConnectError.value = "";
-        // Ensure global verify_token is loaded so we can auto-fill on submit
-        if (!settingsStore.settings.zalo_verify_token && !settingsStore.settings.zalo_api_key) {
-            try { await settingsStore.fetchSettings(); } catch {}
-        }
-    }
+	if (open) {
+		zaloConnectState.bot_token = "";
+		zaloConnectState.bot_username = "";
+		zaloConnectState.webhook_url = "";
+		zaloConnectState.verify_token = "";
+		zaloConnectError.value = "";
+		// Ensure global verify_token is loaded so we can auto-fill on submit
+		if (!settingsStore.settings.zalo_verify_token && !settingsStore.settings.zalo_api_key) {
+			try {
+				await settingsStore.fetchSettings();
+			} catch {}
+		}
+	}
 });
 watch(zaloEditModalOpen, (open) => {
-    if (open) {
-        zaloEditState.bot_username = zaloEditTarget.value?.bot_username || "";
-        zaloEditState.bot_token = "";
-        zaloEditState.verify_token = zaloEditTarget.value?.verify_token || "";
-        zaloEditState.webhook_url = zaloEditTarget.value?.webhook_url || "";
-        zaloEditError.value = "";
-    }
+	if (open) {
+		zaloEditState.bot_username = zaloEditTarget.value?.bot_username || "";
+		zaloEditState.bot_token = "";
+		zaloEditState.verify_token = zaloEditTarget.value?.verify_token || "";
+		zaloEditState.webhook_url = zaloEditTarget.value?.webhook_url || "";
+		zaloEditError.value = "";
+	}
 });
 
 async function loadChannels() {
-    loading.value = true;
-    try {
-        const { data } = await api.get("/facebook/channels");
-        channels.value = Array.isArray(data) ? data : [];
-    } catch {
-        channels.value = [];
-    } finally {
-        loading.value = false;
-    }
+	loading.value = true;
+	try {
+		const { data } = await api.get("/facebook/channels");
+		channels.value = Array.isArray(data) ? data : [];
+	} catch {
+		channels.value = [];
+	} finally {
+		loading.value = false;
+	}
 }
 async function loadZaloChannels() {
-    zaloLoading.value = true;
-    try {
-        const { data } = await api.get("/zalo/channels");
-        zaloChannels.value = Array.isArray(data) ? data : [];
-    } catch {
-        zaloChannels.value = [];
-    } finally {
-        zaloLoading.value = false;
-    }
+	zaloLoading.value = true;
+	try {
+		const { data } = await api.get("/zalo/channels");
+		zaloChannels.value = Array.isArray(data) ? data : [];
+	} catch {
+		zaloChannels.value = [];
+	} finally {
+		zaloLoading.value = false;
+	}
 }
 
 async function handleConnect(event: FormSubmitEvent<ConnectSchema>) {
-    connectSaving.value = true;
-    connectError.value = "";
-    try {
-        await api.post("/facebook/channels", {
-            page_id: event.data.page_id,
-            page_name: event.data.page_name || "Facebook Page",
-            page_token: event.data.page_token,
-            sync_interval: event.data.sync_interval ?? 15,
-            verify_token: event.data.verify_token,
-        });
-        connectModalOpen.value = false;
-        await loadChannels();
-        toast.add({
-            color: "success",
-            icon: "i-lucide-check",
-            title: "Connected",
-        });
-    } catch (err: unknown) {
-        connectError.value = getErrorMessage(err);
-    } finally {
-        connectSaving.value = false;
-    }
+	connectSaving.value = true;
+	connectError.value = "";
+	try {
+		await api.post("/facebook/channels", {
+			page_id: event.data.page_id,
+			page_name: event.data.page_name || "Facebook Page",
+			page_token: event.data.page_token,
+			sync_interval: event.data.sync_interval ?? 15,
+			verify_token: event.data.verify_token,
+		});
+		connectModalOpen.value = false;
+		await loadChannels();
+		toast.add({
+			color: "success",
+			icon: "i-lucide-check",
+			title: "Connected",
+		});
+	} catch (err: unknown) {
+		connectError.value = getErrorMessage(err);
+	} finally {
+		connectSaving.value = false;
+	}
 }
 
 function openEdit(ch: any) {
-    editTarget.value = ch;
-    editModalOpen.value = true;
+	editTarget.value = ch;
+	editModalOpen.value = true;
 }
 
 async function handleSave(event: FormSubmitEvent<EditSchema>) {
-    if (!editTarget.value) {
-        return;
-    }
-    editSaving.value = true;
-    editError.value = "";
-    try {
-        await api.put(`/facebook/channels/${editTarget.value.id}`, {
-            page_name: event.data.page_name || "Facebook Page",
-            page_token: event.data.page_token || undefined,
-            sync_interval: event.data.sync_interval ?? 15,
-            verify_token: event.data.verify_token,
-        });
-        editModalOpen.value = false;
-        await loadChannels();
-        toast.add({ color: "success", title: "Saved" });
-    } catch (err: unknown) {
-        editError.value = getErrorMessage(err);
-    } finally {
-        editSaving.value = false;
-    }
+	if (!editTarget.value) {
+		return;
+	}
+	editSaving.value = true;
+	editError.value = "";
+	try {
+		await api.put(`/facebook/channels/${editTarget.value.id}`, {
+			page_name: event.data.page_name || "Facebook Page",
+			page_token: event.data.page_token || undefined,
+			sync_interval: event.data.sync_interval ?? 15,
+			verify_token: event.data.verify_token,
+		});
+		editModalOpen.value = false;
+		await loadChannels();
+		toast.add({ color: "success", title: "Saved" });
+	} catch (err: unknown) {
+		editError.value = getErrorMessage(err);
+	} finally {
+		editSaving.value = false;
+	}
 }
 
 function confirmDisconnect(ch: any) {
-    disconnectTarget.value = ch;
-    disconnectConfirmOpen.value = true;
+	disconnectTarget.value = ch;
+	disconnectConfirmOpen.value = true;
 }
 
 async function handleDisconnect() {
-    if (!disconnectTarget.value) {
-        return;
-    }
-    disconnecting.value = true;
-    try {
-        await api.delete(`/facebook/channels/${disconnectTarget.value.id}`);
-        await loadChannels();
-        disconnectConfirmOpen.value = false;
-        disconnectTarget.value = null;
-    } finally {
-        disconnecting.value = false;
-    }
+	if (!disconnectTarget.value) {
+		return;
+	}
+	disconnecting.value = true;
+	try {
+		await api.delete(`/facebook/channels/${disconnectTarget.value.id}`);
+		await loadChannels();
+		disconnectConfirmOpen.value = false;
+		disconnectTarget.value = null;
+	} finally {
+		disconnecting.value = false;
+	}
 }
 
 async function handleZaloConnect(event: FormSubmitEvent<ZaloConnectSchema>) {
-    zaloConnectSaving.value = true;
-    zaloConnectError.value = "";
-    try {
-        // Webhook URL is now global in Settings → Integration, not per-channel
-        const globalWebhook = settingsStore.settings.zalo_webhook_url;
-        if (!globalWebhook) {
-            zaloConnectError.value = "No global Webhook URL set. Go to Settings → Integration and set it first.";
-            return;
-        }
-        const { data: created } = await api.post("/zalo/channels", {
-            bot_token: event.data.bot_token,
-            bot_username: event.data.bot_username || undefined,
-            webhook_url: globalWebhook || undefined,
-            verify_token: event.data.verify_token,
-        });
-        zaloConnectModalOpen.value = false;
-        await loadZaloChannels();
-        // auto-verify so chat works immediately without manual Test
-        try {
-            const newId = (created as any)?.id || zaloChannels.value.find((c) => c.bot_id === (created as any)?.bot_id)?.id;
-            if (newId) {
-                await api.get(`/zalo/channels/${newId}/health`);
-                await loadZaloChannels();
-            }
-        } catch {}
-        toast.add({
-            color: "success",
-            icon: "i-lucide-check",
-            title: "Zalo Connected",
-        });
-    } catch (err: unknown) {
-        zaloConnectError.value = getErrorMessage(err);
-    } finally {
-        zaloConnectSaving.value = false;
-    }
+	zaloConnectSaving.value = true;
+	zaloConnectError.value = "";
+	try {
+		// Webhook URL is now global in Settings → Integration, not per-channel
+		const globalWebhook = settingsStore.settings.zalo_webhook_url;
+		if (!globalWebhook) {
+			zaloConnectError.value = "No global Webhook URL set. Go to Settings → Integration and set it first.";
+			return;
+		}
+		const { data: created } = await api.post("/zalo/channels", {
+			bot_token: event.data.bot_token,
+			bot_username: event.data.bot_username || undefined,
+			webhook_url: globalWebhook || undefined,
+			verify_token: event.data.verify_token,
+		});
+		zaloConnectModalOpen.value = false;
+		await loadZaloChannels();
+		// auto-verify so chat works immediately without manual Test
+		try {
+			const newId = (created as any)?.id || zaloChannels.value.find((c) => c.bot_id === (created as any)?.bot_id)?.id;
+			if (newId) {
+				await api.get(`/zalo/channels/${newId}/health`);
+				await loadZaloChannels();
+			}
+		} catch {}
+		toast.add({
+			color: "success",
+			icon: "i-lucide-check",
+			title: "Zalo Connected",
+		});
+	} catch (err: unknown) {
+		zaloConnectError.value = getErrorMessage(err);
+	} finally {
+		zaloConnectSaving.value = false;
+	}
 }
 function openZaloEdit(ch: any) {
-    zaloEditTarget.value = ch;
-    zaloEditModalOpen.value = true;
+	zaloEditTarget.value = ch;
+	zaloEditModalOpen.value = true;
 }
 async function handleZaloSave(event: FormSubmitEvent<ZaloEditSchema>) {
-    if (!zaloEditTarget.value) return;
-    zaloEditSaving.value = true;
-    zaloEditError.value = "";
-    try {
-        await api.put(`/zalo/channels/${zaloEditTarget.value.id}`, {
-            bot_username: event.data.bot_username || undefined,
-            bot_token: event.data.bot_token || undefined,
-            verify_token: event.data.verify_token || undefined,
-            webhook_url: event.data.webhook_url || undefined,
-        });
-        zaloEditModalOpen.value = false;
-        await loadZaloChannels();
-        toast.add({ color: "success", title: "Saved" });
-    } catch (err: unknown) {
-        zaloEditError.value = getErrorMessage(err);
-    } finally {
-        zaloEditSaving.value = false;
-    }
+	if (!zaloEditTarget.value) return;
+	zaloEditSaving.value = true;
+	zaloEditError.value = "";
+	try {
+		await api.put(`/zalo/channels/${zaloEditTarget.value.id}`, {
+			bot_username: event.data.bot_username || undefined,
+			bot_token: event.data.bot_token || undefined,
+			verify_token: event.data.verify_token || undefined,
+			webhook_url: event.data.webhook_url || undefined,
+		});
+		zaloEditModalOpen.value = false;
+		await loadZaloChannels();
+		toast.add({ color: "success", title: "Saved" });
+	} catch (err: unknown) {
+		zaloEditError.value = getErrorMessage(err);
+	} finally {
+		zaloEditSaving.value = false;
+	}
 }
 function confirmZaloDisconnect(ch: any) {
-    zaloDisconnectTarget.value = ch;
-    zaloDisconnectConfirmOpen.value = true;
+	zaloDisconnectTarget.value = ch;
+	zaloDisconnectConfirmOpen.value = true;
 }
 async function handleZaloDisconnect() {
-    if (!zaloDisconnectTarget.value) return;
-    zaloDisconnecting.value = true;
-    try {
-        await api.delete(`/zalo/channels/${zaloDisconnectTarget.value.id}`);
-        await loadZaloChannels();
-        zaloDisconnectConfirmOpen.value = false;
-        zaloDisconnectTarget.value = null;
-    } finally {
-        zaloDisconnecting.value = false;
-    }
+	if (!zaloDisconnectTarget.value) return;
+	zaloDisconnecting.value = true;
+	try {
+		await api.delete(`/zalo/channels/${zaloDisconnectTarget.value.id}`);
+		await loadZaloChannels();
+		zaloDisconnectConfirmOpen.value = false;
+		zaloDisconnectTarget.value = null;
+	} finally {
+		zaloDisconnecting.value = false;
+	}
 }
 async function testZaloConnection(ch: any) {
-    healthChecking.value = ch.id;
-    try {
-        const { data } = await api.get(`/zalo/channels/${ch.id}/health`);
-        toast.add({
-            color: data.ok ? "success" : "error",
-            description: data.ok
-                ? data.account_name || "Reachable"
-                : data.error,
-            title: data.ok ? "Connection OK" : "Connection failed",
-        });
-        await loadZaloChannels();
-    } catch (err: unknown) {
-        toast.add({
-            color: "error",
-            description: getErrorMessage(err),
-            title: "Connection failed",
-        });
-    } finally {
-        healthChecking.value = null;
-    }
+	healthChecking.value = ch.id;
+	try {
+		const { data } = await api.get(`/zalo/channels/${ch.id}/health`);
+		toast.add({
+			color: data.ok ? "success" : "error",
+			description: data.ok ? data.account_name || "Reachable" : data.error,
+			title: data.ok ? "Connection OK" : "Connection failed",
+		});
+		await loadZaloChannels();
+	} catch (err: unknown) {
+		toast.add({
+			color: "error",
+			description: getErrorMessage(err),
+			title: "Connection failed",
+		});
+	} finally {
+		healthChecking.value = null;
+	}
 }
 const healthChecking = ref<string | null>(null);
 const syncing = ref<string | null>(null);
 
 async function testConnection(ch: any) {
-    healthChecking.value = ch.id;
-    try {
-        const { data } = await api.get(`/facebook/channels/${ch.id}/health`);
-        toast.add({
-            color: data.ok ? "success" : "error",
-            description: data.ok ? data.page_name || "Reachable" : data.error,
-            title: data.ok ? "Connection OK" : "Connection failed",
-        });
-        await loadChannels();
-    } catch (err: unknown) {
-        toast.add({
-            color: "error",
-            description: getErrorMessage(err),
-            title: "Connection failed",
-        });
-    } finally {
-        healthChecking.value = null;
-    }
+	healthChecking.value = ch.id;
+	try {
+		const { data } = await api.get(`/facebook/channels/${ch.id}/health`);
+		toast.add({
+			color: data.ok ? "success" : "error",
+			description: data.ok ? data.page_name || "Reachable" : data.error,
+			title: data.ok ? "Connection OK" : "Connection failed",
+		});
+		await loadChannels();
+	} catch (err: unknown) {
+		toast.add({
+			color: "error",
+			description: getErrorMessage(err),
+			title: "Connection failed",
+		});
+	} finally {
+		healthChecking.value = null;
+	}
 }
 
 async function syncNow(ch: any) {
-    syncing.value = ch.id;
-    try {
-        const { data } = await api.post(`/facebook/channels/${ch.id}/sync`);
-        toast.add({
-            color: data.status === "success" ? "success" : "error",
-            title: data.status === "success" ? "Synced" : "Sync error",
-        });
-        await loadChannels();
-    } catch (err: unknown) {
-        toast.add({
-            color: "error",
-            description: getErrorMessage(err),
-            title: "Sync failed",
-        });
-    } finally {
-        syncing.value = null;
-    }
+	syncing.value = ch.id;
+	try {
+		const { data } = await api.post(`/facebook/channels/${ch.id}/sync`);
+		toast.add({
+			color: data.status === "success" ? "success" : "error",
+			title: data.status === "success" ? "Synced" : "Sync error",
+		});
+		await loadChannels();
+	} catch (err: unknown) {
+		toast.add({
+			color: "error",
+			description: getErrorMessage(err),
+			title: "Sync failed",
+		});
+	} finally {
+		syncing.value = null;
+	}
 }
 
 function _formatSyncInterval(v: number) {
-    if (!v) {
-        return "15 min";
-    }
-    if (v < 60) {
-        return `${v} min`;
-    }
-    if (v < 1440) {
-        return `${v / 60} h`;
-    }
-    return `${v / 1440} day`;
+	if (!v) {
+		return "15 min";
+	}
+	if (v < 60) {
+		return `${v} min`;
+	}
+	if (v < 1440) {
+		return `${v / 60} h`;
+	}
+	return `${v / 1440} day`;
 }
 
 onMounted(() => {
-    loadChannels();
-    loadZaloChannels();
-    settingsStore.fetchSettings().catch(() => {});
+	loadChannels();
+	loadZaloChannels();
+	settingsStore.fetchSettings().catch(() => {});
 });
 </script>
 

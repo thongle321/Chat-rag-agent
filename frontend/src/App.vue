@@ -5,9 +5,7 @@ import { computed } from "vue";
 
 const colorMode = useColorMode();
 
-const themeColor = computed(() =>
-	colorMode.value === "dark" ? "#18181b" : "#ffffff",
-);
+const themeColor = computed(() => (colorMode.value === "dark" ? "#18181b" : "#ffffff"));
 
 useHead({
 	meta: [{ content: themeColor, name: "theme-color" }],

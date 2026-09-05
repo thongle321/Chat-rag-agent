@@ -3,12 +3,12 @@ import { Comark } from "@comark/vue";
 import { useClipboard } from "@vueuse/core";
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useChatStore } from "../stores/chat";
-import { useAuthStore } from "../stores/auth";
-import Indicator from "./chat/Indicator.vue";
-import SourceLink from "./chat/SourceLink.vue";
-import ProductCard from "./chat/ProductCard.vue";
 import { useChatActions } from "../composables/useChatActions";
+import { useAuthStore } from "../stores/auth";
+import { useChatStore } from "../stores/chat";
+import Indicator from "./chat/Indicator.vue";
+import ProductCard from "./chat/ProductCard.vue";
+import SourceLink from "./chat/SourceLink.vue";
 
 // Shared chat UI for / (blank composer, sessionId=null), /c/:id (account sessions)
 // and /uc/:id (guest temporary sessions, in-memory only — never restored).
@@ -24,12 +24,12 @@ const ready = ref(false);
 
 // Keep good morning only — like chat-vue (no quick prompts, no extra center text)
 const greeting = computed(() => {
-  const h = new Date().getHours();
-  let t = "Good evening";
-  if (h < 12) t = "Good morning";
-  else if (h < 18) t = "Good afternoon";
-  const name = authStore.user?.email?.split("@")[0] || "";
-  return name ? `${t}, ${name}` : t;
+	const h = new Date().getHours();
+	let t = "Good evening";
+	if (h < 12) t = "Good morning";
+	else if (h < 18) t = "Good afternoon";
+	const name = authStore.user?.email?.split("@")[0] || "";
+	return name ? `${t}, ${name}` : t;
 });
 
 const chatInput = ref("");
@@ -40,21 +40,42 @@ const activeCite = reactive(new Map<string, number>());
 // ChatTitle at top left like chat-vue — same modal as sidebar
 const headerRenameOpen = ref(false);
 const titleDraft = ref("");
-const currentTitle = computed(() => chatStore.activeConversation?.title || chatStore.messages.find((m) => m.role === "user")?.text?.slice(0, 40) || "New chat");
+const currentTitle = computed(
+	() =>
+		chatStore.activeConversation?.title ||
+		chatStore.messages.find((m) => m.role === "user")?.text?.slice(0, 40) ||
+		"New chat",
+);
 const { deleteChat: deleteHeaderChat } = useChatActions();
 const headerMenuItems = computed(() => [
-  [{ label: "Rename", icon: "i-lucide-pencil", onSelect: () => { titleDraft.value = currentTitle.value; headerRenameOpen.value = true; } }],
-  [{ label: "Delete", icon: "i-lucide-trash", color: "error" as const, onSelect: async () => {
-    if (!chatStore.activeId) return;
-    await deleteHeaderChat(chatStore.activeId);
-    // replace: don't leave the deleted /c/:id in history
-    if (props.sessionId) router.replace("/");
-  } }],
+	[
+		{
+			label: "Rename",
+			icon: "i-lucide-pencil",
+			onSelect: () => {
+				titleDraft.value = currentTitle.value;
+				headerRenameOpen.value = true;
+			},
+		},
+	],
+	[
+		{
+			label: "Delete",
+			icon: "i-lucide-trash",
+			color: "error" as const,
+			onSelect: async () => {
+				if (!chatStore.activeId) return;
+				await deleteHeaderChat(chatStore.activeId);
+				// replace: don't leave the deleted /c/:id in history
+				if (props.sessionId) router.replace("/");
+			},
+		},
+	],
 ]);
 function saveHeaderTitle() {
-  const t = titleDraft.value.trim();
-  if (t && chatStore.activeId) chatStore.renameConversation(chatStore.activeId, t);
-  headerRenameOpen.value = false;
+	const t = titleDraft.value.trim();
+	if (t && chatStore.activeId) chatStore.renameConversation(chatStore.activeId, t);
+	headerRenameOpen.value = false;
 }
 // AI thought timing — per message: each assistant reply owns its counter,
 // frozen when its stream completes so older replies keep their own time.
@@ -64,66 +85,66 @@ const thinkingForId = ref<string | null>(null);
 const thinkingTimes = ref<Record<string, number>>({});
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 function lastStreamingId(): string | null {
-  const msgs = chatStore.messages as any[];
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role !== "user" && msgs[i].streaming) return msgs[i].id;
-  }
-  return null;
+	const msgs = chatStore.messages as any[];
+	for (let i = msgs.length - 1; i >= 0; i--) {
+		if (msgs[i].role !== "user" && msgs[i].streaming) return msgs[i].id;
+	}
+	return null;
 }
 function snapThinking() {
-  if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
-  const live = lastStreamingId();
-  if (live) thinkingForId.value = live;
-  if (thinkingForId.value) thinkingTimes.value[thinkingForId.value] = thinkingElapsed.value;
+	if (thinkingStart.value) thinkingElapsed.value = (Date.now() - thinkingStart.value) / 1000;
+	const live = lastStreamingId();
+	if (live) thinkingForId.value = live;
+	if (thinkingForId.value) thinkingTimes.value[thinkingForId.value] = thinkingElapsed.value;
 }
 function thinkSecs(msg: any): number {
-  if (msg.id && thinkingForId.value === msg.id) return thinkingElapsed.value;
-  return thinkingTimes.value[msg.id] ?? 0;
+	if (msg.id && thinkingForId.value === msg.id) return thinkingElapsed.value;
+	return thinkingTimes.value[msg.id] ?? 0;
 }
 watch(
-  () => chatStore.loading,
-  (loading) => {
-    if (loading) {
-      thinkingStart.value = Date.now();
-      thinkingElapsed.value = 0;
-      thinkingForId.value = lastStreamingId();
-      if (thinkingTimer) clearInterval(thinkingTimer);
-      thinkingTimer = setInterval(snapThinking, 100);
-    } else {
-      if (thinkingTimer) clearInterval(thinkingTimer);
-      thinkingTimer = null;
-      snapThinking();
-      thinkingStart.value = null;
-      thinkingForId.value = null;
-    }
-  },
+	() => chatStore.loading,
+	(loading) => {
+		if (loading) {
+			thinkingStart.value = Date.now();
+			thinkingElapsed.value = 0;
+			thinkingForId.value = lastStreamingId();
+			if (thinkingTimer) clearInterval(thinkingTimer);
+			thinkingTimer = setInterval(snapThinking, 100);
+		} else {
+			if (thinkingTimer) clearInterval(thinkingTimer);
+			thinkingTimer = null;
+			snapThinking();
+			thinkingStart.value = null;
+			thinkingForId.value = null;
+		}
+	},
 );
 onUnmounted(() => {
-  if (thinkingTimer) clearInterval(thinkingTimer);
+	if (thinkingTimer) clearInterval(thinkingTimer);
 });
 // Hover edit for my messages like chat-vue
 const editingId = ref<string | null>(null);
 const editingText = ref("");
 function startEdit(msg: any) {
-  editingId.value = msg.id;
-  editingText.value = msg.text;
+	editingId.value = msg.id;
+	editingText.value = msg.text;
 }
 function cancelEdit() {
-  editingId.value = null;
-  editingText.value = "";
+	editingId.value = null;
+	editingText.value = "";
 }
 async function saveEdit(msg: any) {
-  const newText = editingText.value.trim();
-  if (!newText || newText === msg.text) {
-    cancelEdit();
-    return;
-  }
-  const conv = chatStore.activeConversation;
-  if (!conv) return;
-  const idx = conv.messages.findIndex((m) => m.id === msg.id);
-  if (idx !== -1) conv.messages.splice(idx);
-  cancelEdit();
-  await handleSend(newText);
+	const newText = editingText.value.trim();
+	if (!newText || newText === msg.text) {
+		cancelEdit();
+		return;
+	}
+	const conv = chatStore.activeConversation;
+	if (!conv) return;
+	const idx = conv.messages.findIndex((m) => m.id === msg.id);
+	if (idx !== -1) conv.messages.splice(idx);
+	cancelEdit();
+	await handleSend(newText);
 }
 
 onMounted(async () => {
@@ -161,16 +182,16 @@ watch(
 );
 
 function closeSidebarOnMobile() {
-	if (
-		typeof window !== "undefined" &&
-		window.matchMedia("(max-width: 767px)").matches
-	) {
+	if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
 		sidebarOpen.value = false;
 	}
 }
 
 function stripInlineCitations(text: string): string {
-	return text.replace(/\s*\[Source:[^\]]*\]/g, "").replace(/\s*\[P(\d+)\]/g, "").replace(/\s*\[(\d+)\]/g, "");
+	return text
+		.replace(/\s*\[Source:[^\]]*\]/g, "")
+		.replace(/\s*\[P(\d+)\]/g, "")
+		.replace(/\s*\[(\d+)\]/g, "");
 }
 
 async function handleSend(question: string) {

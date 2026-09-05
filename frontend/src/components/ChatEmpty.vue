@@ -1,7 +1,6 @@
 <script setup lang="ts">
 const hour = new Date().getHours();
-const greeting =
-	hour < 11 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+const greeting = hour < 11 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 </script>
 
 <template>

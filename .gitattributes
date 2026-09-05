@@ -1,0 +1,7 @@
+# Keep Biome's formatter (LF) stable across Windows/macOS checkouts.
+*.vue text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.md text eol=lf

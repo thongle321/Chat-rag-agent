@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRouter, useRoute } from "vue-router";
 import type { DropdownMenuItem } from "@nuxt/ui";
-import { useChatStore, type Conversation } from "../stores/chat";
-import { useAuthStore } from "../stores/auth";
-import { useChats } from "../composables/useChats";
-import { useChatActions } from "../composables/useChatActions";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import api from "../api/index.ts";
+import { useChatActions } from "../composables/useChatActions";
+import { useChats } from "../composables/useChats";
+import { useAuthStore } from "../stores/auth";
+import { type Conversation, useChatStore } from "../stores/chat";
 
 const props = defineProps<{
-    onCollapse?: () => void;
-    onNavigate?: () => void;
+	onCollapse?: () => void;
+	onNavigate?: () => void;
 }>();
 
 const chatStore = useChatStore();
@@ -26,26 +26,26 @@ const searchOpen = ref(false);
 const search = ref("");
 // Keep filtered search for UDashboardSearch (template uses UDashboardSearch with groups)
 const filteredGroups = computed(() => {
-    const s = search.value.trim().toLowerCase();
-    if (!s) return groups.value;
-    const filtered = chatStore.conversations
-        .filter((c) => c.title.toLowerCase().includes(s))
-        .map((c) => ({
-            id: c.id,
-            label: c.title,
-            to: "#",
-            icon: "i-lucide-message-circle",
-            createdAt: String(c.createdAt),
-        }));
-    return filtered.length
-        ? [
-              {
-                  id: "search",
-                  label: `Results (${filtered.length})`,
-                  items: filtered as any,
-              },
-          ]
-        : [];
+	const s = search.value.trim().toLowerCase();
+	if (!s) return groups.value;
+	const filtered = chatStore.conversations
+		.filter((c) => c.title.toLowerCase().includes(s))
+		.map((c) => ({
+			id: c.id,
+			label: c.title,
+			to: "#",
+			icon: "i-lucide-message-circle",
+			createdAt: String(c.createdAt),
+		}));
+	return filtered.length
+		? [
+				{
+					id: "search",
+					label: `Results (${filtered.length})`,
+					items: filtered as any,
+				},
+			]
+		: [];
 });
 
 // Backend feature-aware: doc count (admin-only endpoint — a non-admin GET
@@ -53,35 +53,35 @@ const filteredGroups = computed(() => {
 // hard-redirect, i.e. an infinite reload loop right after register/login).
 const docCount = ref<number | null>(null);
 function isAdminUser(u: any) {
-    return !!u && (u.role === "admin" || u.is_superuser);
+	return !!u && (u.role === "admin" || u.is_superuser);
 }
 onMounted(async () => {
-    if (!isAdminUser(authStore.user)) return;
-    try {
-        const { data } = await api.get("/documents");
-        docCount.value = data?.documents?.length ?? 0;
-    } catch {
-        docCount.value = null;
-    }
+	if (!isAdminUser(authStore.user)) return;
+	try {
+		const { data } = await api.get("/documents");
+		docCount.value = data?.documents?.length ?? 0;
+	} catch {
+		docCount.value = null;
+	}
 });
 
 watch(
-    () => chatStore.conversations.length,
-    () => {
-        // keep groups in sync if needed
-    },
+	() => chatStore.conversations.length,
+	() => {
+		// keep groups in sync if needed
+	},
 );
 
 function handleNew() {
-    // / is always a blank composer (ChatView clears the selection) — no entry
-    // is created until the first message is sent, like ChatGPT.
-    router.push("/");
+	// / is always a blank composer (ChatView clears the selection) — no entry
+	// is created until the first message is sent, like ChatGPT.
+	router.push("/");
 }
 
 function handleDelete(id: string) {
-    deleteChat(id);
-    // replace: don't leave the deleted /c/:id in history
-    if ((route.params as any)?.id === id) router.replace("/");
+	deleteChat(id);
+	// replace: don't leave the deleted /c/:id in history
+	if ((route.params as any)?.id === id) router.replace("/");
 }
 
 const renameModalOpen = ref(false);
@@ -89,187 +89,176 @@ const renameId = ref<string | null>(null);
 const renameTitle = ref("");
 
 function handleRename(id: string) {
-    const conv = chatStore.conversations.find((c) => c.id === id);
-    renameId.value = id;
-    renameTitle.value = conv?.title ?? "";
-    renameModalOpen.value = true;
+	const conv = chatStore.conversations.find((c) => c.id === id);
+	renameId.value = id;
+	renameTitle.value = conv?.title ?? "";
+	renameModalOpen.value = true;
 }
 function confirmRename() {
-    if (renameId.value && renameTitle.value.trim()) {
-        renameChat(
-            renameId.value,
-            chatStore.conversations.find((c) => c.id === renameId.value)
-                ?.title ?? null,
-            renameTitle.value.trim(),
-        );
-    }
-    renameModalOpen.value = false;
+	if (renameId.value && renameTitle.value.trim()) {
+		renameChat(
+			renameId.value,
+			chatStore.conversations.find((c) => c.id === renameId.value)?.title ?? null,
+			renameTitle.value.trim(),
+		);
+	}
+	renameModalOpen.value = false;
 }
 
-function getChatActions(item: {
-    id: string;
-    label: string;
-}): DropdownMenuItem[][] {
-    const conv = chatStore.conversations.find((c) => c.id === item.id);
-    const pinned = !!conv?.pinned;
-    return [
-        [
-            {
-                label: pinned ? "Unpin" : "Pin",
-                icon: pinned ? "i-lucide-pin-off" : "i-lucide-pin",
-                onSelect: () => chatStore.togglePin(item.id),
-            },
-        ],
-        [
-            {
-                label: "Rename",
-                icon: "i-lucide-pencil",
-                onSelect: () => handleRename(item.id),
-            },
-        ],
-        [
-            {
-                label: "Delete",
-                icon: "i-lucide-trash",
-                color: "error" as const,
-                onSelect: () => handleDelete(item.id),
-            },
-        ],
-    ];
+function getChatActions(item: { id: string; label: string }): DropdownMenuItem[][] {
+	const conv = chatStore.conversations.find((c) => c.id === item.id);
+	const pinned = !!conv?.pinned;
+	return [
+		[
+			{
+				label: pinned ? "Unpin" : "Pin",
+				icon: pinned ? "i-lucide-pin-off" : "i-lucide-pin",
+				onSelect: () => chatStore.togglePin(item.id),
+			},
+		],
+		[
+			{
+				label: "Rename",
+				icon: "i-lucide-pencil",
+				onSelect: () => handleRename(item.id),
+			},
+		],
+		[
+			{
+				label: "Delete",
+				icon: "i-lucide-trash",
+				color: "error" as const,
+				onSelect: () => handleDelete(item.id),
+			},
+		],
+	];
 }
 
 // Keep color and user menu like before (our backend feature)
 const colorMode = useColorMode();
 async function handleLogout() {
-    await authStore.logout();
-    // Chat is public — land on a blank composer, never the login page.
-    // (ChatView clears the selection on / mount.)
-    if (route.path !== "/") await router.push("/");
+	await authStore.logout();
+	// Chat is public — land on a blank composer, never the login page.
+	// (ChatView clears the selection on / mount.)
+	if (route.path !== "/") await router.push("/");
 }
 const userMenuItems = computed(() => [
-    [
-        {
-            label: authStore.user?.email ?? "Guest",
-            type: "label" as const,
-            icon: "i-lucide-user",
-        },
-    ],
-    [
-        {
-            label: "Appearance",
-            icon: "i-lucide-sun-moon",
-            children: [
-                {
-                    label: "Light",
-                    icon: "i-lucide-sun",
-                    type: "checkbox" as const,
-                    checked: colorMode.value === "light",
-                    onSelect(e: Event) {
-                        e.preventDefault();
-                        colorMode.value = "light";
-                    },
-                },
-                {
-                    label: "Dark",
-                    icon: "i-lucide-moon",
-                    type: "checkbox" as const,
-                    checked: colorMode.value === "dark",
-                    onUpdateChecked(checked: boolean) {
-                        if (checked) colorMode.value = "dark";
-                    },
-                    onSelect(e: Event) {
-                        e.preventDefault();
-                    },
-                },
-            ],
-        },
-    ],
-    [
-        {
-            label: authStore.user ? "Logout" : "Login",
-            icon: authStore.user ? "i-lucide-log-out" : "i-lucide-log-in",
-            onSelect: () =>
-                authStore.user ? handleLogout() : router.push("/login"),
-        },
-    ],
+	[
+		{
+			label: authStore.user?.email ?? "Guest",
+			type: "label" as const,
+			icon: "i-lucide-user",
+		},
+	],
+	[
+		{
+			label: "Appearance",
+			icon: "i-lucide-sun-moon",
+			children: [
+				{
+					label: "Light",
+					icon: "i-lucide-sun",
+					type: "checkbox" as const,
+					checked: colorMode.value === "light",
+					onSelect(e: Event) {
+						e.preventDefault();
+						colorMode.value = "light";
+					},
+				},
+				{
+					label: "Dark",
+					icon: "i-lucide-moon",
+					type: "checkbox" as const,
+					checked: colorMode.value === "dark",
+					onUpdateChecked(checked: boolean) {
+						if (checked) colorMode.value = "dark";
+					},
+					onSelect(e: Event) {
+						e.preventDefault();
+					},
+				},
+			],
+		},
+	],
+	[
+		{
+			label: authStore.user ? "Logout" : "Login",
+			icon: authStore.user ? "i-lucide-log-out" : "i-lucide-log-in",
+			onSelect: () => (authStore.user ? handleLogout() : router.push("/login")),
+		},
+	],
 ]);
 
 // Same items as chat-vue default.vue but using our icon library (i-lucide-*)
 const navItems = computed(() => [
-    {
-        label: "New chat",
-        to: "/",
-        kbds: ["meta", "o"],
-        icon: "i-lucide-circle-plus",
-        onSelect: () => handleNew(),
-    },
-    {
-        label: "Search",
-        icon: "i-lucide-search",
-        kbds: ["meta", "k"],
-        onSelect: () => (searchOpen.value = true),
-    },
+	{
+		label: "New chat",
+		to: "/",
+		kbds: ["meta", "o"],
+		icon: "i-lucide-circle-plus",
+		onSelect: () => handleNew(),
+	},
+	{
+		label: "Search",
+		icon: "i-lucide-search",
+		kbds: ["meta", "k"],
+		onSelect: () => (searchOpen.value = true),
+	},
 ]);
 
 // Search palette needs real links too (groups carry raw conversations without `to`)
 const searchGroups = computed(() => [
-    {
-        id: "links",
-        items: [{ label: "New chat", to: "/", icon: "i-lucide-circle-plus" }],
-    },
-    ...groups.value.map((g) => ({
-        id: g.id,
-        label: g.label,
-        items: g.items.map((c: any) => ({
-            id: c.id ?? c.sessionId,
-            label: c.title ?? c.label,
-            to: `/c/${c.id ?? c.sessionId}`,
-            icon: "i-lucide-message-circle",
-        })),
-    })),
+	{
+		id: "links",
+		items: [{ label: "New chat", to: "/", icon: "i-lucide-circle-plus" }],
+	},
+	...groups.value.map((g) => ({
+		id: g.id,
+		label: g.label,
+		items: g.items.map((c: any) => ({
+			id: c.id ?? c.sessionId,
+			label: c.title ?? c.label,
+			to: `/c/${c.id ?? c.sessionId}`,
+			icon: "i-lucide-message-circle",
+		})),
+	})),
 ]);
 
 // Warm the session under the cursor before the click lands — mouseover /
 // focusin delegate on the menu (covers label, padding, trailing area).
 // prefetchSession is a guarded no-op when cached or already in flight.
 function prefetchFromEvent(e: Event) {
-    const anchor = (e.target as HTMLElement | null)?.closest?.(
-        'a[href^="/c/"]',
-    );
-    const id = anchor?.getAttribute("href")?.slice(3);
-    if (id) void chatStore.prefetchSession(id);
+	const anchor = (e.target as HTMLElement | null)?.closest?.('a[href^="/c/"]');
+	const id = anchor?.getAttribute("href")?.slice(3);
+	if (id) void chatStore.prefetchSession(id);
 }
 
 const chatItems = computed(() =>
-    groups.value.flatMap((group) => [
-        { label: group.label, type: "label" as const },
-        ...group.items.map((item: any) => {
-            const conv = chatStore.conversations.find((c) => c.id === item.id);
-            const pinned = !!conv?.pinned;
-            return {
-                id: item.id,
-                label: item.title ?? item.label,
-                // Real link (not onSelect-push): single click, middle-click/tab support,
-                // free active highlight. /c/:id page sets the active session.
-                to: `/c/${item.id}`,
-                slot: "chat" as const,
-                icon: pinned ? "i-lucide-pin" : undefined,
-                class: pinned
-                    ? "font-medium text-primary"
-                    : (item.title ?? item.label) === "Untitled"
-                      ? "text-muted"
-                      : "",
-                onSelect: () => {
-                    props.onNavigate?.(); // close sidebar on mobile
-                },
-            };
-        }),
-    ]),
+	groups.value.flatMap((group) => [
+		{ label: group.label, type: "label" as const },
+		...group.items.map((item: any) => {
+			const conv = chatStore.conversations.find((c) => c.id === item.id);
+			const pinned = !!conv?.pinned;
+			return {
+				id: item.id,
+				label: item.title ?? item.label,
+				// Real link (not onSelect-push): single click, middle-click/tab support,
+				// free active highlight. /c/:id page sets the active session.
+				to: `/c/${item.id}`,
+				slot: "chat" as const,
+				icon: pinned ? "i-lucide-pin" : undefined,
+				class: pinned ? "font-medium text-primary" : (item.title ?? item.label) === "Untitled" ? "text-muted" : "",
+				onSelect: () => {
+					props.onNavigate?.(); // close sidebar on mobile
+				},
+			};
+		}),
+	]),
 );
 
 defineShortcuts({
-    meta_o: () => handleNew(),
-    meta_k: () => (searchOpen.value = true),
+	meta_o: () => handleNew(),
+	meta_k: () => (searchOpen.value = true),
 });
 </script>
 

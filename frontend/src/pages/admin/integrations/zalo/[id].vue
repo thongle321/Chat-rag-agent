@@ -19,111 +19,111 @@ const confirmDelete = ref(false);
 const editForm = reactive({ bot_username: "", is_active: true });
 
 function formatDateTime(v: string | null) {
-    if (!v) return "—";
-    const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return v;
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
+	if (!v) return "—";
+	const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return v;
+	const dd = String(d.getDate()).padStart(2, "0");
+	const mm = String(d.getMonth() + 1).padStart(2, "0");
+	const hh = String(d.getHours()).padStart(2, "0");
+	const mi = String(d.getMinutes()).padStart(2, "0");
+	return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
 }
 
 async function load() {
-    loading.value = true;
-    const param = id.value;
-    let found: any = null;
-    try {
-        const { data } = await api.get(`/zalo/channels/${param}`);
-        found = data;
-    } catch {
-        found = null;
-    }
-    config.value = found;
-    if (found) {
-        try {
-            const { data: h } = await api.get(`/zalo/channels/${param}/health`);
-            health.value = { ok: !!h.ok, error: h.error };
-        } catch {
-            health.value = { ok: null };
-        }
-    } else health.value = { ok: null };
-    loading.value = false;
-    if (found) {
-        editForm.bot_username = found.bot_username;
-        editForm.is_active = found.is_active ?? true;
-    }
+	loading.value = true;
+	const param = id.value;
+	let found: any = null;
+	try {
+		const { data } = await api.get(`/zalo/channels/${param}`);
+		found = data;
+	} catch {
+		found = null;
+	}
+	config.value = found;
+	if (found) {
+		try {
+			const { data: h } = await api.get(`/zalo/channels/${param}/health`);
+			health.value = { ok: !!h.ok, error: h.error };
+		} catch {
+			health.value = { ok: null };
+		}
+	} else health.value = { ok: null };
+	loading.value = false;
+	if (found) {
+		editForm.bot_username = found.bot_username;
+		editForm.is_active = found.is_active ?? true;
+	}
 }
 
 watch(editDialog, (v) => {
-    if (v && config.value) {
-        editForm.bot_username = config.value.bot_username;
-        editForm.is_active = config.value.is_active ?? true;
-    }
+	if (v && config.value) {
+		editForm.bot_username = config.value.bot_username;
+		editForm.is_active = config.value.is_active ?? true;
+	}
 });
 
 async function doTest() {
-    if (!config.value) return;
-    healthChecking.value = true;
-    try {
-        const { data } = await api.get(`/zalo/channels/${id.value}/health`);
-        toast.add({
-            title: data.ok ? "Connection successful" : "Connection failed",
-            description: data.ok ? undefined : data.error,
-            color: data.ok ? "success" : "error",
-        });
-        try {
-            health.value = { ok: !!data.ok, error: data.error };
-        } catch {}
-    } catch (err: any) {
-        toast.add({
-            title: "Connection failed",
-            description: getErrorMessage(err),
-            color: "error",
-        });
-    } finally {
-        healthChecking.value = false;
-    }
+	if (!config.value) return;
+	healthChecking.value = true;
+	try {
+		const { data } = await api.get(`/zalo/channels/${id.value}/health`);
+		toast.add({
+			title: data.ok ? "Connection successful" : "Connection failed",
+			description: data.ok ? undefined : data.error,
+			color: data.ok ? "success" : "error",
+		});
+		try {
+			health.value = { ok: !!data.ok, error: data.error };
+		} catch {}
+	} catch (err: any) {
+		toast.add({
+			title: "Connection failed",
+			description: getErrorMessage(err),
+			color: "error",
+		});
+	} finally {
+		healthChecking.value = false;
+	}
 }
 
 async function saveEdit() {
-    if (!config.value) return;
-    saving.value = true;
-    try {
-        await api.put(`/zalo/channels/${config.value.id}`, {
-            bot_username: editForm.bot_username,
-            is_active: editForm.is_active,
-        });
-        editDialog.value = false;
-        toast.add({ title: "Saved", color: "success" });
-        await load();
-    } catch (err: any) {
-        toast.add({
-            title: "Save failed",
-            description: getErrorMessage(err),
-            color: "error",
-        });
-    } finally {
-        saving.value = false;
-    }
+	if (!config.value) return;
+	saving.value = true;
+	try {
+		await api.put(`/zalo/channels/${config.value.id}`, {
+			bot_username: editForm.bot_username,
+			is_active: editForm.is_active,
+		});
+		editDialog.value = false;
+		toast.add({ title: "Saved", color: "success" });
+		await load();
+	} catch (err: any) {
+		toast.add({
+			title: "Save failed",
+			description: getErrorMessage(err),
+			color: "error",
+		});
+	} finally {
+		saving.value = false;
+	}
 }
 
 async function doDelete() {
-    if (!config.value) return;
-    deleting.value = true;
-    try {
-        await api.delete(`/zalo/channels/${config.value.id}`);
-        router.push("/admin/integrations");
-    } catch (err: any) {
-        toast.add({
-            title: "Delete failed",
-            description: getErrorMessage(err),
-            color: "error",
-        });
-    } finally {
-        deleting.value = false;
-    }
+	if (!config.value) return;
+	deleting.value = true;
+	try {
+		await api.delete(`/zalo/channels/${config.value.id}`);
+		router.push("/admin/integrations");
+	} catch (err: any) {
+		toast.add({
+			title: "Delete failed",
+			description: getErrorMessage(err),
+			color: "error",
+		});
+	} finally {
+		deleting.value = false;
+	}
 }
 
 onMounted(load);

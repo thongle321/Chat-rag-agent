@@ -55,11 +55,7 @@ const filtered = computed(() => {
 	let list = products.value.slice();
 	const q = query.value.trim().toLowerCase();
 	if (q) {
-		list = list.filter(
-			(p) =>
-				(p.name || "").toLowerCase().includes(q) ||
-				(p.category || "").toLowerCase().includes(q),
-		);
+		list = list.filter((p) => (p.name || "").toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q));
 	}
 	list.sort((a, b) => {
 		const av = a[sortBy.value];
@@ -170,9 +166,7 @@ async function uploadCsv(e: Event) {
 			color: (data.imported ?? 0) > 0 ? "success" : "warning",
 			description:
 				`Imported ${data.imported ?? 0} products` +
-				(data.skipped
-					? `, skipped ${data.skipped} rows missing name/price.`
-					: "."),
+				(data.skipped ? `, skipped ${data.skipped} rows missing name/price.` : "."),
 			icon: "i-lucide-file-spreadsheet",
 			timeout: 6000,
 			title: "CSV import",
@@ -206,16 +200,13 @@ async function saveCatalog() {
 		connectOpen.value = false;
 		toast.add({
 			color: "success",
-			description: catalog.value.enabled
-				? "Shopify catalog enabled."
-				: "Shopify catalog disabled.",
+			description: catalog.value.enabled ? "Shopify catalog enabled." : "Shopify catalog disabled.",
 			icon: "i-lucide-check-circle",
 			timeout: 5000,
 			title: "Saved",
 		});
 	} catch (e: any) {
-		catalogError.value =
-			e?.response?.data?.detail || "Could not save catalog settings.";
+		catalogError.value = e?.response?.data?.detail || "Could not save catalog settings.";
 	} finally {
 		catalogSaving.value = false;
 	}

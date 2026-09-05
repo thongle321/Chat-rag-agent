@@ -18,8 +18,7 @@ async function loadChannels() {
 	try {
 		const { data } = await api.get("/facebook/channels");
 		channels.value = Array.isArray(data) ? data : [];
-		if (channels.value.length && !selectedPageId.value)
-			selectedPageId.value = channels.value[0].page_id;
+		if (channels.value.length && !selectedPageId.value) selectedPageId.value = channels.value[0].page_id;
 	} catch {
 		channels.value = [];
 	}
@@ -41,9 +40,7 @@ async function loadUsers() {
 	}
 	loading.value = true;
 	try {
-		const { data } = await api.get(
-			`/facebook/channels/${selectedPageId.value}/conversations`,
-		);
+		const { data } = await api.get(`/facebook/channels/${selectedPageId.value}/conversations`);
 		const list = data.conversations || [];
 		users.value = list.map((c: any) => ({
 			session_id: c.session_id,

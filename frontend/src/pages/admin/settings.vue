@@ -16,186 +16,180 @@ const testing = ref(false);
 const zaloSaving = ref(false);
 
 const required = (label: string) =>
-    z.preprocess(
-        (v: unknown) => v ?? "",
-        z
-            .string()
-            .trim()
-            .min(1, { message: `${label} is required` }),
-    );
+	z.preprocess(
+		(v: unknown) => v ?? "",
+		z
+			.string()
+			.trim()
+			.min(1, { message: `${label} is required` }),
+	);
 
 const schema = computed(() => {
-    const base: Record<string, z.ZodType> = {
-        ai_provider: z.string(),
-        ollama_api_key: z.string().default(""),
-        ollama_base_url: z.string().default(""),
-        ollama_model: z.string().default(""),
-        openai_api_key: z.string().default(""),
-        openai_model: z.string().default(""),
-    };
-    if (state.ai_provider === "ollama") {
-        base.ollama_base_url = required("Base URL");
-        base.ollama_model = required("Model Name");
-    } else {
-        base.openai_api_key = required("API Key");
-        base.openai_model = required("Model Name");
-    }
-    return z.object(base);
+	const base: Record<string, z.ZodType> = {
+		ai_provider: z.string(),
+		ollama_api_key: z.string().default(""),
+		ollama_base_url: z.string().default(""),
+		ollama_model: z.string().default(""),
+		openai_api_key: z.string().default(""),
+		openai_model: z.string().default(""),
+	};
+	if (state.ai_provider === "ollama") {
+		base.ollama_base_url = required("Base URL");
+		base.ollama_model = required("Model Name");
+	} else {
+		base.openai_api_key = required("API Key");
+		base.openai_model = required("Model Name");
+	}
+	return z.object(base);
 });
 
 type Schema = z.output<typeof schema.value>;
 const state = reactive<Partial<Schema>>({
-    ai_provider: "ollama",
-    ollama_api_key: "",
-    ollama_base_url: "",
-    ollama_model: "",
-    openai_api_key: "",
-    openai_model: "",
+	ai_provider: "ollama",
+	ollama_api_key: "",
+	ollama_base_url: "",
+	ollama_model: "",
+	openai_api_key: "",
+	openai_model: "",
 });
 
 const providerOptions = [
-    { label: "Ollama", value: "ollama" },
-    { label: "OpenAI", value: "openai" },
+	{ label: "Ollama", value: "ollama" },
+	{ label: "OpenAI", value: "openai" },
 ];
 
 onMounted(async () => {
-    try {
-        await settingsStore.fetchSettings();
-        Object.assign(state, settingsStore.settings);
-        // ensure local state has zalo key for display (not editable)
-        await ensureModels();
-    } catch {
-        error.value = settingsStore.error || "Failed to load settings";
-    }
+	try {
+		await settingsStore.fetchSettings();
+		Object.assign(state, settingsStore.settings);
+		// ensure local state has zalo key for display (not editable)
+		await ensureModels();
+	} catch {
+		error.value = settingsStore.error || "Failed to load settings";
+	}
 });
 
 async function onProviderChange() {
-    settingsStore.models = [];
-    await ensureModels();
+	settingsStore.models = [];
+	await ensureModels();
 }
 
 async function ensureModels() {
-    await settingsStore.useCachedModels(
-        state.ai_provider ?? "ollama",
-        state.ollama_base_url ?? "",
-        {
-            ollama_api_key: state.ollama_api_key,
-            openai_api_key: state.openai_api_key,
-        },
-    );
+	await settingsStore.useCachedModels(state.ai_provider ?? "ollama", state.ollama_base_url ?? "", {
+		ollama_api_key: state.ollama_api_key,
+		openai_api_key: state.openai_api_key,
+	});
 }
 
 async function testConnection() {
-    testing.value = true;
-    try {
-        const result = await settingsStore.testConnection({
-            ollama_api_key: state.ollama_api_key,
-            ollama_base_url: state.ollama_base_url,
-            openai_api_key: state.openai_api_key,
-            provider: state.ai_provider,
-        });
-        toast.add({
-            color: result.ok ? "success" : "error",
-            description: result.message,
-            icon: result.ok ? "i-lucide-check-circle" : "i-lucide-x-circle",
-            timeout: result.ok ? 5000 : 0,
-            title: result.ok ? "Connected" : "Connection failed",
-        });
-    } finally {
-        testing.value = false;
-    }
+	testing.value = true;
+	try {
+		const result = await settingsStore.testConnection({
+			ollama_api_key: state.ollama_api_key,
+			ollama_base_url: state.ollama_base_url,
+			openai_api_key: state.openai_api_key,
+			provider: state.ai_provider,
+		});
+		toast.add({
+			color: result.ok ? "success" : "error",
+			description: result.message,
+			icon: result.ok ? "i-lucide-check-circle" : "i-lucide-x-circle",
+			timeout: result.ok ? 5000 : 0,
+			title: result.ok ? "Connected" : "Connection failed",
+		});
+	} finally {
+		testing.value = false;
+	}
 }
 
 async function refreshModels() {
-    await settingsStore.fetchModels({
-        ollama_api_key: state.ollama_api_key,
-        ollama_base_url: state.ollama_base_url,
-        openai_api_key: state.openai_api_key,
-        provider: state.ai_provider,
-    });
+	await settingsStore.fetchModels({
+		ollama_api_key: state.ollama_api_key,
+		ollama_base_url: state.ollama_base_url,
+		openai_api_key: state.openai_api_key,
+		provider: state.ai_provider,
+	});
 }
 
 async function save(event: FormSubmitEvent<Schema>) {
-    error.value = "";
-    saving.value = true;
-    try {
-        const payload: Record<string, string> = {
-            ai_provider: event.data.ai_provider,
-            ollama_base_url: event.data.ollama_base_url ?? "",
-            ollama_model: event.data.ollama_model ?? "",
-            openai_model: event.data.openai_model ?? "",
-        };
-        if (event.data.ai_provider === "ollama" && event.data.ollama_api_key) {
-            payload.ollama_api_key = event.data.ollama_api_key;
-        }
-        if (event.data.ai_provider === "openai" && event.data.openai_api_key) {
-            payload.openai_api_key = event.data.openai_api_key;
-        }
-        await settingsStore.updateSettings(payload);
-        toast.add({
-            color: "success",
-            description: "Settings saved successfully",
-            icon: "i-lucide-check",
-            timeout: 3000,
-            title: "Saved",
-        });
-    } catch (err: unknown) {
-        error.value =
-            settingsStore.error ||
-            (err instanceof Error ? err.message : "Save failed");
-    } finally {
-        saving.value = false;
-    }
+	error.value = "";
+	saving.value = true;
+	try {
+		const payload: Record<string, string> = {
+			ai_provider: event.data.ai_provider,
+			ollama_base_url: event.data.ollama_base_url ?? "",
+			ollama_model: event.data.ollama_model ?? "",
+			openai_model: event.data.openai_model ?? "",
+		};
+		if (event.data.ai_provider === "ollama" && event.data.ollama_api_key) {
+			payload.ollama_api_key = event.data.ollama_api_key;
+		}
+		if (event.data.ai_provider === "openai" && event.data.openai_api_key) {
+			payload.openai_api_key = event.data.openai_api_key;
+		}
+		await settingsStore.updateSettings(payload);
+		toast.add({
+			color: "success",
+			description: "Settings saved successfully",
+			icon: "i-lucide-check",
+			timeout: 3000,
+			title: "Saved",
+		});
+	} catch (err: unknown) {
+		error.value = settingsStore.error || (err instanceof Error ? err.message : "Save failed");
+	} finally {
+		saving.value = false;
+	}
 }
 
 const zaloWebhook = ref("");
 watch(
-    () => settingsStore.settings.zalo_webhook_url,
-    (v) => {
-        zaloWebhook.value = v || "";
-    },
-    { immediate: true },
+	() => settingsStore.settings.zalo_webhook_url,
+	(v) => {
+		zaloWebhook.value = v || "";
+	},
+	{ immediate: true },
 );
 
 async function copyWebhook() {
-    if (!zaloWebhook.value) return;
-    await navigator.clipboard.writeText(zaloWebhook.value);
-    toast.add({
-        title: "Copied",
-        description: "Webhook URL copied",
-        color: "success",
-    });
+	if (!zaloWebhook.value) return;
+	await navigator.clipboard.writeText(zaloWebhook.value);
+	toast.add({
+		title: "Copied",
+		description: "Webhook URL copied",
+		color: "success",
+	});
 }
 
 async function saveWebhook() {
-    zaloSaving.value = true;
-    try {
-        await settingsStore.updateSettings({
-            zalo_webhook_url: zaloWebhook.value,
-        } as any);
-        toast.add({
-            title: "Saved",
-            description: "Webhook URL saved",
-            color: "success",
-        });
-    } catch (e: any) {
-        const status = e?.response?.status ?? e?.status;
-        if (status === 401) {
-            toast.add({
-                title: "Session expired",
-                description: "Please log in again at /admin/login then retry.",
-                color: "error",
-            });
-        } else {
-            toast.add({
-                title: "Failed",
-                description: settingsStore.error || "Save failed",
-                color: "error",
-            });
-        }
-    } finally {
-        zaloSaving.value = false;
-    }
+	zaloSaving.value = true;
+	try {
+		await settingsStore.updateSettings({
+			zalo_webhook_url: zaloWebhook.value,
+		} as any);
+		toast.add({
+			title: "Saved",
+			description: "Webhook URL saved",
+			color: "success",
+		});
+	} catch (e: any) {
+		const status = e?.response?.status ?? e?.status;
+		if (status === 401) {
+			toast.add({
+				title: "Session expired",
+				description: "Please log in again at /admin/login then retry.",
+				color: "error",
+			});
+		} else {
+			toast.add({
+				title: "Failed",
+				description: settingsStore.error || "Save failed",
+				color: "error",
+			});
+		}
+	} finally {
+		zaloSaving.value = false;
+	}
 }
 </script>
 

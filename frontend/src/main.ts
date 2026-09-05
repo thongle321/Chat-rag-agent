@@ -26,7 +26,9 @@ app.config.errorHandler = (err, _instance, info) => {
 	console.error("[vue]", info, err);
 };
 
-function isAdminUser(u: any) { return !!u && (u.role === "admin" || u.is_superuser); }
+function isAdminUser(u: any) {
+	return !!u && (u.role === "admin" || u.is_superuser);
+}
 
 router.beforeEach(async (to) => {
 	const auth = useAuthStore();
