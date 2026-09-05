@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import api, { getErrorMessage, type StreamProduct, type StreamSource, streamChat } from "../api/index.ts";
+import api, { getErrorMessage, type StreamSource, streamChat } from "../api/index.ts";
 
 const STORAGE_PREFIX = "chat_sessions";
 const ACTIVE_PREFIX = "chat_active_id";
@@ -12,7 +12,6 @@ export interface ChatMessage {
 	model?: string;
 	role: "user" | "assistant";
 	sources?: StreamSource[];
-	products?: StreamProduct[];
 	followups?: string[];
 	streaming?: boolean;
 	text: string;
@@ -47,7 +46,6 @@ interface ServerMessage {
 	role: string;
 	content: string;
 	sources?: StreamSource[];
-	products?: StreamProduct[];
 }
 
 export const useChatStore = defineStore("chat", () => {
@@ -208,7 +206,6 @@ export const useChatStore = defineStore("chat", () => {
 				id: String(i),
 				role: m.role === "user" ? "user" : "assistant",
 				sources: m.sources ?? undefined,
-				products: m.products ?? undefined,
 				text: m.content,
 			}));
 		} catch {
@@ -387,9 +384,6 @@ export const useChatStore = defineStore("chat", () => {
 					},
 					onSources: (sources) => {
 						streamMsg.sources = sources;
-					},
-					onProducts: (products) => {
-						streamMsg.products = products;
 					},
 					onFollowups: (followups) => {
 						streamMsg.followups = followups;

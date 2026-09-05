@@ -11,5 +11,10 @@ const id = computed(() => String(route.params.id ?? ""));
 </script>
 
 <template>
-  <ChatView :session-id="id" :key="id" temporary @not-found="router.replace('/')" />
+    <ChatView
+        :session-id="id"
+        :key="id"
+        temporary
+        @not-found="router.replace('/')"
+    />
 </template>

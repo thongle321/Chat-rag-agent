@@ -61,26 +61,11 @@ export interface StreamSource {
 	title: string;
 }
 
-export interface StreamProduct {
-	id: string;
-	name: string;
-	description?: string | null;
-	price?: number | null;
-	currency?: string;
-	image_url?: string | null;
-	product_url?: string | null;
-	category?: string | null;
-	stock?: number;
-	seller?: string | null;
-	checkout_url?: string | null;
-}
-
 export interface StreamHandlers {
 	onDelta: (content: string) => void;
 	onDone: (data: { session_id: string; model: string }) => void;
 	onError: (detail: string) => void;
 	onSources?: (sources: StreamSource[]) => void;
-	onProducts?: (products: StreamProduct[]) => void;
 	onFollowups?: (followups: string[]) => void;
 }
 
@@ -171,8 +156,6 @@ export async function streamChat(
 			}
 			if (currentEvent === "sources") {
 				handlers.onSources?.(data.sources ?? []);
-			} else if (currentEvent === "products") {
-				handlers.onProducts?.(data.products ?? []);
 			} else if (currentEvent === "followups") {
 				handlers.onFollowups?.(data.followups ?? []);
 			} else if (currentEvent === "error") {

@@ -39,25 +39,10 @@ class SessionSource(BaseModel):
     pages: list[int] = []
 
 
-class SessionProduct(BaseModel):
-    id: str
-    name: str
-    description: str | None = None
-    price: float | None = None
-    currency: str | None = None
-    image_url: str | None = None
-    product_url: str | None = None
-    checkout_url: str | None = None
-    category: str | None = None
-    stock: int | None = None
-    seller: str | None = None
-
-
 class SessionMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     sources: list[SessionSource] | None = None
-    products: list[SessionProduct] | None = None
 
 
 class SessionDetail(BaseModel):

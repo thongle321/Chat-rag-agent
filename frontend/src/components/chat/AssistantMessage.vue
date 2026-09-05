@@ -4,7 +4,6 @@ import { useClipboard } from "@vueuse/core";
 import type { ChatMessage } from "../../stores/chat";
 import { stripInlineCitations } from "../../utils/text";
 import Indicator from "./Indicator.vue";
-import ProductCard from "./ProductCard.vue";
 import SourceLink from "./SourceLink.vue";
 
 const props = defineProps<{
@@ -61,12 +60,6 @@ const activeCite = ref<number | null>(null);
               </div>
             </template>
           </UAccordion>
-
-          <div v-if="msg.products?.length" class="mt-3">
-            <div class="grid sm:grid-cols-2 gap-2">
-              <ProductCard v-for="p in msg.products" :key="p.id" :product="p" />
-            </div>
-          </div>
 
           <div v-if="msg.followups?.length" class="flex flex-wrap gap-1.5 mt-3">
             <UButton v-for="f in msg.followups" :key="f" size="xs" color="neutral" variant="soft" icon="i-lucide-message-circle-question" @click="emit('followup', f)">{{ f }}</UButton>

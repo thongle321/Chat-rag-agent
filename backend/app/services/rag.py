@@ -55,6 +55,7 @@ class Deps:
 @dataclass
 class RAGState:
     question: str
+    intent: str = "docs"
     history: list[ModelMessage] = field(default_factory=list)
     new_messages: list[ModelMessage] = field(default_factory=list)
     conversation_id: str | None = None
@@ -117,10 +118,6 @@ async def get_messages(session_id: str) -> list[dict]:
                     ]
                     if sources:
                         entry["sources"] = sources
-                    # Product snapshots ride the same metadata sidecar as citation
-                    # stubs (persisted with history) so cards survive reloads.
-                    if isinstance(m, ModelResponse) and m.metadata and m.metadata.get("products"):
-                        entry["products"] = m.metadata["products"]
                     result.append(entry)
     return result
 
@@ -211,18 +208,6 @@ def _format_products(prods: list[dict], start: int = 0) -> str:
         seller = f", sold by {p['seller']}" if p.get("seller") else ""
         lines.append(f"[P{i}] {p['name']} — {price}{stock}{seller} (id: {p['id']})")
     return "\n".join(lines)
-
-
-_STRIP_PN = re.compile(r"\$?\s*\[P\d+\]")
-
-
-def _strip_pn_markers(text: str) -> str:
-    """Remove machine [Pn] product citations from outgoing prose.
-
-    Markers are parsed for the products event BEFORE this runs, so no surface
-    (history, logs, admin, FB/Zalo) ever shows them. Doc [n] cites untouched.
-    """
-    return _STRIP_PN.sub("", text).strip()
 
 
 def _extract_followups(full_text: str, *, products_searched: bool, has_cited_products: bool) -> list[str]:
@@ -376,6 +361,16 @@ def _catalog(docs: list[dict]) -> str:
     )
 
 
+class ShoppingAnswer(BaseModel):
+    """Shopping agent output: clean prose + indexes into the tool results it recommends.
+
+    No bracketed markers in `answer` — citations travel as data, so no surface
+    ever needs marker-stripping."""
+
+    answer: str
+    cited_ids: list[int] = []
+
+
 async def _route_intent(model: Any, query: str, deps: Deps) -> str:
     """Analyzer-routed: one temp-0 call returns intent + shopping filters together.
 
@@ -413,6 +408,7 @@ async def _inject_catalog() -> str:
 
 async def _run_agent(state: RAGState, deps: Deps) -> None:
     intent = await _route_intent(deps.model, state.question, deps)
+    state.intent = intent
     catalog = await _inject_catalog() if intent == "docs" else ""
     system_prompt = get_prompt(intent, settings.context_prompt.strip(), catalog)
     tools = _tools(intent)
@@ -421,6 +417,7 @@ async def _run_agent(state: RAGState, deps: Deps) -> None:
         system_prompt=system_prompt,
         name=f"{intent}_agent",
         tools=tools,
+        output_type=ShoppingAnswer if intent == "shopping" else str,
         capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
     state.fallback_reply = _CHAT_FALLBACK_REPLY
@@ -499,10 +496,23 @@ async def stream_answer(
     try:
         async with asyncio.timeout(120):
             async with state.stream as result:
-                async for delta in result.stream_text(delta=True):
-                    emitted = True
-                    answer_parts.append(delta)
-                    yield {"type": "text_delta", "content": delta}
+                if state.intent == "shopping":
+                    # Structured citations: stream the answer field as it validates
+                    # (partial mode), cite via data at the end — prose never carries markers.
+                    sent = 0
+                    async for partial in result.stream_output(debounce_by=0.1):
+                        text = getattr(partial, "answer", "") or ""
+                        if len(text) > sent:
+                            delta = text[sent:]
+                            sent = len(text)
+                            emitted = True
+                            answer_parts.append(delta)
+                            yield {"type": "text_delta", "content": delta}
+                else:
+                    async for delta in result.stream_text(delta=True):
+                        emitted = True
+                        answer_parts.append(delta)
+                        yield {"type": "text_delta", "content": delta}
                 state.new_messages = result.new_messages()
                 # Capture token usage like CQA ai_usage_logs (input/output)
                 try:
@@ -542,9 +552,21 @@ async def stream_answer(
     full_text = "".join(answer_parts)
     cited = {int(m) for m in re.findall(r"\[(\d+)\]", full_text)}
     state.sources = [s for s in deps.retrieved if s["n"] in cited]
-    # Products cited as [P1]/[P2] — strict grounding: only IDs returned by tool
-    cited_p = {int(m) for m in re.findall(r"\[P(\d+)\]", full_text)}
-    cited_products = [p for i, p in enumerate(deps.products, 1) if i in cited_p]
+    # Shopping cites via structured output (no markers in prose): validate indexes
+    # against tool results, dedupe, keep model order. Other tasks cite nothing.
+    cited_products: list[dict] = []
+    if state.intent == "shopping":
+        try:
+            out = result.output
+        except Exception:
+            out = None
+        if isinstance(out, ShoppingAnswer):
+            answer_parts = [out.answer]
+            seen: set[int] = set()
+            for i in out.cited_ids:
+                if 1 <= i <= len(deps.products) and i not in seen:
+                    seen.add(i)
+                    cited_products.append(deps.products[i - 1])
     # Clarifying chips: shopping invoked but nothing cited (vague query) — the
     # single question path. Recommend-first: no pre-search chips.
     followups = _extract_followups(
@@ -552,29 +574,14 @@ async def stream_answer(
         products_searched=deps.products_searched,
         has_cited_products=bool(cited_products),
     )
-    # [Pn] markers are a machine contract (products event below) — scrub them
-    # from persisted history and logs now that citations are parsed. Live web
-    # deltas keep markers (unsafe to cut mid-stream); ChatView strips display.
-    for m in state.new_messages:
-        if isinstance(m, ModelResponse):
-            for p in m.parts:
-                if isinstance(p, TextPart):
-                    p.content = _strip_pn_markers(p.content)
-    answer_parts = [_strip_pn_markers(d) for d in answer_parts]
-    # Persist citation stubs (chunk ids only) plus cited product snapshots on the
-    # response's metadata sidecar — rides inside the existing messages blob, never
-    # sent to the LLM. Titles/refs hydrate from the vector DB at read time so renames
-    # always surface; products hydrate verbatim so cards survive reloads.
-    # Must happen BEFORE save_messages or the stored blob lacks the sidecar.
-    sidecar: dict = {}
+    # Citation stubs (chunk ids only) ride the response's metadata sidecar — inside the
+    # existing messages blob, never sent to the LLM. Titles/refs hydrate from the vector
+    # DB at read time so renames always surface. BEFORE save_messages or stubs are lost.
     if state.sources:
-        sidecar["sources"] = [{"n": s["n"], "id": s["id"], "pages": s["pages"]} for s in state.sources]
-    if cited_products:
-        sidecar["products"] = cited_products
-    if sidecar:
+        stubs = [{"n": s["n"], "id": s["id"], "pages": s["pages"]} for s in state.sources]
         for m in reversed(state.new_messages):
             if isinstance(m, ModelResponse) and any(isinstance(p, TextPart) for p in m.parts):
-                m.metadata = sidecar
+                m.metadata = {"sources": stubs}
                 break
     await save_messages(sid, history + state.new_messages)
     # --- Durable per-message logs to app.db (like CQA messages + ai_usage_logs) ---
@@ -624,8 +631,6 @@ async def stream_answer(
     except Exception:
         logger.exception("chat logging failed sid=%s", sid)
     yield {"type": "sources", "sources": state.sources}
-    if cited_products:
-        yield {"type": "products", "products": cited_products}
     if followups:
         yield {"type": "followups", "followups": followups}
     yield {"type": "done", "session_id": sid, "model": model_name}
@@ -648,7 +653,7 @@ async def answer_question(
         elif ev["type"] == "done":
             return ChatResponse(
                 answer_id=str(uuid.uuid4()),
-                answer=_strip_pn_markers(answer),
+                answer=answer,
                 model=ev["model"],
                 session_id=ev["session_id"],
             )
