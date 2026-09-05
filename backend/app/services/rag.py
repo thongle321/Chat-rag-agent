@@ -213,7 +213,7 @@ def _format_products(prods: list[dict], start: int = 0) -> str:
     return "\n".join(lines)
 
 
-_STRIP_PN = re.compile(r"\s*\[P\d+\]")
+_STRIP_PN = re.compile(r"\$?\s*\[P\d+\]")
 
 
 def _strip_pn_markers(text: str) -> str:
