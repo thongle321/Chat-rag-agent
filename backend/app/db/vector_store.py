@@ -31,21 +31,22 @@ _STOPWORDS = list(STOPWORDS_EN) + _VI_STOPWORDS
 
 
 def rrf(ranked: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
-    """Reciprocal Rank Fusion (Chroma RRF formula): score = sum(1 / (k + rank)).
+    """Reciprocal Rank Fusion (official Chroma formula): score = sum(1 / (k + rank)).
 
-    Returns (doc_id, score) pairs sorted by score desc.
+    Ranks are 0-based positions, never raw scores. Sorted desc = best first.
+    (Chroma Cloud negates the sum for ascending order; identical ordering.)
     """
     scores: dict[str, float] = defaultdict(float)
     for lst in ranked:
         for rank, doc_id in enumerate(lst):
-            scores[doc_id] += 1.0 / (k + rank + 1)
+            scores[doc_id] += 1.0 / (k + rank)
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
 def fuse_ranks(vec_ranks: list[str], bm25_ranks: list[str], k: int = 60) -> list[tuple[str, float]]:
     """RRF fusion; dense-only reciprocal-rank scores when BM25 has no ranks."""
     if not bm25_ranks:
-        return [(doc_id, 1.0 / (k + i + 1)) for i, doc_id in enumerate(vec_ranks)]
+        return [(doc_id, 1.0 / (k + i)) for i, doc_id in enumerate(vec_ranks)]
     return rrf([vec_ranks, bm25_ranks], k=k)
 
 
@@ -115,11 +116,15 @@ class ChromaVectorStore:
         self._collection.delete(ids=ids)
         self._invalidate_bm25()
 
-    def query(self, query_embedding: list[float], k: int = 5) -> list[dict]:
-        """Return list of {id, content, metadata, score} for the k nearest chunks."""
+    def query(self, query_embedding: list[float], k: int = 5, where: dict | None = None) -> list[dict]:
+        """Return list of {id, content, metadata, score} for the k nearest chunks.
+
+        `where` is a Chroma metadata filter, pushed into the index (pre-fusion).
+        """
         results = self._collection.query(
             query_embeddings=[query_embedding],
             n_results=k,
+            where=where,
             include=["documents", "metadatas", "distances"],
         )
         out = []

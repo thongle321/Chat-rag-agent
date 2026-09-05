@@ -212,7 +212,11 @@ async def search_products(
         # FastEmbed/Chroma/BM25 are blocking — offload (AGENTS.md Gotchas)
         q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
         over = settings.retrieval_bm25_overretrieve
-        vec_hits = await asyncio.to_thread(store.query, q_emb, k * over)
+        # Category pushes into the dense side (pre-fusion); the Python post-filter
+        # below still guards BM25-only strays. max_price stays post-filter so
+        # priceless rows are excluded with explicit semantics.
+        where = {"category": category} if category else None
+        vec_hits = await asyncio.to_thread(store.query, q_emb, k * over, where)
         if not vec_hits:
             return []
         dist_by_id = {h["id"]: h["score"] for h in vec_hits}
