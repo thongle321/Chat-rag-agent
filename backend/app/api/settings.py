@@ -1,7 +1,7 @@
 import secrets
 from typing import Literal
 
-import httpx
+import httpx2 as httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession

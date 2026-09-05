@@ -18,7 +18,7 @@ import logging
 import re
 import uuid
 
-import httpx
+import httpx2 as httpx
 import logfire
 import numpy as np
 from sqlalchemy import text

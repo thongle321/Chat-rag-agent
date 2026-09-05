@@ -71,7 +71,7 @@ frontend/
            admin/messages/index.vue, admin/messages/[id].vue
     utils/ routeAccess.ts  # deny-list: only /admin* gated (/admin/login public); substring-match ADMIN_ONLY_DETAIL/ADMIN_NO_CHAT_DETAIL + redirectForStatus
   package.json (scripts: build/dev/preview only; deps: @comark/vue, @iconify-json/lucide, @nuxt/ui, @unhead/vue, axios, pinia, vue, vue-router, zod; node 24.x) / biome.json / vercel.json
-docs/research/  bilingual-rag.md, chat-quality-agent-production-logging.md, chat-vue-template.md, chatgpt-shopping-replication.md, citation-persistence.md, cqa-db-design-for-rag.md, ecommerce-rag-lessons.md, gated-retrieval-vs-reranking.md, integrations-facebook-feature.md, per-user-session-storage.md, product-search-complexity-review.md, search-functionality-comparison.md, shopify-global-catalog.md, shopify-store-connect.md, streaming-llm-frontend.md, zalo-integration.md, zalo-refactor-webhook-sdk.md
+docs/research/  bilingual-rag.md, chat-quality-agent-production-logging.md, chat-vue-template.md, chatgpt-shopping-replication.md, citation-persistence.md, cqa-db-design-for-rag.md, ecommerce-rag-lessons.md, gated-retrieval-vs-reranking.md, httpx2-migration.md, integrations-facebook-feature.md, per-user-session-storage.md, product-search-complexity-review.md, search-functionality-comparison.md, shopify-global-catalog.md, shopify-store-connect.md, streaming-llm-frontend.md, zalo-integration.md, zalo-refactor-webhook-sdk.md
 ```
 
 ## Running Locally
