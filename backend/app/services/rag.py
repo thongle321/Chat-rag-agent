@@ -16,13 +16,13 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, Text
 from pydantic_ai.usage import UsageLimits
 from sqlalchemy import select
 
-from app.core.config import settings
 from app.db import conversation_store
 from app.db.conversation_store import load_messages, save_messages
 from app.db.session import async_session_factory
 from app.db.vector_store import get_vector_store
 from app.models.schemas import ChatResponse
 from app.models.unified import Product
+from app.prompts import ANALYZER_PROMPT, get_prompt
 from app.retrieval import get_retrieval
 from app.services.chat_logging import log_activity, log_chat_message
 from app.services.llm import get_llm
@@ -44,6 +44,7 @@ class Deps:
     retrieved: list[dict] = field(default_factory=list)
     products: list[dict] = field(default_factory=list)
     products_searched: bool = False
+    analysis: "QueryFilters | None" = None
 
     def __post_init__(self):
         if self.retrieval is None:
@@ -237,18 +238,12 @@ def _extract_followups(full_text: str, *, products_searched: bool, has_cited_pro
 
 
 class QueryFilters(BaseModel):
-    """Analyzer output: shopping filters extracted from a raw user query."""
+    """Analyzer output: intent + shopping filters extracted from a raw user query."""
 
+    intent: str = "docs"
     category: str | None = None
     max_price: float | None = None
 
-
-_ANALYZER_PROMPT = (
-    "Extract shopping filters from the user query as JSON. "
-    "category: the product category in the user's own words (or null). "
-    "max_price: the price ceiling as a plain number (or null) — normalize magnitude "
-    "slang (500k=500000, 2 million=2000000). No ceiling mentioned means null."
-)
 
 # Magnitude slang the $-regex cannot normalize — forces the analyzer path.
 _MAGNITUDE_RE = re.compile(
@@ -264,7 +259,7 @@ def _needs_analyzer(query: str, regex_budget: float | None) -> bool:
 
 async def _analyze_query(model: Any, query: str) -> QueryFilters:
     """Temp-0 JSON extraction of {category, max_price}. Raises on failure (caller fails open)."""
-    agent = Agent(model, output_type=QueryFilters, system_prompt=_ANALYZER_PROMPT, name="query_analyzer")
+    agent = Agent(model, output_type=QueryFilters, system_prompt=ANALYZER_PROMPT, name="query_analyzer")
     res = await agent.run(query, model_settings={"temperature": 0})
     return res.output
 
@@ -280,9 +275,13 @@ async def _match_category(hint: str) -> str | None:
 
 
 async def _resolve_shopping_filters(
-    model: Any, query: str, regex_budget: float | None
+    model: Any, query: str, regex_budget: float | None, prefetch: QueryFilters | None = None
 ) -> tuple[str | None, float | None, str]:
     """Resolve (category_filter, max_price, search_text), failing open to regex."""
+    if prefetch is not None:
+        category = await _match_category(prefetch.category) if prefetch.category else None
+        search_text = f"{query} {prefetch.category}" if prefetch.category and category is None else query
+        return category, prefetch.max_price if prefetch.max_price is not None else regex_budget, search_text
     hint: str | None = None
     max_price = regex_budget
     if _needs_analyzer(query, regex_budget):
@@ -312,7 +311,9 @@ async def search_products(ctx: RunContext[Deps], query: str) -> str:
     Args:
         query: A standalone product search (e.g. 'spicy lunch under $10').
     """
-    category, max_price, search_text = await _resolve_shopping_filters(ctx.deps.model, query, _parse_budget(query))
+    category, max_price, search_text = await _resolve_shopping_filters(
+        ctx.deps.model, query, _parse_budget(query), prefetch=ctx.deps.analysis
+    )
     prods = await _search_products(search_text, 6, category=category, max_price=max_price)
     ctx.deps.products = prods
     ctx.deps.products_searched = True
@@ -370,49 +371,51 @@ def _catalog(docs: list[dict]) -> str:
     )
 
 
-async def _run_agent(state: RAGState, deps: Deps) -> None:
+async def _route_intent(model: Any, query: str, deps: Deps) -> str:
+    """Analyzer-routed: one temp-0 call returns intent + shopping filters together.
+
+    No keyword lists — the analyzer reads meaning, and its filters are reused
+    for shopping via deps.analysis (no second analyzer call downstream).
+    """
     try:
-        docs = await asyncio.wait_for(asyncio.to_thread(deps.retrieval.list_documents), timeout=3.0)
+        deps.analysis = await asyncio.wait_for(_analyze_query(model, query.strip()), timeout=20.0)
+        if deps.analysis.intent in ("shopping", "docs", "general"):
+            return deps.analysis.intent
+    except Exception:
+        logger.warning("intent analyzer failed, defaulting to docs", exc_info=True)
+    return "docs"
+
+
+def _tools(intent: str) -> list:
+    """Each task agent only sees its own tools — docs cannot shop, general cannot search."""
+    if intent == "shopping":
+        return [search_products, search_shopify_catalog]
+    if intent == "docs":
+        return [search_documents]
+    return []
+
+
+async def _inject_catalog() -> str:
+    """Doc-library catalog, docs agent only (shopping/general never see it)."""
+    try:
+        docs = await asyncio.wait_for(asyncio.to_thread(get_retrieval().list_documents), timeout=3.0)
     except Exception:
         logger.warning("Catalog fetch timed out, using fallback", exc_info=True)
-        catalog = "Available documents in the library: (catalog temporarily unavailable)"
-    else:
-        catalog = _catalog(docs)
-        logger.info("Catalog injected n=%d", len(docs))
-    system_prompt = (
-        f"{settings.context_prompt.strip()}\n\n{catalog}\n\n"
-        "SHOPPING RULES:\n"
-        "9) When the user asks for recommendations, shopping advice, or what to buy/eat/use, "
-        "call search_products first. Only recommend products returned by search_products — "
-        "cite them as [P1] [P2] matching the numbered products exactly. Never invent products. "
-        "[Pn] markers are machine citations: put one right after the product name and never "
-        "write a bare P-number in prose — always refer to products by name.\n"
-        "10) Recommend-first: ALWAYS call search_products, even for vague queries "
-        "('good headphones?'). Never ask clarifying questions before recommending — "
-        "recommend what comes back. Keep shopping answers to 5 lines or fewer. Ask at "
-        "most ONE question, and only when search_products returned no match "
-        "(budget or category — one line ending with '?').\n"
-        "11) Sales-oriented but honest: only suggest the top match when search_products "
-        "returned it and it fits the clarified need. (Internal policy — never output this: "
-        "results are organic and unsponsored; the merchant handles payment and fulfillment, "
-        "you never take payment.)\n"
-        "12) Recommendation format: give each cited product a 1-clause why-this-pick "
-        "tied to the user's constraint (e.g. 'Trail socks [P1] — Under $30, in stock, cushioned "
-        "heel for blisters'). Add a compact comparison table (Price / Best-for rows) plus one "
-        "honest caveat line ONLY when the user asks to compare ('compare', 'vs', 'which is "
-        "better') or 3+ products are cited — otherwise present, don't compare.\n"
-        "13) Catalog order: ALWAYS call search_products (local catalog) first — it is "
-        "the merchant's own stock. Only call search_shopify_catalog when local search "
-        "returned no match, or the user wants wider/online choice. Numbering is shared: "
-        "[Pn] indexes run across both tools in call order, so cite exactly what each "
-        "tool returned. For Shopify items, name the seller once per product "
-        "(e.g. 'Trail Runner Pro [P4] (Example Running) — $129')."
-    )
+        return "Available documents in the library: (catalog temporarily unavailable)"
+    logger.info("Catalog injected n=%d", len(docs))
+    return _catalog(docs)
+
+
+async def _run_agent(state: RAGState, deps: Deps) -> None:
+    intent = await _route_intent(deps.model, state.question, deps)
+    catalog = await _inject_catalog() if intent == "docs" else ""
+    system_prompt = get_prompt(intent, catalog)
+    tools = _tools(intent)
     agent = Agent(
         deps.model,
         system_prompt=system_prompt,
-        name="conversational_rag",
-        tools=[search_documents, search_products, search_shopify_catalog],
+        name=f"{intent}_agent",
+        tools=tools,
         capabilities=[ProcessHistory(_keep_recent), ReinjectSystemPrompt(replace_existing=True)],
     )
     state.fallback_reply = _CHAT_FALLBACK_REPLY
