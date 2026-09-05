@@ -36,6 +36,7 @@
 			"!!**/dist",
 			"!auto-imports.d.ts",
 			"!components.d.ts",
+			"!src/route-map.d.ts",
 			"!src/assets/css/main.css",
 			"!src/pages/admin.vue"
 		]

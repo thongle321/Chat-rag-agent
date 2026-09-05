@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import api, { getErrorMessage, type StreamSource, streamChat } from "../api/index.ts";
+import api, { getErrorMessage, type StreamProduct, type StreamSource, streamChat } from "../api/index.ts";
 
 const STORAGE_PREFIX = "chat_sessions";
 const ACTIVE_PREFIX = "chat_active_id";
@@ -12,7 +12,7 @@ export interface ChatMessage {
 	model?: string;
 	role: "user" | "assistant";
 	sources?: StreamSource[];
-	products?: import("../api/index.ts").StreamProduct[];
+	products?: StreamProduct[];
 	followups?: string[];
 	streaming?: boolean;
 	text: string;
@@ -25,35 +25,6 @@ export interface Conversation {
 	pinned: boolean;
 	sessionId: string;
 	title: string;
-}
-
-export function groupByDate(conversations: Conversation[]): [string, Conversation[]][] {
-	const now = Date.now();
-	const day = 86_400_000;
-	const groups = new Map<string, Conversation[]>();
-	const label = (d: number) => {
-		const diff = now - d;
-		if (diff < day) {
-			return "Today";
-		}
-		if (diff < 2 * day) {
-			return "Yesterday";
-		}
-		if (diff < 7 * day) {
-			return "7 days ago";
-		}
-		if (diff < 30 * day) {
-			return "30 days ago";
-		}
-		return "Older";
-	};
-	for (const c of conversations) {
-		const l = label(c.createdAt);
-		const arr = groups.get(l) ?? [];
-		arr.push(c);
-		groups.set(l, arr);
-	}
-	return [...groups.entries()];
 }
 
 export const useChatStore = defineStore("chat", () => {
@@ -346,7 +317,9 @@ export const useChatStore = defineStore("chat", () => {
 		}
 
 		conv.messages.push({
-			id: "streaming",
+			// Stable unique id from birth: the per-message thought timer keys
+			// off it, so it must survive the streaming → done transition.
+			id: `stream-${Date.now()}`,
 			role: "assistant",
 			streaming: true,
 			text: "",
@@ -382,7 +355,6 @@ export const useChatStore = defineStore("chat", () => {
 								activeControllers.set(data.session_id, c);
 							}
 						}
-						streamMsg.id = String(Date.now());
 						streamMsg.model = data.model;
 						streamMsg.streaming = false;
 					},
@@ -427,7 +399,6 @@ export const useChatStore = defineStore("chat", () => {
 		conversations,
 		deleteConversation,
 		error,
-		fetchSessionMessages,
 		fetchSessions,
 		hydrating,
 		identity,

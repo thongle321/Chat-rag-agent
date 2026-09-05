@@ -75,13 +75,5 @@ export const useChats = createSharedComposable(() => {
 		return formatted;
 	});
 
-	return {
-		groups,
-		chats: computed(() => chatStore.conversations),
-		fetchChats: () => chatStore.fetchSessions(),
-		updateChat: (id: string, partial: { label?: string; title?: string }) => {
-			if (partial.label || partial.title) chatStore.renameConversation(id, (partial.label || partial.title) as string);
-		},
-		removeChat: (id: string) => chatStore.deleteConversation(id),
-	};
+	return { groups };
 });
