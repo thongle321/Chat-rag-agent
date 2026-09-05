@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import api, { getErrorMessage } from "../../../api";
+import ConfirmModal from "../../../components/admin/ConfirmModal.vue";
+import { syncIntervalOptions } from "../../../composables/useChannelCrud";
+import { formatDateTime, formatDateTimeDMY, formatSyncInterval } from "../../../utils/format";
 
 const route = useRoute();
 const router = useRouter();
@@ -19,35 +22,6 @@ const confirmDelete = ref(false);
 const syncLogs = ref<any[]>([]);
 
 const editForm = reactive({ name: "", is_active: true, sync_interval: 15 });
-const syncIntervalOptions = [
-	{ label: "Every 1 minute", value: 1 },
-	{ label: "Every 5 minutes", value: 5 },
-	{ label: "Every 10 minutes", value: 10 },
-	{ label: "Every 15 minutes (default)", value: 15 },
-	{ label: "Every 30 minutes", value: 30 },
-	{ label: "Every 1 hour", value: 60 },
-	{ label: "Every 6 hours", value: 360 },
-	{ label: "Every day", value: 1440 },
-];
-
-function formatDateTime(v: string | null) {
-	if (!v) return "—";
-	const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return v;
-	const dd = String(d.getDate()).padStart(2, "0");
-	const mm = String(d.getMonth() + 1).padStart(2, "0");
-	const hh = String(d.getHours()).padStart(2, "0");
-	const mi = String(d.getMinutes()).padStart(2, "0");
-	return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
-}
-
-function formatSyncInterval(v: number) {
-	if (!v) return "5 minutes";
-	if (v < 60) return `${v} min`;
-	if (v < 1440) return `${v / 60} h`;
-	return `${v / 1440} day`;
-}
 
 async function loadSyncHistory(pageId: string) {
 	try {
@@ -337,15 +311,7 @@ watch(() => route.params.id, load);
                                 <div class="text-xs text-muted mb-1">
                                     Last sync
                                 </div>
-                                <div class="text-sm">
-                                    {{
-                                        config.last_sync_at
-                                            ? formatDateTime(
-                                                  config.last_sync_at,
-                                              )
-                                            : "Not synced"
-                                    }}
-                                </div>
+                                <div class="text-sm">{{ config.last_sync_at ? formatDateTimeDMY(config.last_sync_at) : "Not synced" }}</div>
                             </div>
                             <div>
                                 <div class="text-xs text-muted mb-1">
@@ -359,9 +325,7 @@ watch(() => route.params.id, load);
                                 <div class="text-xs text-muted mb-1">
                                     Created at
                                 </div>
-                                <div class="text-sm">
-                                    {{ formatDateTime(config.created_at) }}
-                                </div>
+                                <div class="text-sm">{{ formatDateTimeDMY(config.created_at) }}</div>
                             </div>
                         </div>
                         <UAlert
@@ -405,18 +369,7 @@ watch(() => route.params.id, load);
                                 </thead>
                                 <tbody class="divide-y">
                                     <tr v-for="log in syncLogs" :key="log.id">
-                                        <td
-                                            class="py-2 px-2 text-xs text-muted whitespace-nowrap"
-                                        >
-                                            {{
-                                                new Date(
-                                                    log.created_at.replace(
-                                                        " ",
-                                                        "T",
-                                                    ) + "Z",
-                                                ).toLocaleString()
-                                            }}
-                                        </td>
+                                        <td class="py-2 px-2 text-xs text-muted whitespace-nowrap">{{ formatDateTime(log.created_at) }}</td>
                                         <td class="py-2 px-2">
                                             <UBadge
                                                 :color="
@@ -492,29 +445,7 @@ watch(() => route.params.id, load);
                         </template>
                     </UModal>
 
-                    <UModal v-model:open="confirmDelete" title="Delete channel">
-                        <template #body>
-                            <p class="text-sm">
-                                Delete channel <b>{{ config.page_id }}</b> and
-                                all related chats? This cannot be undone.
-                            </p>
-                        </template>
-                        <template #footer>
-                            <div class="flex justify-end gap-2 w-full">
-                                <UButton
-                                    variant="ghost"
-                                    @click="confirmDelete = false"
-                                    >Cancel</UButton
-                                >
-                                <UButton
-                                    color="error"
-                                    :loading="deleting"
-                                    @click="doDelete"
-                                    >Delete</UButton
-                                >
-                            </div>
-                        </template>
-                    </UModal>
+                    <ConfirmModal v-model:open="confirmDelete" title="Delete channel" :description="`Delete channel ${config.page_id} and all related chats? This cannot be undone.`" :loading="deleting" @confirm="doDelete" />
                 </template>
             </div>
         </template>

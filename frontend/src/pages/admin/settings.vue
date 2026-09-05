@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import type { FormSubmitEvent } from "@nuxt/ui";
 import { z } from "zod";
+import ZaloWebhookCard from "../../components/admin/settings/ZaloWebhookCard.vue";
 import { useSettingsStore } from "../../stores/settings";
 
 const settingsStore = useSettingsStore();
@@ -11,9 +12,7 @@ const saving = ref(false);
 const error = ref("");
 const showOpenaiKey = ref(false);
 const showOllamaKey = ref(false);
-const showZaloKey = ref(false);
 const testing = ref(false);
-const zaloSaving = ref(false);
 
 const required = (label: string) =>
 	z.preprocess(
@@ -139,56 +138,6 @@ async function save(event: FormSubmitEvent<Schema>) {
 		error.value = settingsStore.error || (err instanceof Error ? err.message : "Save failed");
 	} finally {
 		saving.value = false;
-	}
-}
-
-const zaloWebhook = ref("");
-watch(
-	() => settingsStore.settings.zalo_webhook_url,
-	(v) => {
-		zaloWebhook.value = v || "";
-	},
-	{ immediate: true },
-);
-
-async function copyWebhook() {
-	if (!zaloWebhook.value) return;
-	await navigator.clipboard.writeText(zaloWebhook.value);
-	toast.add({
-		title: "Copied",
-		description: "Webhook URL copied",
-		color: "success",
-	});
-}
-
-async function saveWebhook() {
-	zaloSaving.value = true;
-	try {
-		await settingsStore.updateSettings({
-			zalo_webhook_url: zaloWebhook.value,
-		} as any);
-		toast.add({
-			title: "Saved",
-			description: "Webhook URL saved",
-			color: "success",
-		});
-	} catch (e: any) {
-		const status = e?.response?.status ?? e?.status;
-		if (status === 401) {
-			toast.add({
-				title: "Session expired",
-				description: "Please log in again at /admin/login then retry.",
-				color: "error",
-			});
-		} else {
-			toast.add({
-				title: "Failed",
-				description: settingsStore.error || "Save failed",
-				color: "error",
-			});
-		}
-	} finally {
-		zaloSaving.value = false;
 	}
 }
 </script>
@@ -438,45 +387,7 @@ async function saveWebhook() {
 
                     <!-- Integration tab — Webhook is global, Bot Token + Verify Token stay per-channel -->
                     <div v-else class="flex flex-col gap-4">
-                        <UCard>
-                            <template #header>
-                                <div class="flex items-center gap-2">
-                                    <UIcon
-                                        name="i-lucide-plug"
-                                        class="size-4"
-                                    />
-                                    <span class="font-semibold"
-                                        >Zalo Integration</span
-                                    >
-                                </div>
-                            </template>
-                            <div class="flex flex-col gap-4">
-                                <UFormField label="Zalo Webhook URL">
-                                    <div class="flex gap-2">
-                                        <UInput
-                                            class="flex-1 font-mono text-sm"
-                                            v-model="zaloWebhook"
-                                            placeholder="https://example.com/api/zalo/webhook"
-                                        />
-                                        <UButton
-                                            icon="i-lucide-copy"
-                                            variant="outline"
-                                            :disabled="!zaloWebhook"
-                                            @click="copyWebhook"
-                                            >Copy</UButton
-                                        >
-                                    </div>
-                                </UFormField>
-                                <div class="flex gap-2">
-                                    <UButton
-                                        icon="i-lucide-check"
-                                        :loading="zaloSaving"
-                                        @click="saveWebhook"
-                                        >Save Webhook</UButton
-                                    >
-                                </div>
-                            </div>
-                        </UCard>
+                        <ZaloWebhookCard />
                     </div>
                 </div>
             </div>

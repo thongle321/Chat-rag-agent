@@ -1,18 +1,11 @@
 <script setup lang="ts">
 import api from "../../../api";
+import { formatDateTime } from "../../../utils/format";
 
 const loading = ref(true);
 const channels = ref<any[]>([]);
 const selectedPageId = ref<string>("");
 const users = ref<any[]>([]);
-
-function formatDateTime(v: string | null) {
-	if (!v) return "—";
-	const iso = v.includes("T") ? v : `${v.replace(" ", "T")}Z`;
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return v;
-	return d.toLocaleString();
-}
 
 async function loadChannels() {
 	try {
