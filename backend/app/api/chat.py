@@ -78,7 +78,13 @@ def _decode_bearer(request: Request) -> dict | None:
         token = auth[7:].strip()
         if not token:
             return None
-        return jwt.decode(token, _get_jwt_secret(), algorithms=["HS256"], options={"verify_exp": False})
+        return jwt.decode(
+        token,
+        _get_jwt_secret(),
+        algorithms=["HS256"],
+        audience=["fastapi-users:auth"],
+        options={"verify_exp": False},
+    )
     except Exception:
         return None
 

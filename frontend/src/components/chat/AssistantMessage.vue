@@ -34,7 +34,7 @@ const activeCite = ref<number | null>(null);
         <div v-if="msg.streaming" class="text-xs text-muted mb-1">Thinking {{ (thoughtSecs ?? 0).toFixed(1) }}s…</div>
         <div v-else-if="thoughtSecs != null" class="text-xs text-muted mb-1">Thought for {{ thoughtSecs.toFixed(1) }}s</div>
         <Suspense>
-          <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+          <Comark :markdown="stripInlineCitations(msg.text)" :streaming="!!msg.streaming" :options="{ autoClose: false }" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
         </Suspense>
 
         <template v-if="!msg.streaming">

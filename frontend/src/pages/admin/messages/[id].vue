@@ -81,7 +81,7 @@ watch(() => route.params.id, loadThread);
                   </div>
 
                   <Suspense>
-                    <Comark :markdown="stripInlineCitations(m.content)" :streaming="false" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
+                    <Comark :markdown="stripInlineCitations(m.content)" :streaming="false" :options="{ autoClose: false }" caret class="text-sm text-default leading-relaxed prose prose-sm dark:prose-invert max-w-none" />
                   </Suspense>
 
                   <UAccordion

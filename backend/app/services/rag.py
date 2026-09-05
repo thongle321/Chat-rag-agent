@@ -565,10 +565,13 @@ async def stream_answer(
     if state.intent == "shopping":
         out = state.shopping_out
         if isinstance(out, ShoppingAnswer):
-            answer_parts = [out.answer]
+            # Orphan-$ scrub: marker-era habit ("much.$[P1]") now surfaces as a
+            # trailing "$" with markers gone. $\d prices survive the lookahead.
+            clean = re.sub(r"\$(?!\d)", "", out.answer)
+            answer_parts = [clean]
             # Structured runs store no TextPart (final message is an output-tool
             # call) — append the prose as a real response or reloads lose the answer.
-            state.new_messages.append(ModelResponse(parts=[TextPart(content=out.answer)]))
+            state.new_messages.append(ModelResponse(parts=[TextPart(content=clean)]))
             seen: set[int] = set()
             for i in out.cited_ids:
                 if 1 <= i <= len(deps.products) and i not in seen:
