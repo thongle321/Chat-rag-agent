@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 from functools import lru_cache
 
@@ -30,6 +31,16 @@ def query_prefix() -> str:
 def passage_prefix() -> str:
     """e5-family models are trained with a 'passage: ' prefix — prepend at ingest time only."""
     return "passage: " if "e5" in settings.embedding_model.lower() else ""
+
+
+def cosine_sim(a: list[float], b: list[float]) -> float:
+    """Cosine similarity for same-length embedding vectors (0.0 on mismatch)."""
+    if len(a) != len(b):
+        return 0.0
+    denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    if not denom:
+        return 0.0
+    return sum(x * y for x, y in zip(a, b, strict=True)) / denom
 
 
 @lru_cache(maxsize=1)

@@ -10,6 +10,7 @@ re-using images, so nothing here is ever persisted.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import json
 import logging
@@ -20,6 +21,8 @@ import httpx
 import logfire
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.embeddings import cosine_sim, get_embeddings, passage_prefix, query_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -172,25 +175,57 @@ def _map_product(p: dict) -> dict:
     }
 
 
+async def _rerank_local(query: str, prods: list[dict], k: int) -> list[dict]:
+    """Order Shopify candidates by e5 cosine against the query, keep top-k.
+
+    Fail-open: on embedding failure Shopify's own ordering stands (sliced)."""
+    if len(prods) <= k:
+        return prods
+    try:
+        texts = [f"{p.get('name') or ''}\n{p.get('description') or ''}" for p in prods]
+        q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
+        p_embs = await asyncio.to_thread(lambda: list(get_embeddings().embed([passage_prefix() + t for t in texts])))
+        scored = sorted(
+            ((p, cosine_sim(q_emb, e)) for p, e in zip(prods, p_embs, strict=True)),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        out = []
+        for p, score in scored[:k]:
+            p["score"] = round(float(score), 4)
+            out.append(p)
+        return out
+    except Exception:
+        logger.exception("global catalog re-rank failed, keeping Shopify order")
+        return prods[:k]
+
+
 async def search_global_catalog(
     query: str,
     limit: int = 6,
     *,
+    fetch_limit: int = 50,
     endpoint: str = DEFAULT_ENDPOINT,
     profile_url: str = DEFAULT_PROFILE_URL,
     catalog_id: str = "",
     currency: str = "USD",
     country: str = "US",
 ) -> list[dict]:
-    """Live-search the Global Catalog. Never persisted (Shopify usage rules)."""
+    """Live-search the Global Catalog, then locally cosine re-rank to `limit`.
+
+    Fetch-wide/curate-locally: Shopify ranks the full catalog, we pull the top
+    `fetch_limit` candidates and order them by e5 cosine against the query.
+    Never persisted (Shopify usage rules).
+    """
     if not query.strip():
         return []
     limit = max(1, min(limit, 50))
+    fetch_limit = max(limit, min(fetch_limit, 50))
     catalog: dict = {
         "query": query.strip(),
         "filters": {"available": True},
         "context": {"address_country": country, "currency": currency},
-        "pagination": {"limit": limit},
+        "pagination": {"limit": fetch_limit},
     }
     if catalog_id:
         catalog["catalog_id"] = catalog_id
@@ -205,6 +240,7 @@ async def search_global_catalog(
     content = result.get("structuredContent") or {}
     products = [p for p in (content.get("products") or []) if isinstance(p, dict)]
     out = [_map_product(p) for p in products]
+    out = await _rerank_local(query, out, limit)
     # DEBUG: dump the full raw JSON response to the backend console.
     print(json.dumps(result, indent=1, ensure_ascii=False, default=str), flush=True)
     # logfire.info (not logger.info): stdlib records are swallowed by the
