@@ -55,7 +55,7 @@ class ChromaVectorStore:
         self._client = chromadb.PersistentClient(path=str(persist_dir))
         self._collection = self._client.get_or_create_collection(
             collection_name,
-            metadata={"hnsw:space": "cosine"},
+            configuration={"hnsw": {"space": "cosine"}},
         )
         self._bm25: bm25s.BM25 | None = None
         self._bm25_ids: list[str] | None = None
