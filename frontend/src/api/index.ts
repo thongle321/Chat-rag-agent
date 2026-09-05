@@ -78,6 +78,43 @@ export interface StreamHandlers {
 	onFollowups?: (followups: string[]) => void;
 }
 
+// Non-OK stream responses: map status → message + shared redirect rules.
+// Returns true when the failure was reported (caller stops reading the body).
+async function rejectStreamResponse(response: Response, handlers: StreamHandlers): Promise<boolean> {
+	if (response.ok) return false;
+	if (response.status === 401) {
+		const target = redirectForStatus(401, "", window.location.pathname);
+		if (target) {
+			localStorage.removeItem("auth_token");
+			window.location.href = target;
+		}
+		handlers.onError("Please log in to chat");
+		return true;
+	}
+	if (response.status === 403) {
+		let detail403 = "Forbidden";
+		try {
+			const b = await response.clone().json();
+			if (b?.detail) detail403 = typeof b.detail === "string" ? b.detail : detail403;
+		} catch {}
+		const target = redirectForStatus(403, detail403, window.location.pathname);
+		if (target) window.location.href = target;
+		handlers.onError(detail403);
+		return true;
+	}
+	let detail = `HTTP ${response.status}`;
+	try {
+		const body = await response.json();
+		if (body?.detail) {
+			detail = typeof body.detail === "string" ? body.detail : getErrorMessage(body);
+		}
+	} catch {
+		/* non-JSON body */
+	}
+	handlers.onError(detail);
+	return true;
+}
+
 export async function streamChat(
 	question: string,
 	sessionId: string | undefined,
@@ -94,41 +131,13 @@ export async function streamChat(
 		method: "POST",
 		signal,
 	});
-	if (!(response.ok && response.body)) {
-		if (response.status === 401) {
-			const target = redirectForStatus(401, "", window.location.pathname);
-			if (target) {
-				localStorage.removeItem("auth_token");
-				window.location.href = target;
-			}
-			handlers.onError("Please log in to chat");
-			return;
-		}
-		if (response.status === 403) {
-			let detail403 = "Forbidden";
-			try {
-				const b = await response.clone().json();
-				if (b?.detail) detail403 = typeof b.detail === "string" ? b.detail : detail403;
-			} catch {}
-			const target = redirectForStatus(403, detail403, window.location.pathname);
-			if (target) window.location.href = target;
-			handlers.onError(detail403);
-			return;
-		}
-		let detail = `HTTP ${response.status}`;
-		try {
-			const body = await response.json();
-			if (body?.detail) {
-				detail = typeof body.detail === "string" ? body.detail : getErrorMessage(body);
-			}
-		} catch {
-			/* non-JSON body */
-		}
-		handlers.onError(detail);
+	if (await rejectStreamResponse(response, handlers)) return;
+	const streamBody = response.body;
+	if (!streamBody) {
+		handlers.onError("Empty response from server");
 		return;
 	}
-
-	const reader = response.body.getReader();
+	const reader = streamBody.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
 	let currentEvent = "message";

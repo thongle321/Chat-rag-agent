@@ -65,15 +65,17 @@ frontend/
     composables/ useChats.ts (date-grouped sidebar groups) / useChatActions.ts (rename/delete toasts + conversationMenuItems) / useChatSession.ts (bootstrap + send-and-route) / useThinkingTimer.ts (per-message Thought timing) / useConversationSearch.ts (palette groups + hover-prefetch) / useDocCount.ts (admin doc badge) / useChannelCrud.ts (FB/Zalo list/health/sync/disconnect + syncIntervalOptions) / useProductCatalog.ts (filter/sort/CRUD/CSV) / useShopifyCatalog.ts (catalog connect) / useDocumentUploads.ts (upload queue + status poll + delete)
     components/ AppLogo.vue / ChatSidebar.vue (nav + groups + search + user menu composition) / ChatComposer.vue / ChatView.vue (thin surface: session + header + messages + composer) / ModelSelect.vue / UserMenu.vue
     components/chat/ Indicator.vue / SourceLink.vue / ProductCard.vue / ChatHeader.vue (title menu + auth buttons) / UserMessage.vue (bubble + hover edit) / AssistantMessage.vue (thinking + Comark + sources + products + followups + copy) / ChatSkeleton.vue / RenameConversationModal.vue (shared sidebar+header) / SidebarUserMenu.vue
+    components/auth/ AuthCard.vue (card shell) / PasswordInput.vue (eye toggle) / LoginForm.vue + RegisterForm.vue (zod, emit submit)
     components/admin/ ConfirmModal.vue (shared delete/disconnect) / EmptyState.vue (shared empty pages) / channels/ChannelCard.vue + FacebookConnectForm/EditForm + ZaloConnectForm/EditForm / products/ProductTable.vue + ProductFormModal.vue (manual+CSV) + ShopifyCatalogModal.vue / settings/ZaloWebhookCard.vue
     pages/ index.vue (:session-id=null + clearActive), c/[id].vue (:key + replace('/') on unknown), login.vue, 404.vue, [...all].vue, admin.vue (layout),
            admin/index.vue, admin/documents.vue, admin/products.vue (local CRUD + CSV import w/ result toast + Shopify Global Catalog modal: Enabled/endpoint/profile_url/catalog_id, Save/Test w/ toasts, Save closes), admin/settings.vue, admin/login.vue,
            admin/integrations/index.vue, admin/integrations/[id].vue, admin/integrations/zalo/[id].vue,
            admin/messages/index.vue, admin/messages/[id].vue
-    utils/ routeAccess.ts  # deny-list: only /admin* gated (/admin/login public); substring-match ADMIN_ONLY_DETAIL/ADMIN_NO_CHAT_DETAIL + redirectForStatus
+    utils/ routeAccess.ts  # deny-list: isAdminPath (/admin + /admin/…, segment boundary) gates, /admin/login public; substring-match ADMIN_ONLY_DETAIL/ADMIN_NO_CHAT_DETAIL + redirectForStatus
     utils/ text.ts  # stripInlineCitations (pure, no reactivity)
     utils/ format.ts  # formatDateTime/formatDateTimeDMY/formatSize/formatSyncInterval (pure)
     utils/ documents.ts  # statusBadge/isProcessingStatus (pure)
+    utils/ auth.ts  # isAdminUser + userAuthError/adminAuthError (pure)
   package.json (scripts: build/dev/preview only; deps: @comark/vue, @iconify-json/lucide, @nuxt/ui, @unhead/vue, axios, pinia, vue, vue-router, zod; node 24.x) / biome.json / vercel.json
 docs/research/  bilingual-rag.md, chat-quality-agent-production-logging.md, chat-vue-template.md, chatgpt-shopping-replication.md, citation-persistence.md, cqa-db-design-for-rag.md, ecommerce-rag-lessons.md, gated-retrieval-vs-reranking.md, httpx2-migration.md, integrations-facebook-feature.md, per-user-session-storage.md, product-search-complexity-review.md, search-functionality-comparison.md, shopify-global-catalog.md, shopify-store-connect.md, streaming-llm-frontend.md, zalo-integration.md, zalo-refactor-webhook-sdk.md
 ```

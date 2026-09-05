@@ -8,7 +8,8 @@ import { createRouter, createWebHistory } from "vue-router";
 import { routes as autoRoutes, handleHotUpdate } from "vue-router/auto-routes";
 import App from "./App.vue";
 import { useAuthStore } from "./stores/auth.ts";
-import { isPublicPath } from "./utils/routeAccess.ts";
+import { isAdminUser } from "./utils/auth.ts";
+import { isAdminPath, isPublicPath } from "./utils/routeAccess.ts";
 
 const app = createApp(App);
 const head = createHead();
@@ -26,10 +27,6 @@ app.config.errorHandler = (err, _instance, info) => {
 	console.error("[vue]", info, err);
 };
 
-function isAdminUser(u: any) {
-	return !!u && (u.role === "admin" || u.is_superuser);
-}
-
 router.beforeEach(async (to) => {
 	const auth = useAuthStore();
 	if (auth.token && !auth.user) {
@@ -39,7 +36,7 @@ router.beforeEach(async (to) => {
 	const isAdmin = isAdminUser(auth.user);
 
 	// Admin area — only admin role
-	if (to.path.startsWith("/admin")) {
+	if (isAdminPath(to.path)) {
 		if (to.path === "/admin/login") {
 			if (isAuthed) return isAdmin ? "/admin/" : "/login";
 			return;
