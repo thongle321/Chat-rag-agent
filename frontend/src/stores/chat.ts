@@ -27,6 +27,28 @@ export interface Conversation {
 	title: string;
 }
 
+// Shapes crossing trust boundaries (localStorage JSON, server API).
+interface StoredConversation {
+	createdAt: number;
+	id: string;
+	pinned: boolean;
+	sessionId?: string;
+	title: string;
+}
+
+interface ServerSession {
+	id: string;
+	created_at?: string;
+	pinned?: boolean;
+	title?: string;
+}
+
+interface ServerMessage {
+	role: string;
+	content: string;
+	sources?: StreamSource[];
+}
+
 export const useChatStore = defineStore("chat", () => {
 	const conversations = ref<Conversation[]>([]);
 	const activeId = ref("");
@@ -84,7 +106,7 @@ export const useChatStore = defineStore("chat", () => {
 			if (!raw) {
 				return;
 			}
-			conversations.value = JSON.parse(raw).map((s: any) => ({
+			conversations.value = JSON.parse(raw).map((s: StoredConversation) => ({
 				createdAt: s.createdAt,
 				id: s.id,
 				messages: [],
@@ -120,7 +142,7 @@ export const useChatStore = defineStore("chat", () => {
 	// Server wins (titles/pins synced via PATCH); blank local drafts dropped.
 	async function loadServerSessions() {
 		const { data } = await api.get("/chat/sessions");
-		conversations.value = (data || []).map((s: any) => ({
+		conversations.value = (data || []).map((s: ServerSession) => ({
 			createdAt: s.created_at ? Date.parse(s.created_at) : Date.now(),
 			id: s.id,
 			messages: [],
@@ -181,7 +203,7 @@ export const useChatStore = defineStore("chat", () => {
 			if (!conv) {
 				return;
 			}
-			conv.messages = (data.messages || []).map((m: any, i: number) => ({
+			conv.messages = (data.messages || []).map((m: ServerMessage, i: number) => ({
 				id: String(i),
 				role: m.role === "user" ? "user" : "assistant",
 				sources: m.sources ?? undefined,

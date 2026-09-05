@@ -62,7 +62,7 @@ frontend/
     main.ts / App.vue / layouts/default.vue / route-map.d.ts
     api/index.ts         # axios (180s timeout, JWT + 401/403 redirect interceptors, getErrorMessage) + streamChat (SSE via fetch; StreamSource/StreamProduct/StreamHandlers)
     stores/ chat.ts (anon-temp bucket, identity buckets, hydrating/prefetch, per-conv AbortController, id-swap onDone) / auth.ts (form-data login, syncChatBucket, boot fetchUser) / documents.ts / settings.ts
-    composables/ useChats.ts (date-grouped sidebar groups) / useChatActions.ts (rename/delete toasts + conversationMenuItems) / useChatSession.ts (bootstrap + send-and-route) / useThinkingTimer.ts (per-message Thought timing) / useConversationSearch.ts (palette groups + hover-prefetch) / useDocCount.ts (admin doc badge) / useChannelCrud.ts (FB/Zalo list/health/sync/disconnect + syncIntervalOptions) / useProductCatalog.ts (filter/sort/CRUD/CSV) / useShopifyCatalog.ts (catalog connect) / useDocumentUploads.ts (upload queue + status poll + delete)
+    composables/ useChats.ts (date-grouped sidebar groups) / useChatActions.ts (rename/delete toasts + conversationMenuItems) / useChatSession.ts (bootstrap + send-and-route) / useGreeting.ts (blank-composer greeting) / useThinkingTimer.ts (per-message Thought timing) / useConversationSearch.ts (palette groups + hover-prefetch) / useDocCount.ts (admin doc badge) / useChannelCrud.ts (FB/Zalo list/health/sync/disconnect + syncIntervalOptions) / useProductCatalog.ts (filter/sort/CRUD/CSV) / useShopifyCatalog.ts (catalog connect) / useDocumentUploads.ts (upload queue + status poll + delete)
     components/ AppLogo.vue / ChatSidebar.vue (nav + groups + search + user menu composition) / ChatComposer.vue / ChatView.vue (thin surface: session + header + messages + composer) / ModelSelect.vue / UserMenu.vue
     components/chat/ Indicator.vue / SourceLink.vue / ProductCard.vue / ChatHeader.vue (title menu + auth buttons) / UserMessage.vue (bubble + hover edit) / AssistantMessage.vue (thinking + Comark + sources + products + followups + copy) / ChatSkeleton.vue / RenameConversationModal.vue (shared sidebar+header) / SidebarUserMenu.vue
     components/auth/ AuthCard.vue (card shell) / PasswordInput.vue (eye toggle) / LoginForm.vue + RegisterForm.vue (zod, emit submit)
@@ -73,7 +73,7 @@ frontend/
            admin/messages/index.vue, admin/messages/[id].vue
     utils/ routeAccess.ts  # deny-list: isAdminPath (/admin + /admin/…, segment boundary) gates, /admin/login public; substring-match ADMIN_ONLY_DETAIL/ADMIN_NO_CHAT_DETAIL + redirectForStatus
     utils/ text.ts  # stripInlineCitations (pure, no reactivity)
-    utils/ format.ts  # formatDateTime/formatDateTimeDMY/formatSize/formatSyncInterval (pure)
+    utils/ format.ts  # formatDateTime/formatDateTimeDMY/formatSize/formatSyncInterval/formatUSD (pure)
     utils/ documents.ts  # statusBadge/isProcessingStatus (pure)
     utils/ auth.ts  # isAdminUser + userAuthError/adminAuthError (pure)
   package.json (scripts: build/dev/preview only; deps: @comark/vue, @iconify-json/lucide, @nuxt/ui, @unhead/vue, axios, pinia, vue, vue-router, zod; node 24.x) / biome.json / vercel.json

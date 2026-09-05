@@ -21,15 +21,21 @@ api.interceptors.response.use(
 	(err) => {
 		const status = err?.response?.status;
 		const detail: string = err?.response?.data?.detail || "";
-		const target = redirectForStatus(status, detail, window.location.pathname);
-		if (target) {
-			// 401 means the token is dead — drop it; 403 keeps it (role issue, not auth)
-			if (status === 401) localStorage.removeItem("auth_token");
-			window.location.href = target;
-		}
+		applyAuthRedirect(status, detail);
 		return Promise.reject(err);
 	},
 );
+
+// Shared auth-failure landing: one redirect rule for axios + streaming fetch.
+// 401 means the token is dead — drop it; 403 keeps it (role issue, not auth).
+// Returns true when a redirect fired (caller reports the message and stops).
+export function applyAuthRedirect(status: number | undefined, detail: string): boolean {
+	const target = redirectForStatus(status, detail, window.location.pathname);
+	if (!target) return false;
+	if (status === 401) localStorage.removeItem("auth_token");
+	window.location.href = target;
+	return true;
+}
 
 export function getErrorMessage(err: unknown): string {
 	if (!axios.isAxiosError(err)) {
@@ -83,11 +89,7 @@ export interface StreamHandlers {
 async function rejectStreamResponse(response: Response, handlers: StreamHandlers): Promise<boolean> {
 	if (response.ok) return false;
 	if (response.status === 401) {
-		const target = redirectForStatus(401, "", window.location.pathname);
-		if (target) {
-			localStorage.removeItem("auth_token");
-			window.location.href = target;
-		}
+		applyAuthRedirect(401, "");
 		handlers.onError("Please log in to chat");
 		return true;
 	}
@@ -97,8 +99,7 @@ async function rejectStreamResponse(response: Response, handlers: StreamHandlers
 			const b = await response.clone().json();
 			if (b?.detail) detail403 = typeof b.detail === "string" ? b.detail : detail403;
 		} catch {}
-		const target = redirectForStatus(403, detail403, window.location.pathname);
-		if (target) window.location.href = target;
+		applyAuthRedirect(403, detail403);
 		handlers.onError(detail403);
 		return true;
 	}

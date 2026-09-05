@@ -4,8 +4,8 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useChatActions } from "../composables/useChatActions";
 import { useChatSession } from "../composables/useChatSession";
+import { useGreeting } from "../composables/useGreeting";
 import { useThinkingTimer } from "../composables/useThinkingTimer";
-import { useAuthStore } from "../stores/auth";
 import { type ChatMessage, useChatStore } from "../stores/chat";
 import AssistantMessage from "./chat/AssistantMessage.vue";
 import ChatHeader from "./chat/ChatHeader.vue";
@@ -20,7 +20,6 @@ const props = defineProps<{ sessionId: string | null; temporary?: boolean }>();
 const emit = defineEmits<{ "not-found": [] }>();
 
 const chatStore = useChatStore();
-const authStore = useAuthStore();
 const router = useRouter();
 const { loading } = storeToRefs(chatStore);
 const { bootstrap, chatInput, handleSend, ready } = useChatSession(
@@ -30,14 +29,7 @@ const { bootstrap, chatInput, handleSend, ready } = useChatSession(
 );
 
 // Keep good morning only — like chat-vue (no quick prompts, no extra center text)
-const greeting = computed(() => {
-	const h = new Date().getHours();
-	let t = "Good evening";
-	if (h < 12) t = "Good morning";
-	else if (h < 18) t = "Good afternoon";
-	const name = authStore.user?.email?.split("@")[0] || "";
-	return name ? `${t}, ${name}` : t;
-});
+const greeting = useGreeting();
 
 // AI thought timing — per message: each assistant reply owns its counter,
 // frozen when its stream completes so older replies keep their own time.

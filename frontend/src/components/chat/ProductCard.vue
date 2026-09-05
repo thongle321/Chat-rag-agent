@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { StreamProduct } from "../../api/index";
-import { formatUSD } from "../../utils/price";
+import { formatUSD } from "../../utils/format";
 
 defineProps<{ product: StreamProduct }>();
 </script>
