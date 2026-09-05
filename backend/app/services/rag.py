@@ -56,6 +56,7 @@ class Deps:
 class RAGState:
     question: str
     intent: str = "docs"
+    shopping_out: Any = None
     history: list[ModelMessage] = field(default_factory=list)
     new_messages: list[ModelMessage] = field(default_factory=list)
     conversation_id: str | None = None
@@ -499,8 +500,13 @@ async def stream_answer(
                 if state.intent == "shopping":
                     # Structured citations: stream the answer field as it validates
                     # (partial mode), cite via data at the end — prose never carries markers.
+                    # The last partial is the complete validated output (StreamedRunResult
+                    # exposes no .output — stream_output() is the sanctioned reader).
                     sent = 0
+                    final_out: ShoppingAnswer | None = None
                     async for partial in result.stream_output(debounce_by=0.1):
+                        if isinstance(partial, ShoppingAnswer):
+                            final_out = partial
                         text = getattr(partial, "answer", "") or ""
                         if len(text) > sent:
                             delta = text[sent:]
@@ -508,6 +514,7 @@ async def stream_answer(
                             emitted = True
                             answer_parts.append(delta)
                             yield {"type": "text_delta", "content": delta}
+                    state.shopping_out = final_out
                 else:
                     async for delta in result.stream_text(delta=True):
                         emitted = True
@@ -556,12 +563,12 @@ async def stream_answer(
     # against tool results, dedupe, keep model order. Other tasks cite nothing.
     cited_products: list[dict] = []
     if state.intent == "shopping":
-        try:
-            out = result.output
-        except Exception:
-            out = None
+        out = state.shopping_out
         if isinstance(out, ShoppingAnswer):
             answer_parts = [out.answer]
+            # Structured runs store no TextPart (final message is an output-tool
+            # call) — append the prose as a real response or reloads lose the answer.
+            state.new_messages.append(ModelResponse(parts=[TextPart(content=out.answer)]))
             seen: set[int] = set()
             for i in out.cited_ids:
                 if 1 <= i <= len(deps.products) and i not in seen:
