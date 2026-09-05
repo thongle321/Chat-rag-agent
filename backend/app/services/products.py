@@ -14,8 +14,9 @@ import csv
 import io
 import logging
 import re
-from typing import Protocol
+from typing import Annotated, Protocol
 
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -285,6 +286,34 @@ def parse_csv(content: str) -> list[dict]:
     return items
 
 
+def _coerce_stock(v) -> int:
+    """Stock tolerates float-strings ('3.0') and garbage (→ 0, row still imports)."""
+    try:
+        return int(float(v)) if v is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+class ProductCsvRow(BaseModel):
+    """One CSV import row — name + price required, everything else optional."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=500)
+    description: str | None = None
+    price: float
+    currency: str = "USD"
+    image_url: str | None = None
+    product_url: str | None = None
+    category: str | None = None
+    stock: Annotated[int, BeforeValidator(_coerce_stock)] = 0
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _truncate_description(cls, v):
+        return v[:2000] if isinstance(v, str) else v
+
+
 def parse_csv_stats(content: str) -> tuple[list[dict], int]:
     """Parse CSV rows, rejecting feed-hygiene failures.
 
@@ -296,37 +325,14 @@ def parse_csv_stats(content: str) -> tuple[list[dict], int]:
     out = []
     skipped = 0
     for row in reader:
-        name = (row.get("name") or "").strip()
-        if not name:
+        # Drop blank cells so unset columns fall back to model defaults.
+        data = {k: v for k, v in row.items() if k and (v or "").strip()}
+        try:
+            item = ProductCsvRow.model_validate(data)
+        except ValidationError:
             skipped += 1
             continue
-        try:
-            raw_price = (row.get("price") or "").strip()
-            price = float(raw_price) if raw_price else None
-        except ValueError:
-            price = None
-        if price is None:
-            skipped += 1
-            continue
-        image_url = (row.get("image_url") or "").strip() or None
-        try:
-            stock = int(float(row.get("stock") or 0))
-        except ValueError:
-            stock = 0
-        out.append(
-            {
-                "name": name,
-                "description": (row.get("description") or "")[:2000] or None,
-                "price": price,
-                "currency": (row.get("currency") or "USD").strip() or "USD",
-                "image_url": image_url,
-                "product_url": (row.get("product_url") or "") or None,
-                "category": (row.get("category") or "") or None,
-                "stock": stock,
-                "source": "csv",
-                "external_id": None,
-            }
-        )
+        out.append({**item.model_dump(), "source": "csv", "external_id": None})
     return out, skipped
 
 
