@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.embeddings import get_embeddings, passage_prefix, query_prefix
 from app.db.session import async_session_factory
+from app.db.vector_store import fuse_ranks as _fuse
 from app.db.vector_store import get_product_store
-from app.db.vector_store import rrf as _rrf
 from app.models.unified import Product
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,20 @@ logger = logging.getLogger(__name__)
 # (Old SQL-scan gate was cosine similarity >= 0.30; distance = 1 - similarity.)
 PRODUCT_DISTANCE_GATE = 0.70
 
-PRODUCT_CHUNK_PREFIX = "product:"
+# Metadata fields round-tripped through the index: _chunk_meta writes them,
+# search_products reads them back. Add a field once, here.
+_DISPLAY_FIELDS = (
+    "name",
+    "description",
+    "price",
+    "currency",
+    "image_url",
+    "product_url",
+    "category",
+    "stock",
+    "source",
+    "external_id",
+)
 
 # Budget hints like "under $30" / "$10 max" feed the analyzer regex-fallback
 # (max_price pre-gate). Bare "$N" is deliberately NOT a ceiling ("2 for $10?",
@@ -75,7 +88,7 @@ def _product_text(p: Product) -> str:
 
 
 def product_chunk_id(pid: str) -> str:
-    return f"{PRODUCT_CHUNK_PREFIX}{pid}"
+    return f"product:{pid}"
 
 
 def _chunk_meta(p: Product) -> dict:
@@ -125,10 +138,6 @@ async def sync_products_to_index(products: list[Product]) -> None:
             )
     except Exception:
         logger.exception("product index sync failed (%d upserts, %d drops)", len(upserts), len(drops))
-
-
-async def sync_product_to_index(p: Product) -> None:
-    await sync_products_to_index([p])
 
 
 async def remove_product_from_index(pid: str) -> None:
@@ -209,10 +218,7 @@ async def search_products(
         dist_by_id = {h["id"]: h["score"] for h in vec_hits}
         vec_ranks = [h["id"] for h in vec_hits]
         bm25_ranks = await asyncio.to_thread(store.bm25_ranks, query, k * over)
-        if not bm25_ranks:
-            fused = [(h["id"], 1.0 / (settings.retrieval_rrf_k + i + 1)) for i, h in enumerate(vec_hits)]
-        else:
-            fused = _rrf([vec_ranks, bm25_ranks], k=settings.retrieval_rrf_k)
+        fused = _fuse(vec_ranks, bm25_ranks, k=settings.retrieval_rrf_k)
         gated = [(doc_id, sc) for doc_id, sc in fused if dist_by_id.get(doc_id, 2.0) < PRODUCT_DISTANCE_GATE]
         if not gated:
             logger.info("product search q=%r kept=0 (gated)", query[:60])
@@ -220,29 +226,15 @@ async def search_products(
         hydrated = {h["id"]: h["metadata"] for h in await asyncio.to_thread(store.fetch, [i for i, _ in gated])}
         scored = []
         for doc_id, score in gated:
-            m = hydrated.get(doc_id)
-            if not m:
-                continue
+            m = hydrated[doc_id]
             if category and m.get("category") != category:
                 continue
             price = m.get("price")
             if max_price is not None and (not isinstance(price, (int, float)) or price > max_price):
                 continue
-            d = {
-                "id": m.get("product_id", doc_id),
-                "name": m.get("name", ""),
-                "description": m.get("description"),
-                "price": price,
-                "currency": m.get("currency", "USD"),
-                "image_url": m.get("image_url"),
-                "product_url": m.get("product_url"),
-                "category": m.get("category"),
-                "stock": m.get("stock", 0),
-                "is_active": True,
-                "source": m.get("source"),
-                "external_id": m.get("external_id"),
-                "score": round(float(score), 4),
-            }
+            d = {"id": m["product_id"], "is_active": True, "score": round(float(score), 4)}
+            for f in _DISPLAY_FIELDS:
+                d[f] = m.get(f)
             scored.append((d, score))
         out = [d for d, _ in _rerank(query, scored)[:k]]
         logger.info("product search q=%r kept=%d", query[:60], len(out))

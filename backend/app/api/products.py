@@ -13,7 +13,7 @@ from app.services.products import (
     product_to_dict,
     remove_product_from_index,
     search_products,
-    sync_product_to_index,
+    sync_products_to_index,
     sync_source,
 )
 from app.services.user_manager import current_admin_user
@@ -50,7 +50,7 @@ async def create_product(body: ProductUpsert, db: AsyncSession = Depends(get_asy
     db.add(p)
     await db.commit()
     await db.refresh(p)
-    await sync_product_to_index(p)
+    await sync_products_to_index([p])
     return product_to_dict(p)
 
 
@@ -65,7 +65,7 @@ async def update_product(
         setattr(p, k, v)
     await db.commit()
     await db.refresh(p)
-    await sync_product_to_index(p)  # deactivation drops it from the index
+    await sync_products_to_index([p])  # deactivation drops it from the index
     return product_to_dict(p)
 
 

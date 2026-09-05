@@ -42,6 +42,13 @@ def rrf(ranked: list[list[str]], k: int = 60) -> list[tuple[str, float]]:
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 
+def fuse_ranks(vec_ranks: list[str], bm25_ranks: list[str], k: int = 60) -> list[tuple[str, float]]:
+    """RRF fusion; dense-only reciprocal-rank scores when BM25 has no ranks."""
+    if not bm25_ranks:
+        return [(doc_id, 1.0 / (k + i + 1)) for i, doc_id in enumerate(vec_ranks)]
+    return rrf([vec_ranks, bm25_ranks], k=k)
+
+
 class ChromaVectorStore:
     def __init__(self, collection_name: str = "documents", bm25_subdir: str = "bm25_index") -> None:
         self._client = chromadb.PersistentClient(path=str(persist_dir))

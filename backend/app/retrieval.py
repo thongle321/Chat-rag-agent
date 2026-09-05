@@ -5,8 +5,8 @@ from app.core.config import settings
 from app.db.embeddings import get_embeddings
 from app.db.embeddings import passage_prefix as _passage_prefix
 from app.db.embeddings import query_prefix as _query_prefix
+from app.db.vector_store import fuse_ranks as _fuse
 from app.db.vector_store import get_vector_store
-from app.db.vector_store import rrf as _rrf
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +27,7 @@ class ChromaRetrieval:
         vec_ranks = [h["id"] for h in vec_hits]
         # bm25 ranks
         bm25_ranks = store.bm25_ranks(query, k=k * over)
-        if not bm25_ranks:
-            fused = [(h["id"], 1.0 / (settings.retrieval_rrf_k + i + 1)) for i, h in enumerate(vec_hits)]
-        else:
-            fused = _rrf([vec_ranks, bm25_ranks], k=settings.retrieval_rrf_k)
+        fused = _fuse(vec_ranks, bm25_ranks, k=settings.retrieval_rrf_k)
         fused = fused[: k * 2]
         # gate on cosine distance if enabled
         thr = settings.retrieval_distance_threshold
