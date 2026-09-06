@@ -207,7 +207,13 @@ def _format_products(prods: list[dict], start: int = 0) -> str:
         price = format_usd(p.get("price"), p.get("currency"))
         stock = f", stock {p.get('stock', 0)}" if p.get("stock") is not None else ""
         seller = f", sold by {p['seller']}" if p.get("seller") else ""
-        lines.append(f"[P{i}] {p['name']} — {price}{stock}{seller} (id: {p['id']})")
+        line = f"[P{i}] {p['name']} — {price}{stock}{seller} (id: {p['id']})"
+        # Shopify-only: hand the LLM the clickable URL; local rows stay as-is.
+        if p.get("source") == "shopify-global":
+            url = p.get("product_url") or p.get("checkout_url")
+            if url:
+                line += f" — link: {url}"
+        lines.append(line)
     return "\n".join(lines)
 
 
