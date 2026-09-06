@@ -67,3 +67,8 @@ class StatsResponse(BaseModel):
     total_chunks: int
     total_sessions: int
     total_queries: int
+    web_conversations: int = 0
+    facebook_conversations: int = 0
+    total_conversations: int = 0
+    total_messages: int = 0
+    active_channels: int = 0

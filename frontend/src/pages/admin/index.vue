@@ -4,8 +4,11 @@ import api from "../../api";
 const dashStats = ref({
 	total_documents: 0,
 	total_chunks: 0,
-	total_sessions: 0,
-	total_queries: 0,
+	web_conversations: 0,
+	facebook_conversations: 0,
+	total_conversations: 0,
+	total_messages: 0,
+	active_channels: 0,
 });
 
 const stats = computed(() => [
@@ -22,36 +25,43 @@ const stats = computed(() => [
 		color: "info" as const,
 	},
 	{
-		label: "Sessions",
-		value: dashStats.value.total_sessions,
-		icon: "i-lucide-message-square",
+		label: "Web Conversations",
+		value: dashStats.value.web_conversations,
+		icon: "i-lucide-globe",
 		color: "success" as const,
 	},
 	{
-		label: "Queries",
-		value: dashStats.value.total_queries,
-		icon: "i-lucide-search",
+		label: "Facebook Conversations",
+		value: dashStats.value.facebook_conversations,
+		icon: "i-lucide-facebook",
+		color: "info" as const,
+	},
+	{
+		label: "Total Conversations",
+		value: dashStats.value.total_conversations,
+		icon: "i-lucide-messages-square",
+		color: "primary" as const,
+	},
+	{
+		label: "Total Messages",
+		value: dashStats.value.total_messages,
+		icon: "i-lucide-mail",
 		color: "warning" as const,
 	},
+	{
+		label: "Active Channels",
+		value: dashStats.value.active_channels,
+		icon: "i-lucide-plug",
+		color: "success" as const,
+	},
 ]);
-
-const health = ref({ api: false, vector_store: false });
 
 onMounted(async () => {
 	try {
 		const { data } = await api.get("/stats");
-		dashStats.value = data;
+		Object.assign(dashStats.value, data);
 	} catch {
 		// keep defaults
-	}
-	try {
-		const { data } = await api.get("/health/detailed");
-		health.value = {
-			api: data.status === "ok",
-			vector_store: data.components?.vector_store === "ok",
-		};
-	} catch {
-		health.value = { api: false, vector_store: false };
 	}
 });
 </script>
@@ -87,49 +97,6 @@ onMounted(async () => {
                                 :name="stat.icon"
                                 class="text-3xl text-muted opacity-50"
                             />
-                        </div>
-                    </UCard>
-                </div>
-
-                <div class="grid gap-6">
-                    <UCard>
-                        <template #header>
-                            <div class="flex items-center gap-2">
-                                <UIcon
-                                    name="i-lucide-check-circle"
-                                    class="text-success"
-                                />
-                                <span class="font-semibold">System Status</span>
-                            </div>
-                        </template>
-
-                        <div class="flex flex-col gap-3">
-                            <div class="flex items-center justify-between">
-                                <span class="text-sm">API Server</span>
-                                <UBadge
-                                    :color="health.api ? 'success' : 'error'"
-                                    variant="soft"
-                                    size="sm"
-                                >
-                                    {{ health.api ? "Normal" : "Error" }}
-                                </UBadge>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-sm">Vector Store</span>
-                                <UBadge
-                                    :color="
-                                        health.vector_store
-                                            ? 'success'
-                                            : 'error'
-                                    "
-                                    variant="soft"
-                                    size="sm"
-                                >
-                                    {{
-                                        health.vector_store ? "Normal" : "Error"
-                                    }}
-                                </UBadge>
-                            </div>
                         </div>
                     </UCard>
                 </div>
