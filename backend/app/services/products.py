@@ -20,12 +20,11 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationEr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.embeddings import get_embeddings, passage_prefix, query_prefix
 from app.db.session import async_session_factory
-from app.db.vector_store import fuse_ranks as _fuse
 from app.db.vector_store import get_product_store
 from app.models.unified import Product
+from app.retrieval import hybrid_rank
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +201,7 @@ async def search_products(
 ) -> list[dict]:
     """Return top-k active products ranked by the products vector collection. Empty = no match.
 
-    Hybrid RRF (dense over-retrieve + BM25 ranks) + cosine-distance gate, then
+    Hybrid RRF via the shared hybrid_rank pipeline + cosine-distance gate, then
     category/max_price post-filters on chunk metadata (priceless rows excluded
     when gated). Display fields hydrate from the index — SQL is never scanned.
     """
@@ -212,25 +211,17 @@ async def search_products(
         store = get_product_store()
         # FastEmbed/Chroma/BM25 are blocking — offload (AGENTS.md Gotchas)
         q_emb = await asyncio.to_thread(lambda: next(get_embeddings().query_embed(query_prefix() + query)))
-        over = settings.retrieval_bm25_overretrieve
         # Category pushes into the dense side (pre-fusion); the Python post-filter
         # below still guards BM25-only strays. max_price stays post-filter so
         # priceless rows are excluded with explicit semantics.
         where = {"category": category} if category else None
-        vec_hits = await asyncio.to_thread(store.query, q_emb, k * over, where)
-        if not vec_hits:
-            return []
-        dist_by_id = {h["id"]: h["score"] for h in vec_hits}
-        vec_ranks = [h["id"] for h in vec_hits]
-        bm25_ranks = await asyncio.to_thread(store.bm25_ranks, query, k * over)
-        fused = _fuse(vec_ranks, bm25_ranks, k=settings.retrieval_rrf_k)
-        gated = [(doc_id, sc) for doc_id, sc in fused if dist_by_id.get(doc_id, 2.0) < PRODUCT_DISTANCE_GATE]
-        if not gated:
+        ranked = await asyncio.to_thread(hybrid_rank, store, query, q_emb, k, where=where, gate=PRODUCT_DISTANCE_GATE)
+        if not ranked:
             logger.info("product search q=%r kept=0 (gated)", query[:60])
             return []
-        hydrated = {h["id"]: h["metadata"] for h in await asyncio.to_thread(store.fetch, [i for i, _ in gated])}
+        hydrated = {h["id"]: h["metadata"] for h in await asyncio.to_thread(store.fetch, [i for i, _, _ in ranked])}
         scored = []
-        for doc_id, score in gated:
+        for doc_id, score, _ in ranked:
             m = hydrated[doc_id]
             if category and m.get("category") != category:
                 continue
