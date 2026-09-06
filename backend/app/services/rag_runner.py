@@ -212,6 +212,7 @@ async def stream_answer(
     user_id: str | None = None,
     user_email: str | None = None,
     ip_address: str | None = None,
+    persist: bool = True,
 ):
     """Core streaming RAG pipeline. Yields event dicts: text_delta, sources, done, error."""
     t0 = time.perf_counter()
@@ -222,7 +223,7 @@ async def stream_answer(
         return
 
     sid = session_id or str(uuid.uuid4())
-    history = await load_messages(sid)
+    history = await load_messages(sid, persist=persist)
     state = RAGState(question=question, history=history, conversation_id=sid)
     deps = Deps(model=model, model_name=model_name, retrieval=get_retrieval())
     try:
@@ -342,53 +343,55 @@ async def stream_answer(
             if isinstance(m, ModelResponse) and any(isinstance(p, TextPart) for p in m.parts):
                 m.metadata = {"sources": stubs}
                 break
-    await save_messages(sid, history + state.new_messages)
+    await save_messages(sid, history + state.new_messages, persist=persist)
     # --- Durable per-message logs to app.db (like CQA messages + ai_usage_logs) ---
+    # Guest (memory-only) threads skip durable logs entirely.
     latency_ms = int((time.perf_counter() - t0) * 1000)
-    try:
-        answer_text = "".join(answer_parts)
-        # user turn
-        await log_chat_message(
-            session_id=sid,
-            role="user",
-            content=question,
-            user_id=user_id,
-            user_email=user_email,
-            ip_address=ip_address,
-        )
-        # assistant turn — keep forever, no TTL (mirrors CQA messages + ai_usage_logs)
-        await log_chat_message(
-            session_id=sid,
-            role="assistant",
-            content=answer_text,
-            user_id=user_id,
-            user_email=user_email,
-            model=model_name,
-            sources=state.sources,
-            latency_ms=latency_ms,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            ip_address=ip_address,
-        )
-        await log_activity(
-            action="chat.query",
-            user_id=user_id,
-            user_email=user_email,
-            resource_type="session",
-            resource_id=sid,
-            detail=json.dumps(
-                {
-                    "model": model_name,
-                    "sources_n": len(state.sources),
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                },
-                ensure_ascii=False,
-            ),
-            ip_address=ip_address,
-        )
-    except Exception:
-        logger.exception("chat logging failed sid=%s", sid)
+    if persist:
+        try:
+            answer_text = "".join(answer_parts)
+            # user turn
+            await log_chat_message(
+                session_id=sid,
+                role="user",
+                content=question,
+                user_id=user_id,
+                user_email=user_email,
+                ip_address=ip_address,
+            )
+            # assistant turn — keep forever, no TTL (mirrors CQA messages + ai_usage_logs)
+            await log_chat_message(
+                session_id=sid,
+                role="assistant",
+                content=answer_text,
+                user_id=user_id,
+                user_email=user_email,
+                model=model_name,
+                sources=state.sources,
+                latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                ip_address=ip_address,
+            )
+            await log_activity(
+                action="chat.query",
+                user_id=user_id,
+                user_email=user_email,
+                resource_type="session",
+                resource_id=sid,
+                detail=json.dumps(
+                    {
+                        "model": model_name,
+                        "sources_n": len(state.sources),
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                    },
+                    ensure_ascii=False,
+                ),
+                ip_address=ip_address,
+            )
+        except Exception:
+            logger.exception("chat logging failed sid=%s", sid)
     yield {"type": "sources", "sources": state.sources}
     if followups:
         yield {"type": "followups", "followups": followups}
@@ -402,9 +405,12 @@ async def answer_question(
     user_id: str | None = None,
     user_email: str | None = None,
     ip_address: str | None = None,
+    persist: bool = True,
 ) -> ChatResponse:
     answer = ""
-    async for ev in stream_answer(question, session_id, user_id=user_id, user_email=user_email, ip_address=ip_address):
+    async for ev in stream_answer(
+        question, session_id, user_id=user_id, user_email=user_email, ip_address=ip_address, persist=persist
+    ):
         if ev["type"] == "text_delta":
             answer += ev["content"]
         elif ev["type"] == "error":

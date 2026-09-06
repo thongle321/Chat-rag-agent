@@ -19,7 +19,13 @@ from app.services.rag import answer_question, stream_answer
 router = APIRouter()
 
 
-async def _ensure_session(request: ChatRequest, db: AsyncSession, user_id: str | None = None) -> ChatSession:
+async def _ensure_session(
+    request: ChatRequest, db: AsyncSession, user_id: str | None = None, *, persist: bool = True
+) -> ChatSession:
+    if not persist:
+        # Guest thread: memory-only, no ChatSession row (never claimed, never counted).
+        return ChatSession(id=request.session_id or str(uuid.uuid4()), title="New chat", user_id=None)
+
     session_id = request.session_id
 
     if session_id:
@@ -41,6 +47,8 @@ async def _ensure_session(request: ChatRequest, db: AsyncSession, user_id: str |
 
 
 async def _finish_title(session: ChatSession, question: str, db: AsyncSession) -> None:
+    if session.user_id is None:
+        return  # transient guest session — nothing persisted to update
     if session.title == "New chat":
         session.title = question[:60]
 
@@ -131,10 +139,16 @@ async def query_chat(
 ):
     # Allow anonymous like ChatGPT — best-effort auth for logging
     user_id, user_email = await _optional_user_with_email(http_request, db)
-    session = await _ensure_session(request, db, user_id=user_id)
+    persist = user_id is not None
+    session = await _ensure_session(request, db, user_id=user_id, persist=persist)
     ip = _client_ip(http_request)
     response = await answer_question(
-        request.question, session_id=session.id, user_id=user_id, user_email=user_email, ip_address=ip
+        request.question,
+        session_id=session.id,
+        user_id=user_id,
+        user_email=user_email,
+        ip_address=ip,
+        persist=persist,
     )
     await _finish_title(session, request.question, db)
     return response
@@ -166,13 +180,19 @@ def _format_sse(ev: dict) -> str | None:
 @router.post("/query/stream")
 async def query_chat_stream(request: ChatRequest, http_request: Request, db: AsyncSession = Depends(get_async_session)):
     user_id, user_email = await _optional_user_with_email(http_request, db)
-    session = await _ensure_session(request, db, user_id=user_id)
+    persist = user_id is not None
+    session = await _ensure_session(request, db, user_id=user_id, persist=persist)
     session_id = session.id
     ip = _client_ip(http_request)
 
     async def event_stream() -> AsyncIterator[str]:
         async for ev in stream_answer(
-            request.question, session_id, user_id=user_id, user_email=user_email, ip_address=ip
+            request.question,
+            session_id,
+            user_id=user_id,
+            user_email=user_email,
+            ip_address=ip,
+            persist=persist,
         ):
             frame = _format_sse(ev)
             if frame is not None:

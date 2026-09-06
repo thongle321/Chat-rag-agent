@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_STORED_MESSAGES = 1000
 
+# Guest threads (memory-only, never persisted): sid -> recent messages.
+# Process lifetime, FIFO-capped — a restart drops guest history by design.
+_GUEST_MEM: dict[str, list[ModelMessage]] = {}
+_GUEST_MEM_MAX_SESSIONS = 1000
+
 
 def _extract_text_and_role(msg: ModelMessage) -> tuple[str, str]:
     try:
@@ -217,7 +222,9 @@ async def delete_sync_logs_by_page(page_id: str, channel_type: str = "facebook")
         return 0
 
 
-async def load_messages(session_id: str) -> list[ModelMessage]:
+async def load_messages(session_id: str, *, persist: bool = True) -> list[ModelMessage]:
+    if not persist:
+        return list(_GUEST_MEM.get(session_id, []))
     try:
         from app.models.unified import Message
 
@@ -236,8 +243,13 @@ async def load_messages(session_id: str) -> list[ModelMessage]:
         return []
 
 
-async def save_messages(session_id: str, messages: list[ModelMessage]) -> None:
+async def save_messages(session_id: str, messages: list[ModelMessage], *, persist: bool = True) -> None:
     messages = messages[-_MAX_STORED_MESSAGES:]
+    if not persist:
+        _GUEST_MEM[session_id] = list(messages)
+        while len(_GUEST_MEM) > _GUEST_MEM_MAX_SESSIONS:
+            _GUEST_MEM.pop(next(iter(_GUEST_MEM)))
+        return
     raw_datas: list[str] = []
     metas: list[tuple[str, str]] = []
     for m in messages:
@@ -270,6 +282,7 @@ async def save_messages(session_id: str, messages: list[ModelMessage]) -> None:
 
 
 async def delete_conversation(session_id: str) -> None:
+    _GUEST_MEM.pop(session_id, None)
     try:
         from app.models.unified import Conversation, Message
 
