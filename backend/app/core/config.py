@@ -1,16 +1,26 @@
 from pathlib import Path
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def normalize_ollama_url(v: str) -> str:
+    """Trailing slash + one /api suffix go. Shared by the Settings validator
+    (construction) and PUT /settings/ai (runtime assignment skips validation)."""
+    url = v.rstrip("/")
+    if url.endswith("/api"):
+        url = url[:-4]
+    return url
 
 
 class Settings(BaseSettings):
     app_name: str = "VeilAi Rag"
     version: str = "0.1.0"
     environment: str = "development"
-    ai_provider: str = "ollama"
+    ai_provider: Literal["ollama", "openai"] = "ollama"
     openai_api_key: SecretStr = SecretStr("")
     openai_model: str = "gpt-5.5"
     ollama_api_key: SecretStr = SecretStr("")
@@ -47,10 +57,16 @@ class Settings(BaseSettings):
     zalo_webhook_url: str = ""
     upload_dir: str = str(_BACKEND_ROOT / "data" / "uploads")
     vector_store_dir: str = str(_BACKEND_ROOT / ".chromadb")
-    retrieval_k: int = 8
+    retrieval_k: int = Field(default=8, gt=0, le=50)
     retrieval_rrf_k: int = 60
     retrieval_distance_threshold: float | None = None
-    retrieval_bm25_overretrieve: int = 2
+    retrieval_bm25_overretrieve: int = Field(default=2, ge=1)
+
+    @field_validator("ollama_base_url")
+    @classmethod
+    def _strip_api_suffix(cls, v: str) -> str:
+        return normalize_ollama_url(v)
+
     model_config = SettingsConfigDict(env_file=_BACKEND_ROOT / ".env", extra="ignore")
 
 

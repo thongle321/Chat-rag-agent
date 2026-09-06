@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import normalize_ollama_url, settings
 from app.db.session import get_async_session
 from app.models.user import User
 from app.services.ai_settings import save_ai_settings
@@ -108,10 +108,7 @@ async def update_ai_settings(
         settings.ai_provider = body.ai_provider
 
     if body.ollama_base_url is not None:
-        url = body.ollama_base_url.rstrip("/")
-        if url.endswith("/api"):
-            url = url[:-4]
-        settings.ollama_base_url = url
+        settings.ollama_base_url = normalize_ollama_url(body.ollama_base_url)
 
     if body.ollama_model is not None:
         settings.ollama_model = body.ollama_model

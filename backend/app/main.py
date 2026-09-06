@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi_users.password import PasswordHelper
+from pydantic import SecretStr
 from sqlalchemy import select
 from starlette.types import Receive, Scope, Send
 
@@ -49,14 +50,11 @@ async def lifespan(app: FastAPI):
             settings.openai_model = db["openai_model"]
             settings.openai_api_key = db["openai_api_key"]
             if db.get("zalo_api_key"):
-                from pydantic import SecretStr as _SecretStr
-                settings.zalo_api_key = _SecretStr(db["zalo_api_key"])
+                settings.zalo_api_key = SecretStr(db["zalo_api_key"])
             if db.get("zalo_verify_token"):
-                from pydantic import SecretStr as _SecretStr2
-                settings.zalo_verify_token = _SecretStr2(db["zalo_verify_token"])
+                settings.zalo_verify_token = SecretStr(db["zalo_verify_token"])
             elif db.get("zalo_api_key"):
-                from pydantic import SecretStr as _SecretStr3
-                settings.zalo_verify_token = _SecretStr3(db["zalo_api_key"])
+                settings.zalo_verify_token = SecretStr(db["zalo_api_key"])
             if db.get("zalo_webhook_url"):
                 settings.zalo_webhook_url = db["zalo_webhook_url"]
         result = await session.execute(select(User).where(User.email == "admin@example.com"))
