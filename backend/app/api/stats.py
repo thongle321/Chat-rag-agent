@@ -51,7 +51,12 @@ async def get_stats(db: AsyncSession = Depends(get_async_session), user: User = 
     from app.models.unified import Channel, Conversation, Message
 
     fb_channel_ids = select(Channel.id).where(Channel.channel_type == "facebook")
-    web_convs_q = select(func.count(Conversation.id)).where(Conversation.channel_id.is_(None))
+    web_convs_q = (
+        select(func.count(Conversation.id))
+        .select_from(Conversation)
+        .join(ChatSession, ChatSession.id == Conversation.id)
+        .where(Conversation.channel_id.is_(None), ChatSession.user_id.is_not(None))
+    )
     fb_convs_q = select(func.count(Conversation.id)).where(Conversation.channel_id.in_(fb_channel_ids))
     web_convs = (await db.execute(web_convs_q)).scalar() or 0
     fb_convs = (await db.execute(fb_convs_q)).scalar() or 0
@@ -69,16 +74,20 @@ async def get_stats(db: AsyncSession = Depends(get_async_session), user: User = 
     fb_ids = set((await db.execute(fb_channel_ids)).scalars().all())
     msg_rows = (
         await db.execute(
-            select(Message.raw_data, Conversation.channel_id).join(
-                Conversation, Message.conversation_id == Conversation.id
-            )
+            select(Message.raw_data, Conversation.channel_id, ChatSession.user_id)
+            .select_from(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .outerjoin(ChatSession, ChatSession.id == Conversation.id)
         )
     ).all()
     total_msgs = 0
-    for raw, ch_id in msg_rows:
+    for raw, ch_id, owner in msg_rows:
         if not raw:
             continue
-        if ch_id is not None and ch_id not in fb_ids:  # zalo etc. — ignored by design
+        if ch_id is None:
+            if owner is None:  # guest or orphan web thread — excluded by design
+                continue
+        elif ch_id not in fb_ids:  # zalo etc. — ignored by design
             continue
         try:
             (m,) = ModelMessagesTypeAdapter.validate_json(f"[{raw}]")
