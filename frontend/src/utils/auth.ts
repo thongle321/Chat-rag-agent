@@ -21,7 +21,7 @@ export function userAuthError(err: unknown, storeMessage: string, isRegister: bo
 
 export function adminAuthError(err: unknown, storeMessage: string): string {
 	const status = httpStatus(err);
-	if (status === 401 || status === 400) return "Incorrect email or password. Please try again.";
+	if (status === 401 || status === 400) return "Incorrect email or password.";
 	if (status === 403) return "Your account does not have access. Contact an administrator.";
 	if (status === 429) return "Too many attempts. Please wait a moment before trying again.";
 	if (status && status >= 500) return "Something went wrong on our end. Please try again shortly.";
