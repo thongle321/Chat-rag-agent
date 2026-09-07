@@ -66,7 +66,7 @@ const activeCite = ref<number | null>(null);
           </div>
 
           <div class="flex items-center gap-1 mt-3">
-            <UButton variant="ghost" color="neutral" size="xs" :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" @click="copy(msg.text)">
+            <UButton variant="ghost" color="neutral" size="xs" :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" @click="copy(stripInlineCitations(msg.text))">
               {{ copied ? "Copied" : "Copy" }}
             </UButton>
           </div>

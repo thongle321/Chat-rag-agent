@@ -38,7 +38,7 @@ function saveEdit(msg: ChatMessage) {
         <UButton size="xs" color="primary" label="Save" :disabled="!editingText.trim()" @click="saveEdit(msg)" />
       </div>
     </div>
-    <div v-if="!editing" class="flex justify-end w-full max-w-[85%] md:max-w-[78%] opacity-0 group-hover:opacity-100 transition">
+    <div v-if="!editing" class="flex justify-end w-full max-w-[85%] md:max-w-[78%] opacity-0 group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100 transition">
       <UButton icon="i-lucide-pencil" color="neutral" variant="ghost" size="xs" aria-label="Edit" @click="startEdit(msg)" />
     </div>
   </div>

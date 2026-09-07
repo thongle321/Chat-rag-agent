@@ -25,13 +25,8 @@ async function loadThread() {
 		const { data: d } = await api.get(`/chat/sessions/${id.value}`);
 		messages.value = d.messages || [];
 	} catch (err: any) {
-		try {
-			const { data: d } = await api.get(`/chat/sessions/${id.value}`);
-			messages.value = d.messages || [];
-		} catch (e: any) {
-			error.value = e?.response?.data?.detail || "Thread not found";
-			messages.value = [];
-		}
+		error.value = err?.response?.data?.detail || "Thread not found";
+		messages.value = [];
 	} finally {
 		loading.value = false;
 	}
@@ -58,7 +53,10 @@ watch(() => route.params.id, loadThread);
         <div v-else-if="error" class="flex flex-col items-center py-12">
           <UIcon name="i-lucide-alert-circle" class="size-12 text-error mb-3" />
           <p class="text-muted mb-4">{{ error }}</p>
-          <UButton to="/admin/messages">Back to messages</UButton>
+          <div class="flex gap-2">
+            <UButton variant="outline" @click="loadThread">Retry</UButton>
+            <UButton to="/admin/messages">Back to messages</UButton>
+          </div>
         </div>
         <div v-else-if="!messages.length" class="flex-1 flex items-center justify-center">
           <div class="text-center text-muted py-12">No messages in this conversation.</div>

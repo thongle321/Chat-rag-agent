@@ -106,8 +106,7 @@ async function sendAndScroll(question: string) {
 </script>
 
 <template>
-  <UDashboardGroup v-if="ready" unit="rem" class="h-screen bg-bg text-default overflow-hidden">
-    <ChatSidebar v-model:open="sidebarOpen" :on-navigate="closeSidebarOnMobile" />
+  <UDashboardGroup v-if="ready" unit="rem" class="h-screen bg-bg text-default overflow-hidden">    <ChatSidebar v-model:open="sidebarOpen" :on-navigate="closeSidebarOnMobile" />
 
     <!-- Main area like chat-vue: rounded panel -->
     <div class="flex-1 flex flex-col min-w-0 m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow-sm overflow-hidden">
@@ -128,6 +127,7 @@ async function sendAndScroll(question: string) {
                 <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">{{ greeting }}</h1>
                 <div class="[view-transition-name:chat-prompt]">
                   <ChatComposer v-model="chatInput" :disabled="chatStore.loading" :big="true" @send="sendAndScroll" />
+                  <UAlert v-if="chatStore.error" type="error" color="error" variant="soft" :description="chatStore.error" icon="i-lucide-circle-x" class="mt-4" />
                 </div>
               </div>
             </div>
@@ -162,4 +162,7 @@ async function sendAndScroll(question: string) {
     <!-- Same modal as sidebar: Rename shares identical UI -->
     <RenameConversationModal v-model:open="renameOpen" :initial-title="currentTitle" @submit="saveHeaderTitle" />
   </UDashboardGroup>
+  <div v-else class="h-screen flex items-center justify-center bg-bg">
+    <ULoader />
+  </div>
 </template>

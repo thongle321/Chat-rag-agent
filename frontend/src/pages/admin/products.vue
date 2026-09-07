@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { getErrorMessage } from "../../api/index.ts";
 import ConfirmModal from "../../components/admin/ConfirmModal.vue";
 import EmptyState from "../../components/admin/EmptyState.vue";
 import ProductFormModal from "../../components/admin/products/ProductFormModal.vue";
@@ -8,6 +9,7 @@ import ShopifyCatalogModal from "../../components/admin/products/ShopifyCatalogM
 import { type Product, useProductCatalog } from "../../composables/useProductCatalog";
 
 const catalog = useProductCatalog();
+const toast = useToast();
 
 const formModalOpen = ref(false);
 const editing = ref<Product | null>(null);
@@ -26,8 +28,7 @@ function openEdit(p: Product) {
 }
 
 async function onSubmit(form: Parameters<typeof catalog.saveProduct>[1]) {
-	await catalog.saveProduct(editing.value, form);
-	formModalOpen.value = false;
+	if (await catalog.saveProduct(editing.value, form)) formModalOpen.value = false;
 }
 
 async function onImport(file: File) {
@@ -42,9 +43,13 @@ function confirmDelete(id: string) {
 
 async function onDelete() {
 	if (!deleteTarget.value) return;
-	await catalog.removeProduct(deleteTarget.value);
-	deleteOpen.value = false;
-	deleteTarget.value = null;
+	try {
+		await catalog.removeProduct(deleteTarget.value);
+		deleteOpen.value = false;
+		deleteTarget.value = null;
+	} catch (err: unknown) {
+		toast.add({ color: "error", description: getErrorMessage(err), title: "Delete failed" });
+	}
 }
 
 onMounted(() => {
@@ -63,7 +68,7 @@ onMounted(() => {
     </template>
 
     <template #body>
-      <div class="px-6 py-3 flex items-center justify-end gap-2">
+      <div class="px-6 py-3 flex flex-wrap items-center justify-end gap-2">
         <UButton color="neutral" variant="outline" icon="i-lucide-shopping-bag" label="Shopify Catalog" @click="catalogOpen = true" />
         <UButton color="primary" variant="solid" icon="i-lucide-plus" label="Add product" @click="openCreate" />
       </div>
@@ -71,7 +76,7 @@ onMounted(() => {
       <UCard class="flex-1 flex flex-col min-h-0" :ui="{ body: 'p-0 flex-1 flex flex-col min-h-0 overflow-hidden' }">
         <template #header>
           <div class="flex items-center justify-end gap-2">
-            <UInput v-model="catalog.query.value" icon="i-lucide-search" placeholder="Search name, category…" class="w-72" />
+            <UInput v-model="catalog.query.value" icon="i-lucide-search" placeholder="Search name, category…" class="w-full sm:w-72" />
           </div>
         </template>
         <!-- Table / States -->
@@ -79,6 +84,8 @@ onMounted(() => {
           <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
           <span>Loading catalog…</span>
         </div>
+
+        <UAlert v-else-if="catalog.loadError.value" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="catalog.loadError.value" />
 
         <EmptyState
           v-else-if="!catalog.products.value.length"

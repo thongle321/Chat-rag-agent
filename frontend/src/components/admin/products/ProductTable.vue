@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Product } from "../../../composables/useProductCatalog";
+import { formatUSD } from "../../../utils/format";
 
 defineProps<{
 	products: Product[];
@@ -24,20 +25,20 @@ function sortIcon(field: keyof Product, sortBy: keyof Product, sortDir: "asc" | 
       <thead class="text-left text-xs uppercase tracking-wider text-muted bg-elevated/50 sticky top-0 z-10 border-b border-default backdrop-blur-xs">
         <tr>
           <th class="py-3 px-4 w-16">Image</th>
-          <th class="py-3 px-4 cursor-pointer select-none" @click="emit('sort', 'name')">
+          <th class="py-3 px-4 cursor-pointer select-none" tabindex="0" role="button" :aria-sort="sortBy === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'" @click="emit('sort', 'name')" @keydown.enter="emit('sort', 'name')" @keydown.space.prevent="emit('sort', 'name')">
             <span class="inline-flex items-center gap-1.5 font-medium">
               Name
               <UIcon :name="sortIcon('name', sortBy, sortDir)" class="size-3.5" :class="sortBy === 'name' ? 'text-primary' : 'opacity-40'" />
             </span>
           </th>
           <th class="py-3 px-4">Category</th>
-          <th class="py-3 px-4 cursor-pointer select-none" @click="emit('sort', 'price')">
+          <th class="py-3 px-4 cursor-pointer select-none" tabindex="0" role="button" :aria-sort="sortBy === 'price' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'" @click="emit('sort', 'price')" @keydown.enter="emit('sort', 'price')" @keydown.space.prevent="emit('sort', 'price')">
             <span class="inline-flex items-center gap-1.5 font-medium">
               Price
               <UIcon :name="sortIcon('price', sortBy, sortDir)" class="size-3.5" :class="sortBy === 'price' ? 'text-primary' : 'opacity-40'" />
             </span>
           </th>
-          <th class="py-3 px-4 cursor-pointer select-none" @click="emit('sort', 'stock')">
+          <th class="py-3 px-4 cursor-pointer select-none" tabindex="0" role="button" :aria-sort="sortBy === 'stock' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'" @click="emit('sort', 'stock')" @keydown.enter="emit('sort', 'stock')" @keydown.space.prevent="emit('sort', 'stock')">
             <span class="inline-flex items-center gap-1.5 font-medium">
               Stock
               <UIcon :name="sortIcon('stock', sortBy, sortDir)" class="size-3.5" :class="sortBy === 'stock' ? 'text-primary' : 'opacity-40'" />
@@ -62,7 +63,7 @@ function sortIcon(field: keyof Product, sortBy: keyof Product, sortDir: "asc" | 
             <UBadge v-if="p.category" variant="subtle" color="neutral" size="sm">{{ p.category }}</UBadge>
             <span v-else class="text-muted text-xs">—</span>
           </td>
-          <td class="py-2.5 px-4 align-middle text-default font-medium">{{ p.price != null ? p.price.toLocaleString() : "—" }}</td>
+          <td class="py-2.5 px-4 align-middle text-default font-medium">{{ formatUSD(p.price, p.currency) }}</td>
           <td class="py-2.5 px-4 align-middle">
             <UBadge v-if="p.stock != null" :color="p.stock > 10 ? 'success' : p.stock > 0 ? 'warning' : 'error'" variant="subtle" size="sm">
               {{ p.stock }} in stock
@@ -71,8 +72,8 @@ function sortIcon(field: keyof Product, sortBy: keyof Product, sortDir: "asc" | 
           </td>
           <td class="py-2.5 px-4 align-middle text-right">
             <div class="inline-flex items-center gap-1 justify-end">
-              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-pen" title="Edit" @click="emit('edit', p)" />
-              <UButton size="xs" color="error" variant="ghost" icon="i-lucide-trash" title="Delete" @click="emit('delete', p.id)" />
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-pen" title="Edit" aria-label="Edit product" @click="emit('edit', p)" />
+              <UButton size="xs" color="error" variant="ghost" icon="i-lucide-trash" title="Delete" aria-label="Delete product" @click="emit('delete', p.id)" />
             </div>
           </td>
         </tr>

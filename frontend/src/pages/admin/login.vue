@@ -25,7 +25,9 @@ async function handleLogin() {
 	try {
 		await authStore.login(email.value.trim(), password.value);
 		if (!isAdminUser(authStore.user)) {
-			error.value = "This account is not an admin. Use User Login (/login) to chat.";
+			// Mask non-admin logins as bad credentials (decided: admin page never
+			// distinguishes wrong-password from not-an-admin).
+			error.value = "Incorrect email or password.";
 			await authStore.logout();
 			return;
 		}

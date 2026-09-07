@@ -1,5 +1,5 @@
 import { computed, ref } from "vue";
-import api from "../api/index.ts";
+import api, { getErrorMessage } from "../api/index.ts";
 
 export interface Product {
 	id: string;
@@ -43,6 +43,7 @@ export function useProductCatalog() {
 	const toast = useToast();
 	const products = ref<Product[]>([]);
 	const loading = ref(false);
+	const loadError = ref("");
 	const saving = ref(false);
 	const importing = ref(false);
 	const query = ref("");
@@ -75,16 +76,20 @@ export function useProductCatalog() {
 
 	async function load() {
 		loading.value = true;
+		loadError.value = "";
 		try {
 			const { data } = await api.get("/products/");
 			products.value = data.products ?? [];
+		} catch (err: unknown) {
+			loadError.value = getErrorMessage(err);
+			products.value = [];
 		} finally {
 			loading.value = false;
 		}
 	}
 
-	async function saveProduct(editing: Product | null, form: ProductForm) {
-		if (!form.name.trim()) return;
+	async function saveProduct(editing: Product | null, form: ProductForm): Promise<boolean> {
+		if (!form.name.trim()) return false;
 		saving.value = true;
 		const payload = {
 			name: form.name.trim(),
@@ -103,6 +108,11 @@ export function useProductCatalog() {
 				await api.post("/products/", payload);
 			}
 			await load();
+			toast.add({ color: "success", title: "Saved", timeout: 3000 });
+			return true;
+		} catch (err: unknown) {
+			toast.add({ color: "error", description: getErrorMessage(err), title: "Save failed" });
+			return false;
 		} finally {
 			saving.value = false;
 		}
@@ -139,6 +149,7 @@ export function useProductCatalog() {
 		importCsv,
 		importing,
 		load,
+		loadError,
 		loading,
 		products,
 		query,

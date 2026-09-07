@@ -7,6 +7,7 @@ import { useConversationSearch } from "../composables/useConversationSearch";
 import { useDocCount } from "../composables/useDocCount";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
+import { isAdminUser } from "../utils/auth";
 import RenameConversationModal from "./chat/RenameConversationModal.vue";
 import SidebarUserMenu from "./chat/SidebarUserMenu.vue";
 
@@ -55,6 +56,11 @@ function confirmRename(newTitle: string) {
 }
 
 async function handleLogout() {
+	// Guest menu shows "Login" — take guests to the login page, not nowhere.
+	if (!authStore.user) {
+		await router.push("/login");
+		return;
+	}
 	await authStore.logout();
 	// Chat is public — land on a blank composer, never the login page.
 	// (ChatView clears the selection on / mount.)
@@ -103,7 +109,9 @@ const chatItems = computed(() =>
 
 defineShortcuts({
 	meta_o: () => handleNew(),
+	ctrl_o: () => handleNew(),
 	meta_k: () => (searchOpen.value = true),
+	ctrl_k: () => (searchOpen.value = true),
 });
 </script>
 
@@ -133,7 +141,7 @@ defineShortcuts({
       <div v-if="!collapsed && docCount !== null" class="px-2 py-2">
         <div class="flex items-center gap-1.5 px-2 text-[11px]" :class="docCount > 0 ? 'text-success' : 'text-warning'">
           <UIcon :name="docCount > 0 ? 'i-lucide-database' : 'i-lucide-alert-circle'" class="size-3.5" />
-          <span>{{ docCount > 0 ? `${docCount} docs indexed` : "No docs — upload in admin" }}</span>
+          <span>{{ docCount > 0 ? `${docCount} docs indexed` : isAdminUser(authStore.user) ? "No docs — upload in admin" : "No docs indexed yet" }}</span>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ const dashStats = ref({
 	total_messages: 0,
 	active_channels: 0,
 });
+const loadError = ref("");
 
 const stats = computed(() => [
 	{
@@ -61,7 +62,7 @@ onMounted(async () => {
 		const { data } = await api.get("/stats");
 		Object.assign(dashStats.value, data);
 	} catch {
-		// keep defaults
+		loadError.value = "Couldn't load dashboard stats. Check the API server and retry.";
 	}
 });
 </script>
@@ -78,6 +79,7 @@ onMounted(async () => {
 
         <template #body>
             <div class="flex flex-col gap-6">
+                <UAlert v-if="loadError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="loadError" />
                 <div
                     class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
                 >

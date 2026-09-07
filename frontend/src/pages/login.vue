@@ -29,11 +29,22 @@ const error = ref("");
 const isSubmitting = ref(false);
 const busy = computed(() => authStore.loading || isSubmitting.value);
 
+function redirectTarget(): string {
+	const r = route.query.redirect;
+	return typeof r === "string" && r.startsWith("/") && !r.startsWith("//") ? r : "/";
+}
+
 function toggleMode() {
 	isRegister.value = !isRegister.value;
 	error.value = "";
 	// Keep URL in sync so refresh/back matches the visible form (watcher is idempotent)
-	router.replace({ query: isRegister.value ? { mode: "signup" } : {} });
+	const redirect = route.query.redirect;
+	router.replace({
+		query: {
+			...(isRegister.value ? { mode: "signup" } : {}),
+			...(typeof redirect === "string" && redirect ? { redirect } : {}),
+		},
+	});
 }
 
 async function guardAdmin(): Promise<boolean> {
@@ -53,7 +64,7 @@ async function handleLogin(data: { email: string; password: string }) {
 	try {
 		await authStore.login(data.email.trim(), data.password);
 		if (!(await guardAdmin())) return;
-		await router.push("/");
+		await router.push(redirectTarget());
 	} catch (err: unknown) {
 		error.value = userAuthError(err, authStore.error, false);
 	} finally {
@@ -68,7 +79,7 @@ async function handleRegister(data: { email: string; password: string }) {
 	try {
 		await authStore.register(data.email.trim(), data.password);
 		if (!(await guardAdmin())) return;
-		await router.push("/");
+		await router.push(redirectTarget());
 	} catch (err: unknown) {
 		error.value = userAuthError(err, authStore.error, true);
 	} finally {

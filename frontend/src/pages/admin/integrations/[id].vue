@@ -400,7 +400,7 @@ watch(() => route.params.id, load);
                                         <td
                                             colspan="3"
                                             class="py-8 text-center text-muted text-sm"
-                                        ></td>
+                                        >No sync logs yet — run a sync to populate history.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -413,10 +413,15 @@ watch(() => route.params.id, load);
                         </div>
                     </UCard>
 
-                    <!-- Edit Dialog — English, no Page name field shown (kept internally) -->
+                    <!-- Edit Dialog — English -->
                     <UModal v-model:open="editDialog" title="Edit channel">
                         <template #body>
                             <div class="space-y-3">
+                                <UFormField label="Page name"
+                                    ><UInput
+                                        v-model="editForm.name"
+                                        placeholder="Facebook Page"
+                                /></UFormField>
                                 <USwitch
                                     v-model="editForm.is_active"
                                     label="Active"

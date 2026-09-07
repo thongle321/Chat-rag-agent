@@ -34,7 +34,8 @@ function onKeydown(e: KeyboardEvent) {
       <UTextarea
         v-model="modelValue"
         :disabled="disabled"
-        :placeholder="big ? 'Type your question...' : 'Type a question...'"
+        :placeholder="'Type a question...'"
+        aria-label="Message"
         autoresize
         :maxrows="8"
         variant="none"
@@ -45,6 +46,7 @@ function onKeydown(e: KeyboardEvent) {
 
       <UButton
         icon="i-lucide-arrow-up"
+        aria-label="Send message"
         color="primary"
         size="sm"
         :square="true"

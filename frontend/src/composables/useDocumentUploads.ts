@@ -1,5 +1,5 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import api from "../api/index.ts";
+import api, { getErrorMessage } from "../api/index.ts";
 import { useDocumentStore } from "../stores/documents";
 import { isProcessingStatus } from "../utils/documents";
 
@@ -17,6 +17,7 @@ const STORAGE_KEY = "upload-results";
 // Upload queue + background indexing poll + delete flow. The store owns the
 // persisted document list; this owns the transient upload session state.
 export function useDocumentUploads() {
+	const toast = useToast();
 	const documentStore = useDocumentStore();
 	const selectedFiles = ref<File[]>([]);
 	const uploading = ref(false);
@@ -146,10 +147,13 @@ export function useDocumentUploads() {
 
 	async function deleteDocument() {
 		const title = deleteTarget.value;
-		deleteOpen.value = false;
 		deleting.value = true;
 		try {
 			await documentStore.deleteDocument(title);
+			if (documentStore.error) throw new Error(documentStore.error);
+			deleteOpen.value = false;
+		} catch (err: unknown) {
+			toast.add({ color: "error", description: getErrorMessage(err), title: "Delete failed" });
 		} finally {
 			deleting.value = false;
 		}

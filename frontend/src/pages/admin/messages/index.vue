@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { useRoute } from "vue-router";
 import api from "../../../api";
 import { formatDateTime } from "../../../utils/format";
+
+const route = useRoute();
 
 const loading = ref(true);
 const channels = ref<any[]>([]);
@@ -11,7 +14,10 @@ async function loadChannels() {
 	try {
 		const { data } = await api.get("/facebook/channels");
 		channels.value = Array.isArray(data) ? data : [];
-		if (channels.value.length && !selectedPageId.value) selectedPageId.value = channels.value[0].page_id;
+		// Preserve the channel filter when returning from a thread (?page_id=).
+		const wanted = route.query.page_id;
+		const match = typeof wanted === "string" && channels.value.some((c) => c.page_id === wanted);
+		if (!selectedPageId.value) selectedPageId.value = match ? wanted : (channels.value[0]?.page_id ?? "");
 	} catch {
 		channels.value = [];
 	}

@@ -67,6 +67,8 @@ const uploads = useDocumentUploads();
                 icon="i-lucide-trash-2"
                 size="sm"
                 variant="ghost"
+                aria-label="Delete document"
+                title="Delete document"
                 :loading="!item.isProcessing && uploads.deleting.value && uploads.deleteTarget.value === item.title"
                 @click="uploads.handleTrashClick(item)"
               />

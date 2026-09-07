@@ -92,6 +92,9 @@ export function useChannelCrud(basePath: string, healthName: (data: any) => stri
 			await load();
 			disconnectOpen.value = false;
 			disconnectTarget.value = null;
+			toast.add({ color: "success", title: "Disconnected" });
+		} catch (err: unknown) {
+			toast.add({ color: "error", description: getErrorMessage(err), title: "Disconnect failed" });
 		} finally {
 			disconnecting.value = false;
 		}

@@ -71,6 +71,8 @@ onMounted(async () => {
 async function onProviderChange() {
 	settingsStore.models = [];
 	await ensureModels();
+	if (settingsStore.error)
+		toast.add({ color: "error", description: settingsStore.error, title: "Couldn't load models" });
 }
 
 async function ensureModels() {
@@ -108,6 +110,8 @@ async function refreshModels() {
 		openai_api_key: state.openai_api_key,
 		provider: state.ai_provider,
 	});
+	if (settingsStore.error)
+		toast.add({ color: "error", description: settingsStore.error, title: "Couldn't refresh models" });
 }
 
 async function save(event: FormSubmitEvent<Schema>) {
@@ -366,6 +370,8 @@ async function save(event: FormSubmitEvent<Schema>) {
                             color="error"
                             icon="i-lucide-alert-circle"
                             variant="subtle"
+                            aria-live="assertive"
+                            role="alert"
                             v-if="error"
                             :description="error"
                             @close="error = ''"

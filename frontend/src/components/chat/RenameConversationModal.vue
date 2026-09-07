@@ -21,7 +21,7 @@ function save() {
   <UModal v-model:open="open" title="Rename" description="Enter a new name for this conversation.">
     <template #body>
       <form id="rename-conversation-form" @submit.prevent="save">
-        <UInput v-model="titleDraft" placeholder="Enter a new name..." size="sm" class="w-full" />
+        <UInput v-model="titleDraft" placeholder="Enter a new name..." size="sm" class="w-full" autofocus />
       </form>
     </template>
     <template #footer="{ close }">
