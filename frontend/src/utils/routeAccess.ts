@@ -32,7 +32,9 @@ export function redirectForStatus(status: number | undefined, detail: string, pa
 			return isAdminPath(path) ? null : "/admin/";
 		}
 		if (detail.includes(ADMIN_ONLY_DETAIL)) {
-			// Non-admin hit an admin API
+			// Non-admin hit an admin API — but never yank users off public chat;
+			// the caller surfaces the message and they stay in context.
+			if (isPublicPath(path)) return null;
 			return path.startsWith("/login") ? null : "/login";
 		}
 	}

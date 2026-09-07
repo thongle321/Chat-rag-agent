@@ -6,30 +6,30 @@ const props = defineProps<{ open: boolean; error?: string }>();
 const emit = defineEmits<{ submit: [data: ZaloConnectSchema] }>();
 
 const zaloConnectSchema = z.object({
-    bot_token: z.string().min(1, "Bot token is required"),
-    bot_username: z.string().optional(),
-    verify_token: z.string().min(8, "Verify token 8..256 chars").max(256),
-    // webhook_url moved to global Settings → Integration (auto-managed, no manual input)
-    webhook_url: z.string().optional().or(z.literal("")),
+	bot_token: z.string().min(1, "Bot token is required"),
+	bot_username: z.string().optional(),
+	verify_token: z.string().min(8, "Verify token 8..256 chars").max(256),
+	// webhook_url moved to global Settings → Integration (auto-managed, no manual input)
+	webhook_url: z.string().optional().or(z.literal("")),
 });
 type ZaloConnectSchema = z.output<typeof zaloConnectSchema>;
 const state = reactive<Partial<ZaloConnectSchema>>({
-    bot_token: "",
-    bot_username: "",
-    verify_token: "",
-    webhook_url: "",
+	bot_token: "",
+	bot_username: "",
+	verify_token: "",
+	webhook_url: "",
 });
 
 watch(
-    () => props.open,
-    (open) => {
-        if (open) {
-            state.bot_token = "";
-            state.bot_username = "";
-            state.webhook_url = "";
-            state.verify_token = "";
-        }
-    },
+	() => props.open,
+	(open) => {
+		if (open) {
+			state.bot_token = "";
+			state.bot_username = "";
+			state.webhook_url = "";
+			state.verify_token = "";
+		}
+	},
 );
 </script>
 

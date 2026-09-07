@@ -4,9 +4,17 @@ const props = defineProps<{ initialTitle: string }>();
 const emit = defineEmits<{ submit: [title: string] }>();
 
 const titleDraft = ref("");
+let invoker: HTMLElement | null = null;
 
 watch(open, (v) => {
-	if (v) titleDraft.value = props.initialTitle;
+	if (v) {
+		titleDraft.value = props.initialTitle;
+		invoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	} else if (invoker) {
+		// Return focus where it was (title button / row menu) so keyboard users keep place.
+		invoker.focus?.();
+		invoker = null;
+	}
 });
 
 function save() {
