@@ -13,6 +13,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from pydantic import BaseModel
@@ -35,6 +36,57 @@ from app.services.rag_routing import Deps, _inject_catalog, _route_intent
 from app.services.rag_tools import search_documents, search_products, search_shopify_catalog
 
 logger = logging.getLogger(__name__)
+
+# Fallback USD rates for Ollama Cloud (per MTok, off-peak), from
+# https://ollama.com/pricing (checked 2026-09-08). genai-prices knows no
+# `ollama` provider, so usage.cost is always None for Ollama turns — this
+# fills it in for Cloud only. Local runs are $0 by definition and stay None
+# (the UI renders None as "—", never $0). Cached-input tokens are billed
+# at the input rate: we don't track them separately.
+# ponytail: static map; fetch live pricing if Ollama changes rates often.
+OLLAMA_CLOUD_RATES: dict[str, tuple[float, float]] = {
+    "deepseek-v4-flash": (0.22, 0.66),
+    "deepseek-v4-pro": (0.66, 1.98),
+    "gemma4": (0.14, 0.40),
+    "glm-5.1": (1.00, 3.20),
+    "glm-5.2": (1.40, 4.40),
+    "glm-5.3": (1.40, 4.40),
+    "glm-5.3-flash": (0.15, 0.50),
+    "gpt-oss:120b": (0.15, 0.60),
+    "gpt-oss:20b": (0.07, 0.30),
+    "kimi-k2.6": (0.95, 4.00),
+    "kimi-k2.7-code": (0.95, 4.00),
+    "kimi-k3": (3.00, 15.00),
+    "minimax-m2.7": (0.30, 1.20),
+    "minimax-m3": (0.60, 2.40),
+    "mistral-large-3": (0.50, 1.50),
+    "nemotron-3-nano": (0.06, 0.24),
+    "nemotron-3-super": (0.015, 0.60),
+    "nemotron-3-ultra": (0.10, 3.00),
+    "qwen3.5:397b": (0.60, 3.60),
+}
+
+
+def ollama_cloud_cost(
+    model_name: str | None, base_url: str | None, input_tokens: int, output_tokens: int
+) -> float | None:
+    """USD cost for an Ollama Cloud turn, or None when not billable/known."""
+    if not model_name or not base_url:
+        return None
+    try:
+        host = urlparse(base_url if "://" in base_url else f"https://{base_url}").hostname or ""
+    except ValueError:
+        return None
+    if not host.endswith("ollama.com"):
+        return None  # local or third-party host: no known price
+    key = model_name.split("/", 1)[-1].lower()
+    rates = OLLAMA_CLOUD_RATES.get(key)
+    if rates is None:
+        rates = OLLAMA_CLOUD_RATES.get(key.split(":", 1)[0])  # gemma4:31b-cloud -> gemma4
+    if rates is None:
+        return None
+    in_rate, out_rate = rates
+    return input_tokens / 1_000_000 * in_rate + output_tokens / 1_000_000 * out_rate
 
 
 @dataclass
@@ -289,6 +341,10 @@ async def stream_answer(
                         completion_tokens = int(completion_tokens) if completion_tokens else None
                         raw_cost = getattr(usage, "cost", None)
                         cost_usd = float(raw_cost) if raw_cost is not None else None
+                        if cost_usd is None and settings.ai_provider == "ollama":
+                            cost_usd = ollama_cloud_cost(
+                                model_name, settings.ollama_base_url, prompt_tokens or 0, completion_tokens or 0
+                            )
                 except Exception:
                     logger.debug("usage extraction failed", exc_info=True)
                 logger.info(
