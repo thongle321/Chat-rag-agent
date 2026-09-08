@@ -67,7 +67,7 @@ function fmtUSD(v: number | null): string {
 
 function fmtVND(v: number | null): string {
 	if (v == null) return "—";
-	return `₫${Math.round(v).toLocaleString("en-US")}`;
+	return `${Math.round(v).toLocaleString("en-US")} ₫`;
 }
 
 function clearFilters() {
