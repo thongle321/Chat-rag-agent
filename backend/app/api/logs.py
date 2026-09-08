@@ -1,6 +1,7 @@
 """Prod log readers — mirrors CQA GET /activity-logs and GET /conversations/messages."""
 
 import json
+from datetime import date, datetime, time, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -9,8 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
 from app.models.chat_logging import ActivityLog, ChatMessageLog
+from app.models.unified import AIUsageLog
 from app.models.user import User
-from app.services.user_manager import current_active_user
+from app.services.user_manager import current_active_user, current_admin_user
+
+# Fixed FX for the cost table (agreed 26,000 VND per USD).
+USD_TO_VND = 26000
 
 router = APIRouter()
 
@@ -22,6 +27,53 @@ def _client_ip(request: Request) -> str | None:
     if request.client and request.client.host:
         return str(request.client.host)[:45]
     return None
+
+
+@router.get("/usage")
+async def list_usage(
+    provider: Literal["openai", "ollama"] | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_async_session),
+    user: User = current_admin_user,
+):
+    """Paginated per-turn AI usage + cost — admin only (rows carry no user_id)."""
+    q = select(AIUsageLog).order_by(AIUsageLog.created_at.desc())
+    count_q = select(func.count()).select_from(AIUsageLog)
+    if provider:
+        q = q.where(AIUsageLog.provider == provider)
+        count_q = count_q.where(AIUsageLog.provider == provider)
+    if date_from:
+        start = datetime.combine(date_from, time.min)
+        q = q.where(AIUsageLog.created_at >= start)
+        count_q = count_q.where(AIUsageLog.created_at >= start)
+    if date_to:
+        end = datetime.combine(date_to + timedelta(days=1), time.min)
+        q = q.where(AIUsageLog.created_at < end)
+        count_q = count_q.where(AIUsageLog.created_at < end)
+
+    total = (await db.execute(count_q)).scalar_one()
+    rows = (await db.execute(q.offset((page - 1) * per_page).limit(per_page))).scalars().all()
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": [
+            {
+                "id": r.id,
+                "provider": r.provider,
+                "model": r.model,
+                "input_tokens": r.input_tokens,
+                "output_tokens": r.output_tokens,
+                "cost_usd": float(r.cost_usd) if r.cost_usd is not None else None,
+                "cost_vnd": float(r.cost_usd * USD_TO_VND) if r.cost_usd is not None else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
 
 
 @router.get("/chat-logs")

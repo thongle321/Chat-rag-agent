@@ -244,6 +244,7 @@ async def stream_answer(
     answer_parts: list[str] = []
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    cost_usd: float | None = None
     try:
         async with asyncio.timeout(120):
             async with state.stream as result:
@@ -271,7 +272,8 @@ async def stream_answer(
                         answer_parts.append(delta)
                         yield {"type": "text_delta", "content": delta}
                 state.new_messages = result.new_messages()
-                # Capture token usage like CQA ai_usage_logs (input/output)
+                # Capture token usage like CQA ai_usage_logs (input/output).
+                # usage.cost is best-effort USD via genai-prices (None = unpriceable).
                 try:
                     usage = (
                         result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
@@ -285,6 +287,8 @@ async def stream_answer(
                         # Some providers nest details; ensure int or None
                         prompt_tokens = int(prompt_tokens) if prompt_tokens else None
                         completion_tokens = int(completion_tokens) if completion_tokens else None
+                        raw_cost = getattr(usage, "cost", None)
+                        cost_usd = float(raw_cost) if raw_cost is not None else None
                 except Exception:
                     logger.debug("usage extraction failed", exc_info=True)
                 logger.info(
@@ -390,6 +394,24 @@ async def stream_answer(
                 ),
                 ip_address=ip_address,
             )
+            # Per-turn AI usage row for the cost table (provider/model/tokens/USD).
+            try:
+                from app.db.session import async_session_factory
+                from app.models.unified import AIUsageLog
+
+                async with async_session_factory() as usage_db:
+                    usage_db.add(
+                        AIUsageLog(
+                            provider=settings.ai_provider,
+                            model=model_name,
+                            input_tokens=prompt_tokens or 0,
+                            output_tokens=completion_tokens or 0,
+                            cost_usd=cost_usd,
+                        )
+                    )
+                    await usage_db.commit()
+            except Exception:
+                logger.exception("ai usage log failed sid=%s", sid)
         except Exception:
             logger.exception("chat logging failed sid=%s", sid)
     yield {"type": "sources", "sources": state.sources}

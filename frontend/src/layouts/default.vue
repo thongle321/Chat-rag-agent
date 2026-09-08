@@ -48,6 +48,14 @@ const links = [
 			},
 		},
 		{
+			label: "AI Usage",
+			icon: "i-lucide-coins",
+			to: "/admin/usage",
+			onSelect: () => {
+				open.value = false;
+			},
+		},
+		{
 			label: "Settings",
 			to: "/admin/settings",
 			icon: "i-lucide-settings",
