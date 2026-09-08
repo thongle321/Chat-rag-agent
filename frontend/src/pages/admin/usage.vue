@@ -19,6 +19,9 @@ interface UsageRow {
 // no @internationalized/date import needed.
 interface CalendarDay {
 	toString(): string;
+	day?: number;
+	month?: number;
+	year?: number;
 }
 
 const columns: TableColumn<UsageRow>[] = [
@@ -46,7 +49,14 @@ const providerItems = ["all", "ollama", "openai"];
 const isFiltered = computed(() => provider.value !== "all" || dateFrom.value != null || dateTo.value != null);
 
 function fmtDay(v: CalendarDay | undefined, placeholder: string): string {
-	return v ? v.toString().slice(0, 10) : placeholder;
+	if (!v) return placeholder;
+	if (v.day != null && v.month != null && v.year != null) {
+		const dd = String(v.day).padStart(2, "0");
+		const mm = String(v.month).padStart(2, "0");
+		return `${dd}/${mm}/${v.year}`;
+	}
+	const iso = v.toString().slice(0, 10).split("-");
+	return iso.length === 3 ? `${iso[2]}/${iso[1]}/${iso[0]}` : placeholder;
 }
 
 function fmtUSD(v: number | null): string {
