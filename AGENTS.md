@@ -53,7 +53,7 @@ backend/
       settings.py        # GET+PUT /settings/ai, POST /settings/test, POST /settings/models (admin; ollama local /api/tags vs cloud /models)
       stats.py           # GET /stats (admin; bounded 500-session query scan)
       health.py          # GET /health, GET /health/detailed (vector_store component)
-      logs.py            # GET /logs/chat-logs + /logs/activity-logs (auth; non-admin sees own) + /logs/usage (admin; provider/date filters, paginated)
+      logs.py            # GET /logs/chat-logs + /logs/activity-logs (auth; non-admin sees own) + /logs/usage + /logs/usage/summary (admin; provider/date filters, paginated)
       facebook.py / zalo.py  # webhook, channels, sync
   data/ / .chromadb/ / .env / .env.example / pyproject.toml / uv.lock
 frontend/
@@ -141,7 +141,7 @@ All under `/api` (`app/api/routes.py`):
 | `/documents` | `docs.py` | `POST /upload` (field `files`, list, 50MB/file, background `index_file`), `GET /` (="" no trailing slash), `DELETE /{title}`, `GET /upload/status?titles=a,b` (all admin) |
 | `/products` | `products.py` | `GET /` list all (admin), `GET /search?q=&k=` (public), `POST /`, `PUT /{pid}`, `DELETE /{pid}`, `POST /import-csv` (admin) |
 | `/chat` | `chat.py` + `sessions.py` | `POST /query` (non-stream), `POST /query/stream` (SSE), `GET /sessions` (own list, auth), `GET /sessions/:id` (public + FB-PSID fallback), `PATCH /sessions/:id` (title/pin, owner-scoped, claims anon), `DELETE` (owner-scoped 404) |
-| `/logs` | `logs.py` | `GET /chat-logs`, `GET /activity-logs` (auth; non-admin scoped to own; `?page&per_page&session_id/role/action`), `GET /usage` (admin; `?provider&date_from&date_to`) |
+| `/logs` | `logs.py` | `GET /chat-logs`, `GET /activity-logs` (auth; non-admin scoped to own; `?page&per_page&session_id/role/action`), `GET /usage` (admin; `?provider&date_from&date_to`), `GET /usage/summary` (same filters; totals for stat cards) |
 | `/facebook` | `facebook.py` | webhook verify, message handling, channel mgmt (admin) |
 | `/zalo` | `zalo.py` | Zalo webhook + channel mgmt (admin) |
 
