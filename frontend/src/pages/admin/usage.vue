@@ -61,6 +61,7 @@ function fmtDay(v: CalendarDay | undefined, placeholder: string): string {
 
 function fmtUSD(v: number | null): string {
 	if (v == null) return "—";
+	if (v !== 0 && Math.abs(v) < 0.0001) return `$${v.toFixed(6)}`;
 	return `$${v.toFixed(4)}`;
 }
 
