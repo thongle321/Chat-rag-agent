@@ -110,13 +110,13 @@ onMounted(load);
         <template #left>
           <USelect v-model="provider" :items="providerItems" placeholder="Provider" class="w-36" />
           <UPopover>
-            <UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="fmtDay(dateFrom, 'From')" />
+            <UInput :model-value="fmtDay(dateFrom, '')" placeholder="From" icon="i-lucide-calendar" readonly class="w-40" />
             <template #content>
               <UCalendar v-model="dateFrom" />
             </template>
           </UPopover>
           <UPopover>
-            <UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="fmtDay(dateTo, 'To')" />
+            <UInput :model-value="fmtDay(dateTo, '')" placeholder="To" icon="i-lucide-calendar" readonly class="w-40" />
             <template #content>
               <UCalendar v-model="dateTo" />
             </template>
