@@ -15,11 +15,10 @@ interface UsageRow {
 	created_at: string | null;
 }
 
-// Reka date-range value (CalendarDate serializes to YYYY-MM-DD) — structural
-// typing only, no @internationalized/date import needed.
-interface DateRange {
-	start?: { toString(): string };
-	end?: { toString(): string };
+// Reka calendar value (serializes to YYYY-MM-DD) — structural typing only,
+// no @internationalized/date import needed.
+interface CalendarDay {
+	toString(): string;
 }
 
 const columns: TableColumn<UsageRow>[] = [
@@ -38,12 +37,17 @@ const loading = ref(true);
 const error = ref("");
 
 const provider = ref("all");
-const range = ref<DateRange | undefined>();
+const dateFrom = ref<CalendarDay | undefined>();
+const dateTo = ref<CalendarDay | undefined>();
 const page = ref(1);
 const perPage = 20;
 
 const providerItems = ["all", "ollama", "openai"];
-const isFiltered = computed(() => provider.value !== "all" || range.value != null);
+const isFiltered = computed(() => provider.value !== "all" || dateFrom.value != null || dateTo.value != null);
+
+function fmtDay(v: CalendarDay | undefined, placeholder: string): string {
+	return v ? v.toString().slice(0, 10) : placeholder;
+}
 
 function fmtUSD(v: number | null): string {
 	if (v == null) return "—";
@@ -57,7 +61,8 @@ function fmtVND(v: number | null): string {
 
 function clearFilters() {
 	provider.value = "all";
-	range.value = undefined;
+	dateFrom.value = undefined;
+	dateTo.value = undefined;
 }
 
 async function load() {
@@ -67,8 +72,8 @@ async function load() {
 		const { data } = await api.get("/logs/usage", {
 			params: {
 				...(provider.value !== "all" ? { provider: provider.value } : {}),
-				...(range.value?.start ? { date_from: range.value.start.toString().slice(0, 10) } : {}),
-				...(range.value?.end ? { date_to: range.value.end.toString().slice(0, 10) } : {}),
+				...(dateFrom.value ? { date_from: dateFrom.value.toString().slice(0, 10) } : {}),
+				...(dateTo.value ? { date_to: dateTo.value.toString().slice(0, 10) } : {}),
 				page: page.value,
 				per_page: perPage,
 			},
@@ -84,7 +89,7 @@ async function load() {
 	}
 }
 
-watch([provider, range], () => {
+watch([provider, dateFrom, dateTo], () => {
 	page.value = 1;
 	load();
 });
@@ -104,7 +109,18 @@ onMounted(load);
       <UDashboardToolbar>
         <template #left>
           <USelect v-model="provider" :items="providerItems" placeholder="Provider" class="w-36" />
-          <UInputDate v-model="range" range aria-label="Date range" />
+          <UPopover>
+            <UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="fmtDay(dateFrom, 'From')" />
+            <template #content>
+              <UCalendar v-model="dateFrom" />
+            </template>
+          </UPopover>
+          <UPopover>
+            <UButton color="neutral" variant="outline" icon="i-lucide-calendar" :label="fmtDay(dateTo, 'To')" />
+            <template #content>
+              <UCalendar v-model="dateTo" />
+            </template>
+          </UPopover>
           <UButton v-if="isFiltered" color="neutral" variant="ghost" icon="i-lucide-x" label="Clear" @click="clearFilters" />
         </template>
       </UDashboardToolbar>
