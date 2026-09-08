@@ -15,12 +15,11 @@ interface UsageRow {
 	created_at: string | null;
 }
 
-interface UsageSummary {
-	turns: number;
-	input_tokens: number;
-	output_tokens: number;
-	cost_usd: number;
-	cost_vnd: number;
+// Reka date-range value (CalendarDate serializes to YYYY-MM-DD) — structural
+// typing only, no @internationalized/date import needed.
+interface DateRange {
+	start?: { toString(): string };
+	end?: { toString(): string };
 }
 
 const columns: TableColumn<UsageRow>[] = [
@@ -35,18 +34,16 @@ const columns: TableColumn<UsageRow>[] = [
 
 const rows = ref<UsageRow[]>([]);
 const total = ref(0);
-const summary = ref<UsageSummary>({ turns: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, cost_vnd: 0 });
 const loading = ref(true);
 const error = ref("");
 
 const provider = ref("all");
-const dateFrom = ref("");
-const dateTo = ref("");
+const range = ref<DateRange | undefined>();
 const page = ref(1);
 const perPage = 20;
 
 const providerItems = ["all", "ollama", "openai"];
-const isFiltered = computed(() => provider.value !== "all" || !!dateFrom.value || !!dateTo.value);
+const isFiltered = computed(() => provider.value !== "all" || range.value != null);
 
 function fmtUSD(v: number | null): string {
 	if (v == null) return "—";
@@ -58,35 +55,26 @@ function fmtVND(v: number | null): string {
 	return `₫${Math.round(v).toLocaleString("en-US")}`;
 }
 
-function fmtInt(v: number): string {
-	return v.toLocaleString("en-US");
-}
-
-function filterParams() {
-	return {
-		...(provider.value !== "all" ? { provider: provider.value } : {}),
-		...(dateFrom.value ? { date_from: dateFrom.value } : {}),
-		...(dateTo.value ? { date_to: dateTo.value } : {}),
-	};
-}
-
 function clearFilters() {
 	provider.value = "all";
-	dateFrom.value = "";
-	dateTo.value = "";
+	range.value = undefined;
 }
 
 async function load() {
 	loading.value = true;
 	error.value = "";
 	try {
-		const [tableRes, summaryRes] = await Promise.all([
-			api.get("/logs/usage", { params: { ...filterParams(), page: page.value, per_page: perPage } }),
-			api.get("/logs/usage/summary", { params: filterParams() }),
-		]);
-		rows.value = tableRes.data.items ?? [];
-		total.value = tableRes.data.total ?? 0;
-		summary.value = summaryRes.data;
+		const { data } = await api.get("/logs/usage", {
+			params: {
+				...(provider.value !== "all" ? { provider: provider.value } : {}),
+				...(range.value?.start ? { date_from: range.value.start.toString().slice(0, 10) } : {}),
+				...(range.value?.end ? { date_to: range.value.end.toString().slice(0, 10) } : {}),
+				page: page.value,
+				per_page: perPage,
+			},
+		});
+		rows.value = data.items ?? [];
+		total.value = data.total ?? 0;
 	} catch (err: unknown) {
 		error.value = getErrorMessage(err);
 		rows.value = [];
@@ -96,7 +84,7 @@ async function load() {
 	}
 }
 
-watch([provider, dateFrom, dateTo], () => {
+watch([provider, range], () => {
 	page.value = 1;
 	load();
 });
@@ -116,10 +104,7 @@ onMounted(load);
       <UDashboardToolbar>
         <template #left>
           <USelect v-model="provider" :items="providerItems" placeholder="Provider" class="w-36" />
-          <UFieldGroup>
-            <UInput v-model="dateFrom" type="date" aria-label="From date" />
-            <UInput v-model="dateTo" type="date" aria-label="To date" />
-          </UFieldGroup>
+          <UInputDate v-model="range" range aria-label="Date range" />
           <UButton v-if="isFiltered" color="neutral" variant="ghost" icon="i-lucide-x" label="Clear" @click="clearFilters" />
         </template>
       </UDashboardToolbar>
@@ -128,13 +113,6 @@ onMounted(load);
     <template #body>
       <div class="flex flex-col gap-4">
         <UAlert v-if="error" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="error" />
-
-        <UPageGrid class="sm:grid-cols-2 lg:grid-cols-4">
-          <UPageCard icon="i-lucide-messages-square" title="Turns" :description="fmtInt(summary.turns)" />
-          <UPageCard icon="i-lucide-log-in" title="Input tokens" :description="fmtInt(summary.input_tokens)" />
-          <UPageCard icon="i-lucide-log-out" title="Output tokens" :description="fmtInt(summary.output_tokens)" />
-          <UPageCard icon="i-lucide-coins" title="Total cost" :description="`${fmtUSD(summary.cost_usd)} · ${fmtVND(summary.cost_vnd)}`" />
-        </UPageGrid>
 
         <UCard :ui="{ body: 'p-0' }">
           <UTable :data="rows" :columns="columns" :loading="loading">
@@ -160,10 +138,10 @@ onMounted(load);
               <span class="font-mono text-xs">{{ row.original.model || "—" }}</span>
             </template>
             <template #input_tokens-cell="{ row }">
-              {{ fmtInt(row.original.input_tokens) }}
+              {{ row.original.input_tokens.toLocaleString("en-US") }}
             </template>
             <template #output_tokens-cell="{ row }">
-              {{ fmtInt(row.original.output_tokens) }}
+              {{ row.original.output_tokens.toLocaleString("en-US") }}
             </template>
             <template #cost_usd-cell="{ row }">
               <span class="font-medium">{{ fmtUSD(row.original.cost_usd) }}</span>

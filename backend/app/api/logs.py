@@ -29,38 +29,6 @@ def _client_ip(request: Request) -> str | None:
     return None
 
 
-@router.get("/usage/summary")
-async def usage_summary(
-    provider: Literal["openai", "ollama"] | None = Query(None),
-    date_from: date | None = Query(None),
-    date_to: date | None = Query(None),
-    db: AsyncSession = Depends(get_async_session),
-    user: User = current_admin_user,
-):
-    """Filter-matching totals for the usage page stat cards — same filters as /usage."""
-    q = select(
-        func.count(),
-        func.coalesce(func.sum(AIUsageLog.input_tokens), 0),
-        func.coalesce(func.sum(AIUsageLog.output_tokens), 0),
-        func.coalesce(func.sum(AIUsageLog.cost_usd), 0),
-    ).select_from(AIUsageLog)
-    if provider:
-        q = q.where(AIUsageLog.provider == provider)
-    if date_from:
-        q = q.where(AIUsageLog.created_at >= datetime.combine(date_from, time.min))
-    if date_to:
-        q = q.where(AIUsageLog.created_at < datetime.combine(date_to + timedelta(days=1), time.min))
-    turns, input_tokens, output_tokens, cost_usd = (await db.execute(q)).one()
-    cost_usd = float(cost_usd)
-    return {
-        "turns": turns,
-        "input_tokens": int(input_tokens),
-        "output_tokens": int(output_tokens),
-        "cost_usd": cost_usd,
-        "cost_vnd": cost_usd * USD_TO_VND,
-    }
-
-
 @router.get("/usage")
 async def list_usage(
     provider: Literal["openai", "ollama"] | None = Query(None),
